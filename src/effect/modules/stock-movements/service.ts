@@ -12,6 +12,7 @@ import { StockMovementsRepository } from './repository';
 import {
   InvalidDestinationLocation,
   InvalidSourceLocation,
+  InvalidStockMovementOrder,
   InvalidStockMovementProduct,
   StockMovementLocationNotFound,
   StockMovementNotFound,
@@ -130,6 +131,20 @@ export class StockMovementsService extends Effect.Service<StockMovementsService>
                   new InvalidDestinationLocation({
                     locationId: toLocationId,
                     messageKey: 'stockMovements.destinationLocationNotFound',
+                  }),
+              ),
+            );
+          }
+
+          if (dto.order_id) {
+            const orderId = dto.order_id;
+            yield* repository.orderExistsById(orderId).pipe(
+              Effect.filterOrFail(
+                Boolean,
+                () =>
+                  new InvalidStockMovementOrder({
+                    orderId,
+                    messageKey: 'stockMovements.orderNotFound',
                   }),
               ),
             );

@@ -96,9 +96,10 @@ export class RolesRepository extends Effect.Service<RolesRepository>()(
         data: Partial<typeof roles.$inferInsert>,
       ) =>
         tryAsync('update role', async () => {
+          const { tenant_id: _tenantId, ...updateData } = data;
           await db
             .update(roles)
-            .set({ ...data, updated_at: new Date() })
+            .set({ ...updateData, updated_at: new Date() })
             .where(and(eq(roles.id, id), eq(roles.tenant_id, tenantId)));
         });
 

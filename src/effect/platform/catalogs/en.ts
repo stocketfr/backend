@@ -128,6 +128,7 @@ export const enCatalog = {
   'stockMovements.infrastructureFailed': 'Stock movement operation failed.',
   'stockMovements.locationNotFound': 'Location not found.',
   'stockMovements.notFound': 'Stock movement not found.',
+  'stockMovements.orderNotFound': 'Order not found.',
   'stockMovements.productNotFound': 'Product not found.',
   'stockMovements.repositoryFailed': 'Stock movement operation failed.',
   'stockMovements.sourceLocationNotFound': 'Source location not found.',

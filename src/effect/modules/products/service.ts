@@ -8,6 +8,8 @@ import {
   toPaginatedResponse,
 } from '@stocket/types/common';
 import { CategoriesService } from '../categories/service';
+import { SuppliersService } from '../suppliers/service';
+import { SupplierNotFound } from '../suppliers/suppliers.errors';
 import type {
   ProductQuerySchema,
   CreateProductSchema,
@@ -17,10 +19,7 @@ import type {
   BulkDeleteSchema,
   BulkRestoreSchema,
 } from './products.schema';
-import {
-  toCreateProductEntity,
-  toProductResponseDto,
-} from './products.utils';
+import { toCreateProductEntity, toProductResponseDto } from './products.utils';
 import {
   CategoryNotFound,
   PriceBelowCost,
@@ -48,10 +47,16 @@ export class ProductsService extends Effect.Service<ProductsService>()(
     effect: Effect.gen(function* () {
       const repository = yield* ProductsRepository;
       const categoriesService = yield* CategoriesService;
+      const suppliersService = yield* SuppliersService;
 
       const getProductOrFail = (id: string, includeDeleted = false) =>
-        fromNullOr(repository.findById(id, includeDeleted), () =>
-          new ProductNotFound({ productId: id, messageKey: 'products.notFound' }),
+        fromNullOr(
+          repository.findById(id, includeDeleted),
+          () =>
+            new ProductNotFound({
+              productId: id,
+              messageKey: 'products.notFound',
+            }),
         );
 
       const checkCategoryExists = (categoryId: string) =>
@@ -66,6 +71,35 @@ export class ProductsService extends Effect.Service<ProductsService>()(
           ),
           Effect.asVoid,
         );
+
+      const checkSupplierExists = (supplierId: string) =>
+        suppliersService.existsById(supplierId).pipe(
+          Effect.filterOrFail(
+            Boolean,
+            () =>
+              new SupplierNotFound({
+                id: supplierId,
+                messageKey: 'suppliers.notFound',
+              }),
+          ),
+          Effect.asVoid,
+        );
+
+      const validateProductTenantReferences = (
+        dto: Pick<
+          CreateProductDto | UpdateProductDto,
+          'category_id' | 'primary_supplier_id'
+        >,
+      ) =>
+        Effect.gen(function* () {
+          if (dto.category_id) {
+            yield* checkCategoryExists(dto.category_id);
+          }
+
+          if (dto.primary_supplier_id) {
+            yield* checkSupplierExists(dto.primary_supplier_id);
+          }
+        });
 
       const ensureSkuAvailable = (
         sku: string,
@@ -106,19 +140,20 @@ export class ProductsService extends Effect.Service<ProductsService>()(
       };
 
       const findAllPaginated = (query: ProductQueryDto) =>
-        Effect.map(
-          repository.findAllPaginated(query),
-          (result) => toPaginatedResponse(result, toProductResponseDto),
+        Effect.map(repository.findAllPaginated(query), (result) =>
+          toPaginatedResponse(result, toProductResponseDto),
         ).pipe(Effect.withSpan('ProductsService.findAllPaginated'));
 
       const findAll = () =>
-        Effect.map(
-          repository.findAll(),
-          (products) => products.map(toProductResponseDto),
+        Effect.map(repository.findAll(), (products) =>
+          products.map(toProductResponseDto),
         ).pipe(Effect.withSpan('ProductsService.findAll'));
 
       const findOne = (id: string, includeDeleted = false) =>
-        Effect.map(getProductOrFail(id, includeDeleted), toProductResponseDto).pipe(
+        Effect.map(
+          getProductOrFail(id, includeDeleted),
+          toProductResponseDto,
+        ).pipe(
           Effect.withSpan('ProductsService.findOne', { attributes: { id } }),
         );
 
@@ -127,22 +162,34 @@ export class ProductsService extends Effect.Service<ProductsService>()(
           yield* checkCategoryExists(categoryId);
           const products = yield* repository.findByCategoryId(categoryId);
           return products.map(toProductResponseDto);
-        }).pipe(Effect.withSpan('ProductsService.findByCategory', { attributes: { categoryId } }));
+        }).pipe(
+          Effect.withSpan('ProductsService.findByCategory', {
+            attributes: { categoryId },
+          }),
+        );
 
       const findByCategoryTree = (categoryId: string) =>
         Effect.gen(function* () {
           yield* checkCategoryExists(categoryId);
-          const descendantIds = yield* categoriesService.findAllDescendantIds(categoryId);
+          const descendantIds =
+            yield* categoriesService.findAllDescendantIds(categoryId);
           const categoryIds = [categoryId, ...descendantIds];
           const products = yield* repository.findByCategoryIds(categoryIds);
           return products.map(toProductResponseDto);
-        }).pipe(Effect.withSpan('ProductsService.findByCategoryTree', { attributes: { categoryId } }));
+        }).pipe(
+          Effect.withSpan('ProductsService.findByCategoryTree', {
+            attributes: { categoryId },
+          }),
+        );
 
       const create = (dto: CreateProductDto, userId?: string) =>
         Effect.gen(function* () {
-          yield* checkCategoryExists(dto.category_id);
+          yield* validateProductTenantReferences(dto);
           yield* ensureSkuAvailable(dto.sku);
-          yield* validatePriceNotBelowCost(dto.standard_price, dto.standard_cost);
+          yield* validatePriceNotBelowCost(
+            dto.standard_price,
+            dto.standard_cost,
+          );
 
           const entityData = toCreateProductEntity(dto, userId);
           const product = yield* repository.create(entityData);
@@ -174,6 +221,27 @@ export class ProductsService extends Effect.Service<ProductsService>()(
               for (const product of bulkDto.products) {
                 if (product.category_id === categoryId) {
                   result.addFailure(`Category ${categoryId} not found`, {
+                    sku: product.sku,
+                  });
+                }
+              }
+              return result.build();
+            }
+          }
+
+          const supplierIds = [
+            ...new Set(
+              bulkDto.products
+                .map((p) => p.primary_supplier_id)
+                .filter((id): id is string => Boolean(id)),
+            ),
+          ];
+          for (const supplierId of supplierIds) {
+            const exists = yield* suppliersService.existsById(supplierId);
+            if (!exists) {
+              for (const product of bulkDto.products) {
+                if (product.primary_supplier_id === supplierId) {
+                  result.addFailure(`Supplier ${supplierId} not found`, {
                     sku: product.sku,
                   });
                 }
@@ -218,9 +286,7 @@ export class ProductsService extends Effect.Service<ProductsService>()(
         Effect.gen(function* () {
           const product = yield* getProductOrFail(id);
 
-          if (dto.category_id) {
-            yield* checkCategoryExists(dto.category_id);
-          }
+          yield* validateProductTenantReferences(dto);
 
           if (dto.sku && dto.sku !== product.sku) {
             yield* ensureSkuAvailable(dto.sku);
@@ -239,9 +305,14 @@ export class ProductsService extends Effect.Service<ProductsService>()(
 
           const updated = yield* getProductOrFail(id);
           return toProductResponseDto(updated);
-        }).pipe(Effect.withSpan('ProductsService.update', { attributes: { id } }));
+        }).pipe(
+          Effect.withSpan('ProductsService.update', { attributes: { id } }),
+        );
 
-      const bulkUpdateStatus = (bulkDto: BulkUpdateStatusDto, userId?: string) =>
+      const bulkUpdateStatus = (
+        bulkDto: BulkUpdateStatusDto,
+        userId?: string,
+      ) =>
         Effect.gen(function* () {
           const result = createBulkResultBuilder();
 
@@ -277,7 +348,9 @@ export class ProductsService extends Effect.Service<ProductsService>()(
           } else {
             yield* repository.softDelete(id, userId);
           }
-        }).pipe(Effect.withSpan('ProductsService.delete', { attributes: { id } }));
+        }).pipe(
+          Effect.withSpan('ProductsService.delete', { attributes: { id } }),
+        );
 
       const bulkDelete = (bulkDto: BulkDeleteDto, userId?: string) =>
         Effect.gen(function* () {
@@ -322,7 +395,9 @@ export class ProductsService extends Effect.Service<ProductsService>()(
 
           const restored = yield* getProductOrFail(id);
           return toProductResponseDto(restored);
-        }).pipe(Effect.withSpan('ProductsService.restore', { attributes: { id } }));
+        }).pipe(
+          Effect.withSpan('ProductsService.restore', { attributes: { id } }),
+        );
 
       const bulkRestore = (bulkDto: BulkRestoreDto) =>
         Effect.gen(function* () {
@@ -352,9 +427,13 @@ export class ProductsService extends Effect.Service<ProductsService>()(
         }).pipe(Effect.withSpan('ProductsService.bulkRestore'));
 
       const existsById = (id: string) =>
-        repository.existsById(id).pipe(
-          Effect.withSpan('ProductsService.existsById', { attributes: { id } }),
-        );
+        repository
+          .existsById(id)
+          .pipe(
+            Effect.withSpan('ProductsService.existsById', {
+              attributes: { id },
+            }),
+          );
 
       return {
         findAllPaginated,
@@ -373,6 +452,10 @@ export class ProductsService extends Effect.Service<ProductsService>()(
         existsById,
       };
     }),
-    dependencies: [ProductsRepository.Default, CategoriesService.Default],
+    dependencies: [
+      ProductsRepository.Default,
+      CategoriesService.Default,
+      SuppliersService.Default,
+    ],
   },
 ) {}

@@ -40,6 +40,12 @@ export class InvalidDestinationLocation extends BadRequestError(
   readonly locationId: string;
 }> {}
 
+export class InvalidStockMovementOrder extends BadRequestError(
+  'InvalidStockMovementOrder',
+)<{
+  readonly orderId: string;
+}> {}
+
 export class StockMovementsInfrastructureError extends InternalError(
   'StockMovementsInfrastructureError',
 )<{

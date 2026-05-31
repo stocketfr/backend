@@ -6,9 +6,9 @@ import type {
   AreaQueryDto,
 } from '@stocket/types/areas';
 import { makeTryAsync } from '../../platform/try-async';
+import { TenantQuery } from '../../platform/tenant-query';
 import { DrizzleDatabase } from '../../platform/drizzle';
 import { areas, locations } from '../../platform/db/schema';
-import { requireRequestTenantId } from '../../platform/tenant-context';
 import {
   AreaLocationNotFound,
   AreaParentLocationMismatch,
@@ -33,6 +33,7 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
   {
     effect: Effect.gen(function* () {
       const db = yield* DrizzleDatabase;
+      const tenantQuery = yield* TenantQuery;
 
       const loadChildrenRecursively = async (
         area: AreaWithChildren,
@@ -131,7 +132,7 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
 
       const create = (dto: CreateAreaDto) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           yield* validateAreaReferences(tenantId, dto);
           return yield* tryAsync('create area', async () => {
             const rows = await db
@@ -151,7 +152,7 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
 
       const findAll = (query: AreaQueryDto) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('list areas', async () => {
             const conditions: SQL[] = [eq(areas.tenant_id, tenantId)];
 
@@ -178,7 +179,7 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
 
       const findById = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('load area', async () => {
             const rows = await db
               .select({
@@ -203,7 +204,7 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
 
       const findByIdWithChildren = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('load area with children', async () => {
             const rows = await db
               .select({
@@ -240,7 +241,7 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
 
       const findHierarchyByLocationId = (locationId: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('load area hierarchy', async () => {
             const rootAreas: AreaWithChildren[] = await db
               .select()
@@ -264,23 +265,25 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
 
       const update = (id: string, dto: UpdateAreaDto) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
-          const existing = yield* tryAsync('load area before update', async () =>
-            db
-              .select({
-                area: areas,
-                location: locations,
-              })
-              .from(areas)
-              .leftJoin(
-                locations,
-                and(
-                  eq(areas.location_id, locations.id),
-                  eq(locations.tenant_id, tenantId),
-                ),
-              )
-              .where(and(eq(areas.tenant_id, tenantId), eq(areas.id, id)))
-              .limit(1),
+          const tenantId = yield* tenantQuery.tenantId;
+          const existing = yield* tryAsync(
+            'load area before update',
+            async () =>
+              db
+                .select({
+                  area: areas,
+                  location: locations,
+                })
+                .from(areas)
+                .leftJoin(
+                  locations,
+                  and(
+                    eq(areas.location_id, locations.id),
+                    eq(locations.tenant_id, tenantId),
+                  ),
+                )
+                .where(and(eq(areas.tenant_id, tenantId), eq(areas.id, id)))
+                .limit(1),
           );
 
           if (!existing[0]) return null;
@@ -321,7 +324,7 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
 
       const remove = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('delete area', async () => {
             const result = await db
               .delete(areas)
@@ -333,7 +336,7 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
 
       const existsById = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('check area existence', async () => {
             const rows = await db
               .select({ count: sql<number>`count(*)::int` })
@@ -354,5 +357,6 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
         existsById,
       };
     }),
+    dependencies: [TenantQuery.Default],
   },
 ) {}

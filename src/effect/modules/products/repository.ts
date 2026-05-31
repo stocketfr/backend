@@ -20,9 +20,9 @@ import {
 } from '@stocket/types/common';
 import { buildOrderBy } from '../../platform/drizzle-sort.utils';
 import { makeTryAsync } from '../../platform/try-async';
+import { TenantQuery } from '../../platform/tenant-query';
 import { DrizzleDatabase, type DrizzleDb } from '../../platform/drizzle';
 import { products, categories, suppliers } from '../../platform/db/schema';
-import { requireRequestTenantId } from '../../platform/tenant-context';
 import type { ProductQuerySchema } from './products.schema';
 import { ProductsInfrastructureError } from './products.errors';
 
@@ -61,8 +61,20 @@ function selectProductWithJoins(db: DrizzleDb) {
       supplier: suppliers,
     })
     .from(products)
-    .leftJoin(categories, eq(products.category_id, categories.id))
-    .leftJoin(suppliers, eq(products.primary_supplier_id, suppliers.id));
+    .leftJoin(
+      categories,
+      and(
+        eq(products.category_id, categories.id),
+        eq(products.tenant_id, categories.tenant_id),
+      ),
+    )
+    .leftJoin(
+      suppliers,
+      and(
+        eq(products.primary_supplier_id, suppliers.id),
+        eq(products.tenant_id, suppliers.tenant_id),
+      ),
+    );
 }
 
 function mapProductRow(row: ProductJoinRow) {
@@ -78,10 +90,11 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
   {
     effect: Effect.gen(function* () {
       const db = yield* DrizzleDatabase;
+      const tenantQuery = yield* TenantQuery;
 
       const findAllPaginated = (query: ProductQueryDto) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('list products paginated', async () => {
             const { page, limit, skip } = resolvePaginationWindow(
               query.page,
@@ -159,7 +172,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const findAll = (includeDeleted = false) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('list all products', async () => {
             const conditions: SQL[] = [eq(products.tenant_id, tenantId)];
             if (!includeDeleted) conditions.push(isNull(products.deleted_at));
@@ -172,7 +185,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const findById = (id: string, includeDeleted = false) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('find product by id', async () => {
             const conditions: SQL[] = [
               eq(products.tenant_id, tenantId),
@@ -190,7 +203,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const findBySku = (sku: string, includeDeleted = false) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('find product by sku', async () => {
             const conditions: SQL[] = [
               eq(products.tenant_id, tenantId),
@@ -210,7 +223,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const findByCategoryId = (categoryId: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('find products by category', async () => {
             const rows = await selectProductWithJoins(db)
               .where(
@@ -227,7 +240,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const findByCategoryIds = (categoryIds: string[]) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('find products by categories', async () => {
             if (categoryIds.length === 0) return [];
 
@@ -246,7 +259,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const findByIds = (ids: string[], includeDeleted = false) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('find products by ids', async () => {
             const conditions: SQL[] = [
               eq(products.tenant_id, tenantId),
@@ -264,7 +277,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const findDeletedByIds = (ids: string[]) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('find deleted products by ids', () =>
             db
               .select()
@@ -281,7 +294,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const existsById = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('check product existence', async () => {
             const rows = await db
               .select({ id: products.id })
@@ -300,7 +313,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const create = (data: typeof products.$inferInsert) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('create product', async () => {
             const rows = await db
               .insert(products)
@@ -315,11 +328,12 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
         data: Partial<typeof products.$inferInsert>,
       ) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('update product', async () => {
+            const { tenant_id: _tenantId, ...updateData } = data;
             const rows = await db
               .update(products)
-              .set({ ...data, updated_at: new Date() })
+              .set({ ...updateData, updated_at: new Date() })
               .where(
                 and(
                   eq(products.tenant_id, tenantId),
@@ -337,11 +351,12 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
         data: Partial<typeof products.$inferInsert>,
       ) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('update multiple products', async () => {
+            const { tenant_id: _tenantId, ...updateData } = data;
             const rows = await db
               .update(products)
-              .set({ ...data, updated_at: new Date() })
+              .set({ ...updateData, updated_at: new Date() })
               .where(
                 and(
                   eq(products.tenant_id, tenantId),
@@ -356,7 +371,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const softDelete = (id: string, deletedBy?: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('soft delete product', async () => {
             await db
               .update(products)
@@ -377,7 +392,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const softDeleteMany = (ids: string[], deletedBy?: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('soft delete multiple products', async () => {
             const rows = await db
               .update(products)
@@ -400,7 +415,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const restore = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('restore product', async () => {
             await db
               .update(products)
@@ -421,7 +436,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const restoreMany = (ids: string[]) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('restore multiple products', async () => {
             const rows = await db
               .update(products)
@@ -444,22 +459,19 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const hardDelete = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('hard delete product', async () => {
             await db
               .delete(products)
               .where(
-                and(
-                  eq(products.tenant_id, tenantId),
-                  eq(products.id, id),
-                ),
+                and(eq(products.tenant_id, tenantId), eq(products.id, id)),
               );
           });
         });
 
       const hardDeleteMany = (ids: string[]) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('hard delete multiple products', async () => {
             const rows = await db
               .delete(products)
@@ -495,5 +507,6 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
         hardDeleteMany,
       };
     }),
+    dependencies: [TenantQuery.Default],
   },
 ) {}

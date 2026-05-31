@@ -1,9 +1,9 @@
 import { Effect } from 'effect';
 import { eq, asc, sql, and } from 'drizzle-orm';
 import { makeTryAsync } from '../../platform/try-async';
+import { TenantQuery } from '../../platform/tenant-query';
 import { DrizzleDatabase } from '../../platform/drizzle';
 import { photos, products } from '../../platform/db/schema';
-import { requireRequestTenantId } from '../../platform/tenant-context';
 import { PhotosInfrastructureError } from './photos.errors';
 
 const tryAsync = makeTryAsync(
@@ -20,12 +20,13 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
   {
     effect: Effect.gen(function* () {
       const db = yield* DrizzleDatabase;
+      const tenantQuery = yield* TenantQuery;
       const tenantOwnsProduct = (tenantId: string) =>
         sql`${photos.product_id} IN (SELECT id FROM products WHERE tenant_id = ${tenantId})`;
 
       const findByProductId = (productId: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('list photos by product', () =>
             db
               .select()
@@ -42,7 +43,7 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
 
       const findById = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('load photo', async () => {
             const rows = await db
               .select()
@@ -55,7 +56,7 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
 
       const create = (data: typeof photos.$inferInsert) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('create photo', async () => {
             const productRows = await db
               .select({ id: products.id })
@@ -78,7 +79,7 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
 
       const remove = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('delete photo metadata', async () => {
             await db
               .delete(photos)
@@ -88,7 +89,7 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
 
       const countByProductId = (productId: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('count photos by product', async () => {
             const rows = await db
               .select({ count: sql<number>`count(*)::int` })
@@ -111,5 +112,6 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
         countByProductId,
       };
     }),
+    dependencies: [TenantQuery.Default],
   },
 ) {}
