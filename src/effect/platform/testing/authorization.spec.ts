@@ -186,7 +186,7 @@ describe('requireSuperAdmin', () => {
     await expect(
       fail(
         requireSuperAdmin.pipe(
-          Effect.provide(makeRequestLayer('tenant.librestock.maximilian.pw')),
+          Effect.provide(makeRequestLayer('tenant.stocket.fr')),
           Effect.provide(makeDbLayer([{ user_id: 'user-1' }])),
         ),
       ),
@@ -203,7 +203,7 @@ describe('requireSuperAdmin', () => {
       fail(
         requireSuperAdmin.pipe(
           Effect.provide(
-            makeRequestLayer('default.librestock.maximilian.pw'),
+            makeRequestLayer('app.stocket.fr'),
           ),
           Effect.provide(makeDbLayer([])),
         ),
@@ -220,7 +220,7 @@ describe('requireSuperAdmin', () => {
       fail(
         requireSuperAdmin.pipe(
           Effect.provide(
-            makeRequestLayer('default.librestock.maximilian.pw'),
+            makeRequestLayer('app.stocket.fr'),
           ),
           Effect.provide(makeFailingDbLayer()),
         ),
@@ -237,7 +237,7 @@ describe('requireSuperAdmin', () => {
       run(
         requireSuperAdmin.pipe(
           Effect.provide(
-            makeRequestLayer('default.librestock.maximilian.pw'),
+            makeRequestLayer('app.stocket.fr'),
           ),
           Effect.provide(makeDbLayer([{ user_id: 'user-1' }])),
         ),
