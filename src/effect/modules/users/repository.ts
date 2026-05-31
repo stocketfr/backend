@@ -166,9 +166,9 @@ export class UsersRepository extends Effect.Service<UsersRepository>()(
           const roleName = role?.trim() || null;
           const fromAndWhere = sql`
 	            FROM "member" m
-	            INNER JOIN "user" u ON u.id = m.user_id
+	            INNER JOIN "user" u ON u.id::text = m.user_id
             LEFT JOIN user_roles ur
-              ON ur.user_id = u.id
+              ON ur.user_id = u.id::text
               AND ur.tenant_id = m.organization_id
             LEFT JOIN roles r
               ON r.id = ur.role_id
@@ -236,7 +236,9 @@ export class UsersRepository extends Effect.Service<UsersRepository>()(
             await tx.execute(
               sql`DELETE FROM "session" WHERE user_id = ${userId}`,
             );
-            await tx.execute(sql`DELETE FROM account WHERE user_id = ${userId}`);
+            await tx.execute(
+              sql`DELETE FROM account WHERE user_id = ${userId}`,
+            );
             await tx.execute(sql`DELETE FROM "user" WHERE id = ${userId}`);
           });
         });
@@ -274,7 +276,9 @@ export class UsersRepository extends Effect.Service<UsersRepository>()(
 
       const deleteBetterAuthSessions = (userId: string) =>
         tryAsync('delete better auth sessions', async () => {
-          await db.execute(sql`DELETE FROM "session" WHERE user_id = ${userId}`);
+          await db.execute(
+            sql`DELETE FROM "session" WHERE user_id = ${userId}`,
+          );
         });
 
       const deleteUserRoles = (userId: string, tenantId: string) =>

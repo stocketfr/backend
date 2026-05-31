@@ -1,8 +1,13 @@
 import { faker } from '@faker-js/faker';
 import { LocationType } from '@stocket/types/locations';
 import { StockMovementReason } from '@stocket/types/stock-movements';
-import { stockMovements, type locations, type orders, type products } from '../../effect/platform/db/schema';
-import { MOCK_USER_ID, SEED_CONFIG } from './config';
+import {
+  stockMovements,
+  type locations,
+  type orders,
+  type products,
+} from '../../effect/platform/db/schema';
+import { MOCK_USER_ID, SEED_CONFIG, withTenant } from './config';
 import { registry } from './registry';
 
 registry.register({
@@ -11,12 +16,18 @@ registry.register({
   async run(ctx) {
     console.log('Seeding stock movements...');
 
-    const allProducts = ctx.store.get('products') as (typeof products.$inferSelect)[];
-    const allLocations = ctx.store.get('locations') as (typeof locations.$inferSelect)[];
+    const allProducts = ctx.store.get(
+      'products',
+    ) as (typeof products.$inferSelect)[];
+    const allLocations = ctx.store.get(
+      'locations',
+    ) as (typeof locations.$inferSelect)[];
     const allOrders = ctx.store.get('orders') as (typeof orders.$inferSelect)[];
 
     const movements: (typeof stockMovements.$inferSelect)[] = [];
-    const warehouseLocations = allLocations.filter((l) => l.type === LocationType.WAREHOUSE);
+    const warehouseLocations = allLocations.filter(
+      (l) => l.type === LocationType.WAREHOUSE,
+    );
 
     for (let i = 0; i < SEED_CONFIG.stockMovements; i++) {
       const product = faker.helpers.arrayElement(allProducts);
@@ -45,7 +56,9 @@ registry.register({
           break;
         case StockMovementReason.INTERNAL_TRANSFER:
           fromLocationId = faker.helpers.arrayElement(allLocations).id;
-          toLocationId = faker.helpers.arrayElement(allLocations.filter((l) => l.id !== fromLocationId)).id;
+          toLocationId = faker.helpers.arrayElement(
+            allLocations.filter((l) => l.id !== fromLocationId),
+          ).id;
           break;
         case StockMovementReason.WASTE:
         case StockMovementReason.DAMAGED:
@@ -63,37 +76,47 @@ registry.register({
 
       const relatedOrder =
         reason === StockMovementReason.SALE
-          ? faker.helpers.maybe(() => faker.helpers.arrayElement(allOrders), { probability: 0.5 })
+          ? faker.helpers.maybe(() => faker.helpers.arrayElement(allOrders), {
+              probability: 0.5,
+            })
           : null;
 
-      const [saved] = await ctx.db.insert(stockMovements).values({
-        product_id: product.id,
-        from_location_id: fromLocationId,
-        to_location_id: toLocationId,
-        quantity: faker.number.int({ min: 1, max: 100 }),
-        reason,
-        order_id: relatedOrder?.id ?? null,
-        reference_number: faker.helpers.maybe(
-          () => `REF-${faker.string.alphanumeric({ length: 8, casing: 'upper' })}`,
-          { probability: 0.5 },
-        ),
-        cost_per_unit: faker.helpers.maybe(
-          () => faker.number.float({ min: 1, max: 2000, fractionDigits: 2 }),
-          { probability: 0.6 },
-        ),
-        user_id: MOCK_USER_ID,
-        notes: faker.helpers.maybe(
-          () => faker.helpers.arrayElement([
-            'Regular stock replenishment',
-            'Damaged during transit',
-            'Expired - disposed per policy',
-            'Physical count adjustment',
-            'Client return - inspected OK',
-            faker.lorem.sentence(),
-          ]),
-          { probability: 0.3 },
-        ),
-      }).returning();
+      const [saved] = await ctx.db
+        .insert(stockMovements)
+        .values(
+          withTenant(ctx.tenant, {
+            product_id: product.id,
+            from_location_id: fromLocationId,
+            to_location_id: toLocationId,
+            quantity: faker.number.int({ min: 1, max: 100 }),
+            reason,
+            order_id: relatedOrder?.id ?? null,
+            reference_number: faker.helpers.maybe(
+              () =>
+                `REF-${faker.string.alphanumeric({ length: 8, casing: 'upper' })}`,
+              { probability: 0.5 },
+            ),
+            cost_per_unit: faker.helpers.maybe(
+              () =>
+                faker.number.float({ min: 1, max: 2000, fractionDigits: 2 }),
+              { probability: 0.6 },
+            ),
+            user_id: MOCK_USER_ID,
+            notes: faker.helpers.maybe(
+              () =>
+                faker.helpers.arrayElement([
+                  'Regular stock replenishment',
+                  'Damaged during transit',
+                  'Expired - disposed per policy',
+                  'Physical count adjustment',
+                  'Client return - inspected OK',
+                  faker.lorem.sentence(),
+                ]),
+              { probability: 0.3 },
+            ),
+          }),
+        )
+        .returning();
       movements.push(saved!);
     }
 

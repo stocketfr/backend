@@ -1,6 +1,10 @@
 import { faker } from '@faker-js/faker';
-import { products, type categories, type suppliers } from '../../effect/platform/db/schema';
-import { SEED_CONFIG } from './config';
+import {
+  products,
+  type categories,
+  type suppliers,
+} from '../../effect/platform/db/schema';
+import { SEED_CONFIG, withTenant } from './config';
 import { buildProduct } from './factories';
 import { registry } from './registry';
 
@@ -10,17 +14,26 @@ registry.register({
   async run(ctx) {
     console.log('Seeding products...');
 
-    const allCategories = ctx.store.get('categories') as (typeof categories.$inferSelect)[];
-    const allSuppliers = ctx.store.get('suppliers') as (typeof suppliers.$inferSelect)[];
+    const allCategories = ctx.store.get(
+      'categories',
+    ) as (typeof categories.$inferSelect)[];
+    const allSuppliers = ctx.store.get(
+      'suppliers',
+    ) as (typeof suppliers.$inferSelect)[];
 
     const allProducts: (typeof products.$inferSelect)[] = [];
-    const leafCategories = allCategories.filter((cat) => cat.parent_id !== null);
+    const leafCategories = allCategories.filter(
+      (cat) => cat.parent_id !== null,
+    );
 
     for (let i = 0; i < SEED_CONFIG.products; i++) {
       const category = faker.helpers.arrayElement(leafCategories);
       const supplier = faker.helpers.arrayElement(allSuppliers);
 
-      const attrs = buildProduct(category.id, supplier.id);
+      const attrs = withTenant(
+        ctx.tenant,
+        buildProduct(category.id, supplier.id),
+      );
       const [saved] = await ctx.db.insert(products).values(attrs).returning();
       allProducts.push(saved!);
 

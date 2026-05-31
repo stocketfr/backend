@@ -61,7 +61,10 @@ pnpm test                # Unit tests (Vitest)
 pnpm test:integration    # Integration tests
 pnpm lint                # Oxlint
 pnpm type-check          # TypeScript check
-pnpm seed                # Seed database
+pnpm seed                # Seed default tenant
+pnpm seed -- --tenant-slug <slug>
+pnpm seed -- --tenant-id <uuid>
+pnpm seed:workspace -- --tenant-slug <slug> # Seed local workspace DB
 ```
 
 ## Shared Types

@@ -9,10 +9,7 @@ import {
   getTableColumns,
   type SQL,
 } from 'drizzle-orm';
-import type {
-  AuditAction,
-  AuditEntityType,
-} from '@stocket/types/audit-logs';
+import type { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
 import {
   resolvePaginationWindow,
   toRepositoryPaginatedResult,
@@ -104,7 +101,7 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
                 .from(auditLogs)
                 .leftJoin(
                   betterAuthUsers,
-                  eq(auditLogs.user_id, betterAuthUsers.id),
+                  sql`${auditLogs.user_id} = ${betterAuthUsers.id}::text`,
                 )
                 .where(where)
                 .orderBy(desc(auditLogs.created_at))
@@ -126,7 +123,7 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
               .from(auditLogs)
               .leftJoin(
                 betterAuthUsers,
-                eq(auditLogs.user_id, betterAuthUsers.id),
+                sql`${auditLogs.user_id} = ${betterAuthUsers.id}::text`,
               )
               .where(
                 and(eq(auditLogs.tenant_id, tenantId), eq(auditLogs.id, id)),
@@ -145,7 +142,7 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
               .from(auditLogs)
               .leftJoin(
                 betterAuthUsers,
-                eq(auditLogs.user_id, betterAuthUsers.id),
+                sql`${auditLogs.user_id} = ${betterAuthUsers.id}::text`,
               )
               .where(
                 and(
@@ -167,7 +164,7 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
               .from(auditLogs)
               .leftJoin(
                 betterAuthUsers,
-                eq(auditLogs.user_id, betterAuthUsers.id),
+                sql`${auditLogs.user_id} = ${betterAuthUsers.id}::text`,
               )
               .where(
                 and(

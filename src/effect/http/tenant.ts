@@ -33,7 +33,8 @@ const isBypassedRoute = (pathname: string) =>
   pathname.startsWith('/api/auth/') ||
   pathname === '/api/v1/superadmin' ||
   pathname.startsWith('/api/v1/superadmin/') ||
-  pathname === '/api/v1/platform/tls/ask';
+  pathname === '/api/v1/platform/tls/ask' ||
+  pathname === '/api/v1/e2e/seed';
 
 const requiresTenantContext = (
   request: HttpServerRequest.HttpServerRequest,

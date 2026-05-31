@@ -24,6 +24,7 @@
     "prepare:sortly": "nu src/scripts/prepare-sortly-export.nu",
     "import:sortly": "sh ./scripts/import.sh sortly",
     "seed": "infisical run --env=dev -- tsx src/scripts/seed-database.ts",
+    "seed:workspace": "infisical run --env=dev -- sh -c 'SEED_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/stocket_inventory exec tsx src/scripts/seed-database.ts \"$@\"' --",
     "superadmin:hash-password": "infisical run --env=dev -- tsx src/scripts/seed-superadmin.ts --hash-password",
     "superadmin:seed": "infisical run --env=dev -- tsx src/scripts/seed-superadmin.ts",
     "drizzle": "infisical run --env=dev -- drizzle-kit",

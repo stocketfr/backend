@@ -16,6 +16,7 @@ import { inventoryRouter } from './inventory/router';
 import { ordersRouter } from './orders/router';
 import { platformRouter } from './platform/router';
 import { superAdminRouter } from './superadmin/router';
+import { e2eRouter } from './e2e/router';
 
 export const moduleCounterparts = [
   'health',
@@ -36,6 +37,7 @@ export const moduleCounterparts = [
   'orders',
   'platform',
   'superadmin',
+  'e2e',
 ] as const;
 
 const migrationRouter = HttpRouter.empty.pipe(
@@ -68,4 +70,5 @@ export const apiRouter = HttpRouter.concatAll(
   ordersRouter,
   platformRouter,
   superAdminRouter,
+  e2eRouter,
 ).pipe(HttpRouter.prefixAll('/api/v1'));

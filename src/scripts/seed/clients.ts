@@ -1,5 +1,5 @@
 import { clients } from '../../effect/platform/db/schema';
-import { SEED_CONFIG } from './config';
+import { SEED_CONFIG, withTenant } from './config';
 import { buildClient } from './factories';
 import { registry } from './registry';
 
@@ -12,7 +12,10 @@ registry.register({
     const allClients: (typeof clients.$inferSelect)[] = [];
 
     for (let i = 0; i < SEED_CONFIG.clients; i++) {
-      const [saved] = await ctx.db.insert(clients).values(buildClient(i)).returning();
+      const [saved] = await ctx.db
+        .insert(clients)
+        .values(withTenant(ctx.tenant, buildClient(i)))
+        .returning();
       allClients.push(saved!);
     }
 

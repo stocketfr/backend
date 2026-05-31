@@ -1,6 +1,10 @@
 import { faker } from '@faker-js/faker';
-import { suppliers, supplierProducts, type products } from '../../effect/platform/db/schema';
-import { SEED_CONFIG } from './config';
+import {
+  suppliers,
+  supplierProducts,
+  type products,
+} from '../../effect/platform/db/schema';
+import { SEED_CONFIG, withTenant } from './config';
 import { buildSupplier, buildSupplierProduct } from './factories';
 import { registry } from './registry';
 
@@ -13,7 +17,10 @@ registry.register({
     const allSuppliers: (typeof suppliers.$inferSelect)[] = [];
 
     for (let i = 0; i < SEED_CONFIG.suppliers; i++) {
-      const [saved] = await ctx.db.insert(suppliers).values(buildSupplier()).returning();
+      const [saved] = await ctx.db
+        .insert(suppliers)
+        .values(withTenant(ctx.tenant, buildSupplier()))
+        .returning();
       allSuppliers.push(saved!);
     }
 
@@ -28,8 +35,12 @@ registry.register({
   async run(ctx) {
     console.log('Seeding supplier-product links...');
 
-    const allSuppliers = ctx.store.get('suppliers') as (typeof suppliers.$inferSelect)[];
-    const allProducts = ctx.store.get('products') as (typeof products.$inferSelect)[];
+    const allSuppliers = ctx.store.get(
+      'suppliers',
+    ) as (typeof suppliers.$inferSelect)[];
+    const allProducts = ctx.store.get(
+      'products',
+    ) as (typeof products.$inferSelect)[];
 
     const allSupplierProducts: (typeof supplierProducts.$inferSelect)[] = [];
     const usedPairs = new Set<string>();
@@ -42,14 +53,22 @@ registry.register({
       if (usedPairs.has(pairKey)) continue;
       usedPairs.add(pairKey);
 
-      const attrs = buildSupplierProduct(supplier.id, product.id, supplier.name, {
-        is_preferred: i < allSuppliers.length,
-      });
-      const [saved] = await ctx.db.insert(supplierProducts).values(attrs).returning();
+      const attrs = withTenant(
+        ctx.tenant,
+        buildSupplierProduct(supplier.id, product.id, supplier.name, {
+          is_preferred: i < allSuppliers.length,
+        }),
+      );
+      const [saved] = await ctx.db
+        .insert(supplierProducts)
+        .values(attrs)
+        .returning();
       allSupplierProducts.push(saved!);
     }
 
-    console.log(`  Created ${allSupplierProducts.length} supplier-product links\n`);
+    console.log(
+      `  Created ${allSupplierProducts.length} supplier-product links\n`,
+    );
     ctx.store.set('supplier-products', allSupplierProducts);
   },
 });
