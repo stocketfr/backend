@@ -6,9 +6,9 @@ import {
   toRepositoryPaginatedResult,
 } from '@stocket/types/common';
 import { makeTryAsync } from '../../platform/try-async';
+import { TenantQuery } from '../../platform/tenant-query';
 import { DrizzleDatabase } from '../../platform/drizzle';
-import { stockMovements } from '../../platform/db/schema';
-import { requireRequestTenantId } from '../../platform/tenant-context';
+import { orders, stockMovements } from '../../platform/db/schema';
 import { StockMovementsInfrastructureError } from './stock-movements.errors';
 
 const tryAsync = makeTryAsync(
@@ -56,10 +56,11 @@ export class StockMovementsRepository extends Effect.Service<StockMovementsRepos
   {
     effect: Effect.gen(function* () {
       const db = yield* DrizzleDatabase;
+      const tenantQuery = yield* TenantQuery;
 
       const findAllPaginated = (query: StockMovementQueryDto) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('list stock movements paginated', async () => {
             const { page, limit, skip } = resolvePaginationWindow(
               query.page,
@@ -91,7 +92,7 @@ export class StockMovementsRepository extends Effect.Service<StockMovementsRepos
 
       const findById = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('find stock movement by id', async () => {
             const row = await db.query.stockMovements.findFirst({
               where: and(
@@ -107,7 +108,7 @@ export class StockMovementsRepository extends Effect.Service<StockMovementsRepos
 
       const findByProductId = (productId: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('find stock movements by product', () =>
             db.query.stockMovements.findMany({
               where: and(
@@ -122,7 +123,7 @@ export class StockMovementsRepository extends Effect.Service<StockMovementsRepos
 
       const findByLocationId = (locationId: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('find stock movements by location', () =>
             db.query.stockMovements.findMany({
               where: and(
@@ -140,7 +141,7 @@ export class StockMovementsRepository extends Effect.Service<StockMovementsRepos
 
       const create = (data: typeof stockMovements.$inferInsert) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('create stock movement', async () => {
             const rows = await db
               .insert(stockMovements)
@@ -150,13 +151,33 @@ export class StockMovementsRepository extends Effect.Service<StockMovementsRepos
           });
         });
 
+      const orderExistsById = (orderId: string) =>
+        Effect.gen(function* () {
+          const tenantId = yield* tenantQuery.tenantId;
+          return yield* tryAsync(
+            'check stock movement order tenant',
+            async () => {
+              const rows = await db
+                .select({ id: orders.id })
+                .from(orders)
+                .where(
+                  and(eq(orders.tenant_id, tenantId), eq(orders.id, orderId)),
+                )
+                .limit(1);
+              return rows.length > 0;
+            },
+          );
+        });
+
       return {
         findAllPaginated,
         findById,
         findByProductId,
         findByLocationId,
         create,
+        orderExistsById,
       };
     }),
+    dependencies: [TenantQuery.Default],
   },
 ) {}

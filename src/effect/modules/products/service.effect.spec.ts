@@ -20,6 +20,7 @@ import { describe, expect, it } from '@effect/vitest';
 import { Effect, Layer } from 'effect';
 import { makeTestLayer } from '../../test/utils';
 import { CategoriesService } from '../categories/service';
+import { SuppliersService } from '../suppliers/service';
 import { ProductsRepository } from './repository';
 import { ProductsService } from './service';
 
@@ -106,6 +107,10 @@ const defaultCatMethods: Partial<CategoriesService> = {
   findAllDescendantIds: () => Effect.succeed(['child-1']),
 };
 
+const defaultSupplierMethods: Partial<SuppliersService> = {
+  existsById: () => Effect.succeed(true),
+};
+
 // ---------------------------------------------------------------------------
 // Layer helpers
 // ---------------------------------------------------------------------------
@@ -116,20 +121,35 @@ const repoLayer = (overrides: Partial<ProductsRepository> = {}) =>
 const catLayer = (overrides: Partial<CategoriesService> = {}) =>
   makeTestLayer(CategoriesService)({ ...defaultCatMethods, ...overrides });
 
-const serviceLayer = (repo = repoLayer(), cat = catLayer()) =>
+const supplierLayer = (overrides: Partial<SuppliersService> = {}) =>
+  makeTestLayer(SuppliersService)({
+    ...defaultSupplierMethods,
+    ...overrides,
+  });
+
+const serviceLayer = (
+  repo = repoLayer(),
+  cat = catLayer(),
+  suppliers = supplierLayer(),
+) =>
   ProductsService.DefaultWithoutDependencies.pipe(
-    Layer.provide(Layer.mergeAll(repo, cat)),
+    Layer.provide(Layer.mergeAll(repo, cat, suppliers)),
   );
 
 const withService = <A, E>(
   effect: (svc: ProductsService) => Effect.Effect<A, E>,
   repo?: Partial<ProductsRepository>,
   cat?: Partial<CategoriesService>,
+  suppliers?: Partial<SuppliersService>,
 ) =>
   Effect.gen(function* () {
     const svc = yield* ProductsService;
     return yield* effect(svc);
-  }).pipe(Effect.provide(serviceLayer(repoLayer(repo), catLayer(cat))));
+  }).pipe(
+    Effect.provide(
+      serviceLayer(repoLayer(repo), catLayer(cat), supplierLayer(suppliers)),
+    ),
+  );
 
 // ---------------------------------------------------------------------------
 // Tests

@@ -18,9 +18,9 @@ import {
   toRepositoryPaginatedResult,
 } from '@stocket/types/common';
 import { makeTryAsync } from '../../platform/try-async';
+import { TenantQuery } from '../../platform/tenant-query';
 import { DrizzleDatabase } from '../../platform/drizzle';
 import { auditLogs, betterAuthUsers } from '../../platform/db/schema';
-import { requireRequestTenantId } from '../../platform/tenant-context';
 import { AuditLogsInfrastructureError } from './audit-logs.errors';
 
 export interface AuditLogQueryOptions {
@@ -75,6 +75,7 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
   {
     effect: Effect.gen(function* () {
       const db = yield* DrizzleDatabase;
+      const tenantQuery = yield* TenantQuery;
       const auditLogSelect = {
         ...getTableColumns(auditLogs),
         user_name: betterAuthUsers.name,
@@ -82,7 +83,7 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
 
       const findPaginated = (options: AuditLogQueryOptions) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('query audit logs', async () => {
             const { page, limit, skip } = resolvePaginationWindow(
               options.page,
@@ -118,7 +119,7 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
 
       const findById = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('load audit log', async () => {
             const rows = await db
               .select(auditLogSelect)
@@ -128,10 +129,7 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
                 eq(auditLogs.user_id, betterAuthUsers.id),
               )
               .where(
-                and(
-                  eq(auditLogs.tenant_id, tenantId),
-                  eq(auditLogs.id, id),
-                ),
+                and(eq(auditLogs.tenant_id, tenantId), eq(auditLogs.id, id)),
               )
               .limit(1);
             return rows[0] ?? null;
@@ -140,7 +138,7 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
 
       const findByEntityId = (entityType: AuditEntityType, entityId: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('load entity audit history', () =>
             db
               .select(auditLogSelect)
@@ -162,7 +160,7 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
 
       const findByUserId = (userId: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('load user audit history', () =>
             db
               .select(auditLogSelect)
@@ -183,5 +181,6 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
 
       return { findPaginated, findById, findByEntityId, findByUserId };
     }),
+    dependencies: [TenantQuery.Default],
   },
 ) {}

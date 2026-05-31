@@ -151,6 +151,7 @@ export const deCatalog: Record<MessageKey, string> = {
     'Der Lagerbewegungsvorgang ist fehlgeschlagen.',
   'stockMovements.locationNotFound': 'Standort nicht gefunden.',
   'stockMovements.notFound': 'Lagerbewegung nicht gefunden.',
+  'stockMovements.orderNotFound': 'Bestellung nicht gefunden.',
   'stockMovements.productNotFound': 'Produkt nicht gefunden.',
   'stockMovements.repositoryFailed':
     'Der Lagerbewegungsvorgang ist fehlgeschlagen.',

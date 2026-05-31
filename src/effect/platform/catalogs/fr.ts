@@ -108,8 +108,7 @@ export const frCatalog: Record<MessageKey, string> = {
   'photos.tooLarge':
     'Le fichier est trop volumineux. Taille maximale autorisee : {maxSize} octets.',
   'photos.writeFailed': "L'ecriture du fichier photo a echoue.",
-  'platform.hostRequired':
-    "La route plateforme est introuvable pour cet hote.",
+  'platform.hostRequired': 'La route plateforme est introuvable pour cet hote.',
   'products.categoryNotFound': 'Categorie introuvable.',
   'products.createdProductLoadFailed':
     'Le chargement du produit cree a echoue.',
@@ -145,6 +144,7 @@ export const frCatalog: Record<MessageKey, string> = {
     "L'operation sur le mouvement de stock a echoue.",
   'stockMovements.locationNotFound': 'Emplacement introuvable.',
   'stockMovements.notFound': 'Mouvement de stock introuvable.',
+  'stockMovements.orderNotFound': 'Commande introuvable.',
   'stockMovements.productNotFound': 'Produit introuvable.',
   'stockMovements.repositoryFailed':
     "L'operation sur le mouvement de stock a echoue.",

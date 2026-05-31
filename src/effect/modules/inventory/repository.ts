@@ -23,6 +23,7 @@ import {
   type RepositoryPaginatedResult,
 } from '@stocket/types/common';
 import { makeTryAsync } from '../../platform/try-async';
+import { TenantQuery } from '../../platform/tenant-query';
 import { DrizzleDatabase, type DrizzleDb } from '../../platform/drizzle';
 import {
   inventory,
@@ -30,10 +31,7 @@ import {
   locations,
   areas,
 } from '../../platform/db/schema';
-import {
-  requireRequestTenantId,
-  type TenantNotResolved,
-} from '../../platform/tenant-context';
+import type { TenantNotResolved } from '../../platform/tenant-context';
 import { InventoryInfrastructureError } from './inventory.errors';
 
 type InventoryRow = typeof inventory.$inferSelect;
@@ -145,6 +143,7 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
   {
     effect: Effect.gen(function* () {
       const db = yield* DrizzleDatabase;
+      const tenantQuery = yield* TenantQuery;
 
       const findAllPaginated = (
         query: InventoryQueryDto,
@@ -153,7 +152,7 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
         InventoryInfrastructureError | TenantNotResolved
       > =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('list inventory paginated', async () => {
             const { page, limit, skip } = resolvePaginationWindow(
               query.page,
@@ -196,7 +195,7 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
         InventoryInfrastructureError | TenantNotResolved
       > =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('list all inventory', async () => {
             const rows = await selectInventoryWithJoins(db)
               .where(eq(inventory.tenant_id, tenantId))
@@ -212,14 +211,11 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
         InventoryInfrastructureError | TenantNotResolved
       > =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('find inventory by id', async () => {
             const rows = await selectInventoryWithJoins(db)
               .where(
-                and(
-                  eq(inventory.tenant_id, tenantId),
-                  eq(inventory.id, id),
-                ),
+                and(eq(inventory.tenant_id, tenantId), eq(inventory.id, id)),
               )
               .limit(1);
             return rows[0] ? mapInventoryRow(rows[0]) : null;
@@ -233,7 +229,7 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
         InventoryInfrastructureError | TenantNotResolved
       > =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('find inventory by product', async () => {
             const rows = await selectInventoryWithJoins(db)
               .where(
@@ -254,7 +250,7 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
         InventoryInfrastructureError | TenantNotResolved
       > =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('find inventory by location', async () => {
             const rows = await selectInventoryWithJoins(db)
               .where(
@@ -277,7 +273,7 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
         InventoryInfrastructureError | TenantNotResolved
       > =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync(
             'find inventory by product and location',
             async () => {
@@ -309,7 +305,7 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
         InventoryInfrastructureError | TenantNotResolved
       > =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('create inventory', async () => {
             const rows = await db
               .insert(inventory)
@@ -327,16 +323,14 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
         InventoryInfrastructureError | TenantNotResolved
       > =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('update inventory', async () => {
+            const { tenant_id: _tenantId, ...updateData } = data;
             const rows = await db
               .update(inventory)
-              .set({ ...data, updated_at: new Date() })
+              .set({ ...updateData, updated_at: new Date() })
               .where(
-                and(
-                  eq(inventory.tenant_id, tenantId),
-                  eq(inventory.id, id),
-                ),
+                and(eq(inventory.tenant_id, tenantId), eq(inventory.id, id)),
               )
               .returning({ id: inventory.id });
             return rows.length;
@@ -351,7 +345,7 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
         InventoryInfrastructureError | TenantNotResolved
       > =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('adjust inventory quantity', async () => {
             const rows = await db
               .update(inventory)
@@ -378,15 +372,12 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
         InventoryInfrastructureError | TenantNotResolved
       > =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('delete inventory', async () => {
             await db
               .delete(inventory)
               .where(
-                and(
-                  eq(inventory.tenant_id, tenantId),
-                  eq(inventory.id, id),
-                ),
+                and(eq(inventory.tenant_id, tenantId), eq(inventory.id, id)),
               );
           });
         });
@@ -396,7 +387,7 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
         InventoryInfrastructureError | TenantNotResolved
       > =>
         Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
+          const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync(
             'get inventory summary',
             async (): Promise<InventorySummaryDto> => {
@@ -430,5 +421,6 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
         findSummary,
       };
     }),
+    dependencies: [TenantQuery.Default],
   },
 ) {}
