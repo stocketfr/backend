@@ -21,6 +21,12 @@ export class PriceBelowCost extends BadRequestError('PriceBelowCost')<{
   readonly standardCost: number;
 }> {}
 
+export class ProductImportInvalidCsv extends BadRequestError(
+  'ProductImportInvalidCsv',
+)<{
+  readonly cause?: unknown;
+}> {}
+
 export class ProductNotDeleted extends BadRequestError('ProductNotDeleted')<{
   readonly productId: string;
 }> {}

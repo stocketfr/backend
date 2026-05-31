@@ -127,6 +127,7 @@ export const frCatalog: Record<MessageKey, string> = {
     'Le chargement du produit cree a echoue.',
   'products.deleted': 'Produit supprime avec succes.',
   'products.deletedPermanent': 'Produit supprime definitivement.',
+  'products.importFailed': "L'import de produits a echoue.",
   'products.importAreaScopedInventoryConflict':
     "Impossible d'importer un stock au niveau emplacement lorsqu'un stock par zone existe deja pour ce produit et cet emplacement.",
   'products.importAreaLocationRequired':
@@ -137,6 +138,9 @@ export const frCatalog: Record<MessageKey, string> = {
     "Impossible d'analyser le plan d'import produits televerse.",
   'products.importReadUploadFailed':
     "La lecture du fichier d'import produits televerse a echoue.",
+  'products.importInvalidCsv': 'CSV dimport de produits invalide : {details}',
+  'products.importReadFailed':
+    'La lecture du fichier dimport de produits televerse a echoue.',
   'products.importUnsupportedFormat':
     'En-tetes CSV dimport produits non pris en charge.',
   'products.infrastructureFailed': "L'operation sur le produit a echoue.",

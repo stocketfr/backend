@@ -134,6 +134,7 @@ export const deCatalog: Record<MessageKey, string> = {
     'Das neu erstellte Produkt konnte nicht geladen werden.',
   'products.deleted': 'Produkt erfolgreich geloescht.',
   'products.deletedPermanent': 'Produkt dauerhaft geloescht.',
+  'products.importFailed': 'Der Produktimport ist fehlgeschlagen.',
   'products.importAreaScopedInventoryConflict':
     'Standortbestand kann nicht importiert werden, solange fuer dieses Produkt und diesen Standort bereichsbezogener Bestand existiert.',
   'products.importAreaLocationRequired':
@@ -143,6 +144,9 @@ export const deCatalog: Record<MessageKey, string> = {
   'products.importPlanParseFailed':
     'Der hochgeladene Produktimportplan konnte nicht geparst werden.',
   'products.importReadUploadFailed':
+    'Die hochgeladene Produktimportdatei konnte nicht gelesen werden.',
+  'products.importInvalidCsv': 'Ungueltige Produktimport-CSV: {details}',
+  'products.importReadFailed':
     'Die hochgeladene Produktimportdatei konnte nicht gelesen werden.',
   'products.importUnsupportedFormat':
     'Nicht unterstuetzte CSV-Kopfzeilen fuer den Produktimport.',

@@ -49,6 +49,7 @@ export const makeEmptyProductImportResult = (): ProductImportResultDto => ({
   photosSkipped: 0,
   rowsSkipped: 0,
   errors: [],
+  succeeded: [],
 });
 
 const hasAllHeaders = (

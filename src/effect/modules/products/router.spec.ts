@@ -33,7 +33,9 @@ import {
   ProductsInfrastructureError,
   SkuAlreadyExists,
 } from './products.errors';
-import { makeProductsRouterHarness } from './__fixtures__/router-harness';
+import {
+  makeProductsRouterHarness,
+} from './__fixtures__/router-harness';
 import { ProductsService } from './service';
 
 const mockMultipart = vi.hoisted(() => vi.fn());
@@ -66,7 +68,6 @@ vi.mock('node:fs/promises', async () => {
     readFile: (...args: unknown[]) => mockReadFile(...args),
   };
 });
-
 vi.mock('./service', async () => {
   const { Context, Layer } =
     await vi.importActual<typeof import('effect')>('effect');
@@ -139,6 +140,7 @@ const importResult = () => ({
   photosSkipped: 0,
   rowsSkipped: 0,
   errors: [],
+  succeeded: [],
 });
 
 const importPreview = () => ({
@@ -177,7 +179,6 @@ const makePersistedFile = (overrides: Record<string, unknown> = {}) => ({
   path: '/tmp/products-import.csv',
   ...overrides,
 });
-
 const validCreateBody = {
   sku: 'SKU-1',
   name: 'Whisky',

@@ -19,16 +19,25 @@ import type {
   BulkDeleteSchema,
   BulkRestoreSchema,
 } from '@stocket/types/products';
+import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { toCreateProductEntity, toProductResponseDto } from './products.utils';
+import {
+  importNormalizedProductsCsv,
+  ProductImportCsvParseError,
+} from './import-products';
 import {
   CategoryNotFound,
   PriceBelowCost,
+  ProductImportInvalidCsv,
   ProductNotDeleted,
   ProductNotFound,
   ProductsInfrastructureError,
   SkuAlreadyExists,
 } from './products.errors';
-import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
+import {
+  requireRequestTenantId,
+  type TenantNotResolved,
+} from '../../platform/tenancy/tenant-context';
 import { ProductsRepository } from './repository';
 
 type ProductQueryDto = Schema.Schema.Type<typeof ProductQuerySchema>;
@@ -426,14 +435,41 @@ export class ProductsService extends Effect.Service<ProductsService>()(
           return result.build();
         }).pipe(Effect.withSpan('ProductsService.bulkRestore'));
 
+      const importCsv = (csvContent: string, userId?: string) =>
+        Effect.gen(function* () {
+          const db = yield* DrizzleDatabase;
+          const tenantId = yield* requireRequestTenantId;
+
+          return yield* Effect.tryPromise({
+            try: () =>
+              importNormalizedProductsCsv(db, csvContent, {
+                tenantId,
+                userId,
+              }),
+            catch: (cause) => {
+              if (cause instanceof ProductImportCsvParseError) {
+                return new ProductImportInvalidCsv({
+                  cause,
+                  messageKey: 'products.importInvalidCsv',
+                  messageArgs: { details: cause.message },
+                });
+              }
+
+              return new ProductsInfrastructureError({
+                action: 'import products CSV',
+                cause,
+                messageKey: 'products.importFailed',
+              });
+            },
+          });
+        }).pipe(Effect.withSpan('ProductsService.importCsv'));
+
       const existsById = (id: string) =>
-        repository
-          .existsById(id)
-          .pipe(
-            Effect.withSpan('ProductsService.existsById', {
-              attributes: { id },
-            }),
-          );
+        repository.existsById(id).pipe(
+          Effect.withSpan('ProductsService.existsById', {
+            attributes: { id },
+          }),
+        );
 
       return {
         findAllPaginated,
@@ -449,6 +485,7 @@ export class ProductsService extends Effect.Service<ProductsService>()(
         bulkDelete,
         restore,
         bulkRestore,
+        importCsv,
         existsById,
       };
     }),
