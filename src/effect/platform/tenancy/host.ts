@@ -4,12 +4,13 @@ import { isValidTenantSlug } from '@stocket/types/common';
 
 export { isValidTenantSlug } from '@stocket/types/common';
 
-const DEFAULT_PRODUCTION_TENANT_BASE_DOMAIN = 'librestock.maximilian.pw';
-const PRODUCTION_PLATFORM_SUBDOMAIN = 'default';
+const DEFAULT_TENANT_BASE_DOMAIN = 'stocket.fr';
+const DEFAULT_PLATFORM_SUBDOMAIN = 'app';
 const LOCAL_PLATFORM_HOST = 'localhost';
 const LOCAL_TENANT_BASE_DOMAIN = 'localhost';
 const LOCAL_TENANT_PORT = '3000';
 const DEFAULT_RESERVED_TENANT_SLUGS = [
+  'app',
   'default',
   'api',
   'deploy',
@@ -38,7 +39,10 @@ const stripPort = (host: string) => {
 
 const parseReservedTenantSlugs = () =>
   new Set(
-    (process.env.RESERVED_TENANT_SLUGS ?? DEFAULT_RESERVED_TENANT_SLUGS.join(','))
+    (
+      process.env.RESERVED_TENANT_SLUGS ??
+      DEFAULT_RESERVED_TENANT_SLUGS.join(',')
+    )
       .split(',')
       .map((slug) => slug.trim().toLowerCase())
       .filter(Boolean),
@@ -52,30 +56,43 @@ export const normalizeHost = (value: string | null | undefined) => {
   return normalized.length > 0 ? normalized : null;
 };
 
-const isProductionRuntime = () => process.env.NODE_ENV === 'production';
+const isLocalRuntime = () =>
+  process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'staging';
 
-export const getProductionTenantBaseDomain = () =>
-  normalizeHost(process.env.TENANT_BASE_DOMAIN) ??
-  DEFAULT_PRODUCTION_TENANT_BASE_DOMAIN;
+const requireHostConfig = (name: string) => {
+  const value = normalizeHost(process.env[name]);
+  if (!value && !isLocalRuntime()) {
+    throw new Error(
+      `${name} is required when NODE_ENV=${process.env.NODE_ENV}`,
+    );
+  }
+  return value;
+};
 
-export const getProductionPlatformHost = () =>
-  `${PRODUCTION_PLATFORM_SUBDOMAIN}.${getProductionTenantBaseDomain()}`;
+export const getTenantBaseDomain = () =>
+  requireHostConfig('TENANT_BASE_DOMAIN') ?? DEFAULT_TENANT_BASE_DOMAIN;
+
+export const getPlatformHost = () =>
+  requireHostConfig('PLATFORM_HOST') ??
+  `${DEFAULT_PLATFORM_SUBDOMAIN}.${getTenantBaseDomain()}`;
+
+// Backwards-compatible exports for callers/tests that still use the old names.
+export const getProductionTenantBaseDomain = getTenantBaseDomain;
+export const getProductionPlatformHost = getPlatformHost;
 
 const getPlatformHosts = () =>
   new Set([
-    getProductionPlatformHost(),
-    ...(isProductionRuntime() ? [] : [LOCAL_PLATFORM_HOST]),
+    getPlatformHost(),
+    ...(isLocalRuntime() ? [LOCAL_PLATFORM_HOST] : []),
   ]);
 
 const getPrimaryTenantBaseDomain = () =>
-  isProductionRuntime()
-    ? getProductionTenantBaseDomain()
-    : LOCAL_TENANT_BASE_DOMAIN;
+  isLocalRuntime() ? LOCAL_TENANT_BASE_DOMAIN : getTenantBaseDomain();
 
 const getTenantBaseDomains = () =>
   new Set([
-    getProductionTenantBaseDomain(),
-    ...(isProductionRuntime() ? [] : [LOCAL_TENANT_BASE_DOMAIN]),
+    getTenantBaseDomain(),
+    ...(isLocalRuntime() ? [LOCAL_TENANT_BASE_DOMAIN] : []),
   ]);
 
 const getReservedTenantSlugs = () => parseReservedTenantSlugs();
@@ -121,7 +138,9 @@ export const resolveRequestHost = (
     if (normalizedForwardedHost) return normalizedForwardedHost;
   }
 
-  return normalizeHost(request.headers.host ?? hostFromUrl(request.originalUrl));
+  return normalizeHost(
+    request.headers.host ?? hostFromUrl(request.originalUrl),
+  );
 };
 
 export const isPlatformHost = (host: string | null | undefined) => {
@@ -152,9 +171,9 @@ export const isTenantSubdomain = (host: string | null | undefined) =>
   getTenantSlugFromHost(host) !== null;
 
 export const hostnameForTenantSlug = (slug: string) =>
-  isProductionRuntime()
-    ? `${slug.toLowerCase()}.${getPrimaryTenantBaseDomain()}`
-    : `${slug.toLowerCase()}.${getPrimaryTenantBaseDomain()}:${LOCAL_TENANT_PORT}`;
+  isLocalRuntime()
+    ? `${slug.toLowerCase()}.${getPrimaryTenantBaseDomain()}:${LOCAL_TENANT_PORT}`
+    : `${slug.toLowerCase()}.${getPrimaryTenantBaseDomain()}`;
 
 export const isAllowedPlatformOrTenantHost = (
   host: string | null | undefined,
