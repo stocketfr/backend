@@ -6,7 +6,8 @@ import type {
   UpdateSupplierSchema,
 } from '@stocket/types/suppliers';
 import { toPaginatedResponse } from '@stocket/types/common';
-import { fromNullOr, makeGetOrFail } from '../../platform/from-null-or';
+import { fromNullOr } from '../../platform/from-null-or';
+import { makeReferenceEntityOperations } from '../../platform/reference-data-service';
 import { makeServiceTracer } from '../../platform/service-tracer';
 import { toSupplierResponseDto } from './suppliers.utils';
 import { SupplierNotFound } from './suppliers.errors';
@@ -26,10 +27,14 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
         layer: 'service',
       });
 
-      const getSupplierOrFail = makeGetOrFail(
-        (id: string) => repository.findById(id),
-        (id) => new SupplierNotFound({ id, messageKey: 'suppliers.notFound' }),
-      );
+      const referenceEntity = makeReferenceEntityOperations({
+        findById: (id: string) => repository.findById(id),
+        deleteById: (id: string) => repository.delete(id),
+        existsById: (id: string) => repository.existsById(id),
+        makeNotFound: (id) =>
+          new SupplierNotFound({ id, messageKey: 'suppliers.notFound' }),
+        toResponse: toSupplierResponseDto,
+      });
 
       const findAllPaginated = (query: SupplierQueryDto) =>
         Effect.map(
@@ -38,7 +43,7 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
         ).pipe(trace.span('findAllPaginated'));
 
       const findOne = (id: string) =>
-        Effect.map(getSupplierOrFail(id), toSupplierResponseDto).pipe(
+        referenceEntity.findOne(id).pipe(
           trace.span('findOne', { attributes: { id } }),
         );
 
@@ -60,7 +65,7 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
       const update = (id: string, dto: UpdateSupplierDto) =>
         Effect.gen(function* () {
           if (Object.keys(dto).length === 0) {
-            const supplier = yield* getSupplierOrFail(id);
+            const supplier = yield* referenceEntity.getOrFail(id);
             return toSupplierResponseDto(supplier);
           }
 
@@ -72,13 +77,12 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
         }).pipe(trace.span('update', { attributes: { id } }));
 
       const remove = (id: string) =>
-        Effect.gen(function* () {
-          yield* getSupplierOrFail(id);
-          yield* repository.delete(id);
-        }).pipe(trace.span('delete', { attributes: { id } }));
+        referenceEntity
+          .remove(id)
+          .pipe(trace.span('delete', { attributes: { id } }));
 
       const existsById = (id: string) =>
-        repository.existsById(id).pipe(
+        referenceEntity.existsById(id).pipe(
           trace.span('existsById', { attributes: { id } }),
         );
 

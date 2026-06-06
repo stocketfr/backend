@@ -7,7 +7,8 @@ import type {
   UpdateClientSchema,
 } from '@stocket/types/clients';
 import { toPaginatedResponse, type PaginationMeta } from '@stocket/types/common';
-import { fromNullOr, makeGetOrFail } from '../../platform/from-null-or';
+import { fromNullOr } from '../../platform/from-null-or';
+import { makeReferenceEntityOperations } from '../../platform/reference-data-service';
 import { makeServiceTracer } from '../../platform/service-tracer';
 import { toClientResponseDto } from './clients.utils';
 import {
@@ -32,10 +33,14 @@ export class ClientsService extends Effect.Service<ClientsService>()(
         layer: 'service',
       });
 
-      const getClientOrFail = makeGetOrFail(
-        (id: string) => repository.findById(id),
-        (id) => new ClientNotFound({ id, messageKey: 'clients.notFound' }),
-      );
+      const referenceEntity = makeReferenceEntityOperations({
+        findById: (id: string) => repository.findById(id),
+        deleteById: (id: string) => repository.delete(id),
+        existsById: (id: string) => repository.existsById(id),
+        makeNotFound: (id) =>
+          new ClientNotFound({ id, messageKey: 'clients.notFound' }),
+        toResponse: toClientResponseDto,
+      });
 
       const findAllPaginated = (
         query: ClientQueryDto,
@@ -53,7 +58,7 @@ export class ClientsService extends Effect.Service<ClientsService>()(
         ClientResponseDto,
         ClientNotFound | ClientsInfrastructureError | TenantNotResolved
       > =>
-        Effect.map(getClientOrFail(id), toClientResponseDto).pipe(
+        referenceEntity.findOne(id).pipe(
           trace.span('findOne', { attributes: { id } }),
         );
 
@@ -102,7 +107,7 @@ export class ClientsService extends Effect.Service<ClientsService>()(
         | TenantNotResolved
       > =>
         Effect.gen(function* () {
-          const client = yield* getClientOrFail(id);
+          const client = yield* referenceEntity.getOrFail(id);
 
           if (Object.keys(dto).length === 0) {
             return toClientResponseDto(client);
@@ -133,13 +138,12 @@ export class ClientsService extends Effect.Service<ClientsService>()(
         void,
         ClientNotFound | ClientsInfrastructureError | TenantNotResolved
       > =>
-        Effect.gen(function* () {
-          yield* getClientOrFail(id);
-          yield* repository.delete(id);
-        }).pipe(trace.span('delete', { attributes: { id } }));
+        referenceEntity
+          .remove(id)
+          .pipe(trace.span('delete', { attributes: { id } }));
 
       const existsById = (id: string) =>
-        repository.existsById(id).pipe(
+        referenceEntity.existsById(id).pipe(
           trace.span('existsById', { attributes: { id } }),
         );
 
