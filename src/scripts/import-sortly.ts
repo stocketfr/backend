@@ -6,9 +6,8 @@ import pg from 'pg';
 import { StockMovementReason } from '@stocket/types/stock-movements';
 import { LocationType } from '@stocket/types/locations';
 import { categories, products, locations, inventory, stockMovements } from '../effect/platform/db/schema';
+import { parseDate } from '../effect/modules/products/import/utils';
 
-// Mock user ID for stock movements (you may want to pass this as a parameter)
-const IMPORT_USER_ID = 'import_sortly_user';
 
 interface SortlyRecord {
   'Entry Name': string;
@@ -59,43 +58,6 @@ async function createDatabase(): Promise<NodePgDatabase> {
         },
   );
   return drizzle(pool);
-}
-
-function parseDate(dateStr: string): Date | null {
-  if (!dateStr) return null;
-  try {
-    // Parse format: "28/08/2025 01:26PM"
-    const [datePart, timePart] = dateStr.split(' ');
-    if (!datePart) return null;
-    const [day, month, year] = datePart.split('/');
-    if (!day || !month || !year) return null;
-
-    // Handle time with AM/PM
-    let hours = 0;
-    let minutes = 0;
-    if (timePart) {
-      const isPM = timePart.toLowerCase().includes('pm');
-      const timeOnly = timePart.replace(/[ap]m/i, '');
-      const [h, m] = timeOnly.split(':');
-      if (!h || !m) return null;
-      hours = Number.parseInt(h);
-      minutes = Number.parseInt(m);
-
-      if (isPM && hours !== 12) hours += 12;
-      if (!isPM && hours === 12) hours = 0;
-    }
-
-    return new Date(
-      Number.parseInt(year),
-      Number.parseInt(month) - 1,
-      Number.parseInt(day),
-      hours,
-      minutes,
-    );
-  } catch (error) {
-    console.warn(`Failed to parse date: ${dateStr}, error: ${String(error)}`);
-    return null;
-  }
 }
 
 function mapTransactionTypeToReason(
@@ -175,6 +137,7 @@ async function getOrCreateLocation(
 async function importSortlyData(
   db: NodePgDatabase,
   csvFilePath: string,
+  importUserId: string,
 ): Promise<ImportStats> {
   const stats: ImportStats = {
     categoriesCreated: 0,
@@ -274,8 +237,8 @@ async function importSortlyData(
             reorder_point: Number.parseInt(record['Min Level']) || 0,
             is_active: true,
             is_perishable: !!expiryDate,
-            created_by: IMPORT_USER_ID,
-            updated_by: IMPORT_USER_ID,
+            created_by: importUserId,
+            updated_by: importUserId,
           }).returning();
           product = created!;
           stats.productsCreated++;
@@ -297,7 +260,7 @@ async function importSortlyData(
           quantity: Math.abs(quantityDelta),
           reason,
           reference_number: sortlyId,
-          user_id: IMPORT_USER_ID,
+          user_id: importUserId,
           notes:
             record['Transaction Note'] ||
             `${transactionType} from Sortly import`,
@@ -376,7 +339,13 @@ async function main() {
 
   if (!csvFilePath) {
     console.error('Please provide a CSV file path as an argument');
-    console.error('Usage: pnpm import:sortly <path-to-csv-file>');
+    console.error('Usage: IMPORT_USER_ID=<user-id> pnpm import:sortly <path-to-csv-file>');
+    process.exit(1);
+  }
+
+  const importUserId = process.env.IMPORT_USER_ID;
+  if (!importUserId) {
+    console.error('IMPORT_USER_ID is required');
     process.exit(1);
   }
 
@@ -391,7 +360,7 @@ async function main() {
     db = await createDatabase();
     console.log('✅ Database connected\n');
 
-    const stats = await importSortlyData(db, csvFilePath);
+    const stats = await importSortlyData(db, csvFilePath, importUserId);
 
     console.log('\n🎉 Import completed!\n');
     console.log('Summary:');

@@ -1,11 +1,12 @@
-import { HttpRouter, HttpServerRequest } from '@effect/platform';
+import { readFile } from 'node:fs/promises';
+import { HttpRouter, HttpServerRequest, Multipart } from '@effect/platform';
 import { Effect, Schema } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
 import { requirePermission } from '../../platform/authorization';
 import { respondJson, respondJsonOk } from '../../platform/errors';
 import { AuditLogWriter } from '../../platform/audit';
-import { getOptionalSession } from '../../platform/session';
+import { getOptionalSession, requireSession } from '../../platform/session';
 import { makeMessageResponse } from '../../platform/messages';
 import {
   ProductIdSchema,
@@ -18,6 +19,9 @@ import {
   BulkDeleteSchema,
   BulkRestoreSchema,
 } from './products.schema';
+import { ProductImportService } from './import/service';
+import { ProductImportTypes } from './import/types';
+import { ProductsInfrastructureError } from './products.errors';
 import { ProductsService } from './service';
 
 /**
@@ -30,6 +34,13 @@ const searchParams = <A, I, R>(schema: Schema.Schema<A, I, R>) =>
 
 const ProductPathParams = Schema.Struct({ id: ProductIdSchema });
 const CategoryPathParams = Schema.Struct({ categoryId: Schema.UUID });
+const ProductImportTypeSchema = Schema.Literal(...ProductImportTypes);
+const ProductImportUploadSchema = Schema.Struct({
+  file: Multipart.SingleFileSchema,
+  import_type: Schema.optionalWith(ProductImportTypeSchema, {
+    default: () => 'auto' as const,
+  }),
+});
 
 const IncludeDeletedQuery = Schema.Struct({
   include_deleted: Schema.optionalWith(ProductBooleanQuerySchema, {
@@ -80,6 +91,36 @@ export const productsRouter = HttpRouter.empty.pipe(
         });
       }
       return yield* respondJsonOk(result, { status: 201 });
+    }),
+  ),
+  HttpRouter.post(
+    '/import',
+    Effect.gen(function* () {
+      yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
+      yield* requirePermission(Resource.LOCATIONS, Permission.WRITE);
+      yield* requirePermission(Resource.INVENTORY, Permission.WRITE);
+      const { file, import_type } =
+        yield* HttpServerRequest.schemaBodyMultipart(ProductImportUploadSchema);
+      const session = yield* requireSession;
+      const userId = session.user.id;
+
+      const buffer = yield* Effect.tryPromise({
+        try: () => readFile(file.path),
+        catch: (cause) =>
+          new ProductsInfrastructureError({
+            action: 'read uploaded product import file',
+            cause,
+            messageKey: 'products.importReadUploadFailed',
+          }),
+      });
+
+      const productImportService = yield* ProductImportService;
+      const result = yield* productImportService.importFromCsvContent({
+        content: buffer.toString('utf8'),
+        importType: import_type,
+        userId,
+      });
+      return yield* respondJsonOk(result);
     }),
   ),
   HttpRouter.get(

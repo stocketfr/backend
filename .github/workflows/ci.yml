@@ -19,7 +19,7 @@ jobs:
       - uses: useblacksmith/checkout@v1
         with:
           repository: stocketfr/packages
-          path: backend/packages
+          path: packages
       - uses: useblacksmith/setup-node@v5
         with:
           node-version: 22
@@ -44,7 +44,7 @@ jobs:
       - uses: useblacksmith/checkout@v1
         with:
           repository: stocketfr/packages
-          path: backend/packages
+          path: packages
       - uses: useblacksmith/setup-node@v5
         with:
           node-version: 22
@@ -82,7 +82,7 @@ jobs:
       - uses: useblacksmith/checkout@v1
         with:
           repository: stocketfr/packages
-          path: backend/packages
+          path: packages
       - uses: useblacksmith/setup-node@v5
         with:
           node-version: 22
@@ -108,7 +108,7 @@ jobs:
       - uses: useblacksmith/checkout@v1
         with:
           repository: stocketfr/packages
-          path: backend/packages
+          path: packages
       - uses: useblacksmith/setup-node@v5
         with:
           node-version: 22

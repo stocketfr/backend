@@ -9,6 +9,9 @@
 ## Boundaries
 
 - Keep feature work under `src/effect/modules/<feature>/` and follow the existing router/service/repository/schema/error split.
+- For large feature-specific workflows, prefer a subfolder under the module (for example `products/import/`) with its own `service.ts`, `repository.ts`, `types.ts`, `utils.ts`, and tests so normal module behavior stays readable.
+- Keep `service.ts` focused on orchestration. Move module-local row aliases, options, caches, DTO re-exports, and literal tuples to `types.ts`; move pure parsing, normalization, formatting, comparison, and duplicate-detection helpers to `utils.ts`.
+- Before adding new row types, literal lists, parsers, or fixture blocks, search for existing equivalents and reuse or centralize them when the behavior is shared.
 - Cross-module access should normally go through services, not another module's repository.
 - Shared request/response contracts should come from `@stocket/types`, not backend-local DTO files.
 - `UsersService` talks to Better Auth admin APIs directly and uses local persistence for role assignment concerns.

@@ -13,6 +13,8 @@ import { AuditLogWriter, type AuditWriteParams } from '../../../platform/audit';
 import { BetterAuth, type BetterAuthService } from '../../../platform/better-auth';
 import { respondCause } from '../../../platform/errors';
 import { PermissionProvider } from '../../../platform/permission-provider';
+import { ProductImportService } from '../import/service';
+import { ProductImportUnsupportedFormat } from '../products.errors';
 import { productsRouter } from '../router';
 import { ProductsService } from '../service';
 
@@ -41,6 +43,7 @@ export const makeFakeSession = (userId = FAKE_USER_ID) => ({
 
 export interface ProductsRouterHarnessOptions {
   readonly service: Record<string, unknown>;
+  readonly importService?: Record<string, unknown>;
   readonly permissions?: Partial<Record<Resource, Permission[]>>;
   readonly session?: ReturnType<typeof makeFakeSession> | null;
   readonly auditLog?: (
@@ -83,6 +86,17 @@ export const makeProductsRouterHarness = (
     ProductsService,
     opts.service as unknown as Context.Tag.Service<typeof ProductsService>,
   );
+  const importServiceLayer = Layer.succeed(
+    ProductImportService,
+    (opts.importService ?? {
+      importFromCsvContent: () =>
+        Effect.fail(
+          new ProductImportUnsupportedFormat({
+            messageKey: 'products.importUnsupportedFormat',
+          }),
+        ),
+    }) as unknown as Context.Tag.Service<typeof ProductImportService>,
+  );
 
   const routerWithErrorHandling = productsRouter.pipe(
     HttpRouter.catchAllCause(respondCause),
@@ -93,6 +107,7 @@ export const makeProductsRouterHarness = (
     app as never,
     Layer.mergeAll(
       serviceLayer,
+      importServiceLayer,
       auditLayer,
       betterAuthLayer,
       permissionProviderLayer,

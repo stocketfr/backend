@@ -1,4 +1,5 @@
 import { HttpApp } from '@effect/platform';
+import { NodeFileSystem, NodePath } from '@effect/platform-node';
 import { Effect, Layer } from 'effect';
 import { buildHttpApp } from '../http/app';
 import { AuditLogsService } from '../modules/audit-logs/service';
@@ -12,6 +13,7 @@ import { InventoryService } from '../modules/inventory/service';
 import { LocationsService } from '../modules/locations/service';
 import { OrdersService } from '../modules/orders/service';
 import { PhotosService } from '../modules/photos/service';
+import { ProductImportService } from '../modules/products/import/service';
 import { ProductsService } from '../modules/products/service';
 import { RolesService } from '../modules/roles/service';
 import { StockMovementsService } from '../modules/stock-movements/service';
@@ -85,6 +87,9 @@ export const makeTestApplicationLayer = (options: TestHttpAppOptions = {}) => {
   const productsApplicationLayer = ProductsService.Default.pipe(
     Layer.provide(Layer.mergeAll(platformLayer, categoriesApplicationLayer)),
   );
+  const productImportApplicationLayer = ProductImportService.Default.pipe(
+    Layer.provide(platformLayer),
+  );
   const workflowServicesLayer = Layer.mergeAll(
     StockMovementsService.Default.pipe(
       Layer.provide(
@@ -118,6 +123,8 @@ export const makeTestApplicationLayer = (options: TestHttpAppOptions = {}) => {
 
   return Layer.mergeAll(
     platformLayer,
+    NodeFileSystem.layer,
+    NodePath.layer,
     auditLayer.pipe(Layer.provide(platformLayer)),
     foundationalServicesLayer,
     rolesApplicationLayer,
@@ -127,6 +134,7 @@ export const makeTestApplicationLayer = (options: TestHttpAppOptions = {}) => {
     superAdminApplicationLayer,
     areasApplicationLayer,
     productsApplicationLayer,
+    productImportApplicationLayer,
     workflowServicesLayer,
   );
 };
