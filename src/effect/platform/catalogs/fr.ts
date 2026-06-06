@@ -114,6 +114,14 @@ export const frCatalog: Record<MessageKey, string> = {
     'Le chargement du produit cree a echoue.',
   'products.deleted': 'Produit supprime avec succes.',
   'products.deletedPermanent': 'Produit supprime definitivement.',
+  'products.importAreaScopedInventoryConflict':
+    "Impossible d'importer un stock au niveau emplacement lorsqu'un stock par zone existe deja pour ce produit et cet emplacement.",
+  'products.importCsvParseFailed':
+    "Impossible d'analyser le fichier CSV televerse.",
+  'products.importReadUploadFailed':
+    "La lecture du fichier d'import produits televerse a echoue.",
+  'products.importUnsupportedFormat':
+    'En-tetes CSV dimport produits non pris en charge.',
   'products.infrastructureFailed': "L'operation sur le produit a echoue.",
   'products.notDeleted': 'Le produit nest pas supprime.',
   'products.notFound': 'Produit introuvable.',

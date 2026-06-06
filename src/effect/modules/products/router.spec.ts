@@ -36,6 +36,35 @@ import {
 import { makeProductsRouterHarness } from './__fixtures__/router-harness';
 import { ProductsService } from './service';
 
+const mockMultipart = vi.hoisted(() => vi.fn());
+const mockReadFile = vi.hoisted(() => vi.fn());
+
+vi.mock('@effect/platform', async () => {
+  const actual = await vi.importActual<typeof import('@effect/platform')>(
+    '@effect/platform',
+  );
+  const { Effect } = await vi.importActual<typeof import('effect')>('effect');
+
+  return {
+    ...actual,
+    HttpServerRequest: {
+      ...actual.HttpServerRequest,
+      schemaBodyMultipart: (_schema: unknown) =>
+        Effect.suspend(() => mockMultipart()),
+    },
+  };
+});
+
+vi.mock('node:fs/promises', async () => {
+  const actual = await vi.importActual<typeof import('node:fs/promises')>(
+    'node:fs/promises',
+  );
+  return {
+    ...actual,
+    readFile: (...args: unknown[]) => mockReadFile(...args),
+  };
+});
+
 vi.mock('./service', async () => {
   const { Context, Layer } =
     await vi.importActual<typeof import('effect')>('effect');
@@ -89,6 +118,26 @@ const bulkResult = (overrides: Partial<{ succeeded: string[]; failures: unknown[
   ...overrides,
 });
 
+const importResult = () => ({
+  categoriesCreated: 1,
+  locationsCreated: 1,
+  productsCreated: 1,
+  productsUpdated: 0,
+  inventoryRecordsCreated: 1,
+  inventoryRecordsUpdated: 0,
+  rowsSkipped: 0,
+  errors: [],
+});
+
+const makePersistedFile = (overrides: Record<string, unknown> = {}) => ({
+  _tag: 'PersistedFile' as const,
+  key: 'file',
+  name: 'products.csv',
+  contentType: 'text/csv',
+  path: '/tmp/products-import.csv',
+  ...overrides,
+});
+
 const validCreateBody = {
   sku: 'SKU-1',
   name: 'Whisky',
@@ -100,14 +149,26 @@ const validCreateBody = {
 
 const writeAll = {
   [Resource.PRODUCTS]: [Permission.READ, Permission.WRITE],
+  [Resource.LOCATIONS]: [Permission.READ, Permission.WRITE],
+  [Resource.INVENTORY]: [Permission.READ, Permission.WRITE],
 };
 const readOnly = {
   [Resource.PRODUCTS]: [Permission.READ],
+};
+const productsWriteOnly = {
+  [Resource.PRODUCTS]: [Permission.READ, Permission.WRITE],
 };
 
 const jsonHeaders = { 'content-type': 'application/json' };
 
 describe('productsRouter', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockReadFile.mockResolvedValue(
+      Buffer.from('sku,name,category_path\nSKU-1,Whisky,Spirits\n'),
+    );
+  });
+
   // -------------------------------------------------------------------
   // GET /products/all
   // -------------------------------------------------------------------
@@ -333,6 +394,145 @@ describe('productsRouter', () => {
         }),
       );
       expect(response.status).toBe(500);
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // POST /products/import
+  // -------------------------------------------------------------------
+  describe('POST /products/import', () => {
+    it('rejects without PRODUCTS:write permission', async () => {
+      const { handler } = makeProductsRouterHarness({
+        service: {},
+        importService: {
+          importFromCsvContent: () => Effect.succeed(importResult()),
+        },
+        permissions: readOnly,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/products/import', {
+          method: 'POST',
+          body: 'ignored',
+        }),
+      );
+
+      expect(response.status).toBe(403);
+      expect(mockMultipart).not.toHaveBeenCalled();
+    });
+
+    it('rejects without LOCATIONS and INVENTORY write permissions', async () => {
+      const importFromCsvContent = vi.fn(() =>
+        Effect.succeed(importResult()),
+      );
+      const { handler } = makeProductsRouterHarness({
+        service: {},
+        importService: { importFromCsvContent },
+        permissions: productsWriteOnly,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/products/import', {
+          method: 'POST',
+          body: 'ignored',
+        }),
+      );
+
+      expect(response.status).toBe(403);
+      expect(mockMultipart).not.toHaveBeenCalled();
+      expect(importFromCsvContent).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when the multipart body is malformed', async () => {
+      const { Schema, Effect } =
+        await vi.importActual<typeof import('effect')>('effect');
+      const multipartError = Schema.decodeUnknown(
+        Schema.Struct({ file: Schema.String }),
+      )({}).pipe(Effect.flip, Effect.runSync);
+      mockMultipart.mockReturnValue(Effect.fail(multipartError));
+      const importFromCsvContent = vi.fn(() =>
+        Effect.succeed(importResult()),
+      );
+      const { handler } = makeProductsRouterHarness({
+        service: {},
+        importService: { importFromCsvContent },
+        permissions: writeAll,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/products/import', {
+          method: 'POST',
+          body: 'ignored',
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      expect(importFromCsvContent).not.toHaveBeenCalled();
+    });
+
+    it('returns 500 when reading the uploaded file fails', async () => {
+      mockMultipart.mockReturnValue(
+        Effect.succeed({
+          file: makePersistedFile(),
+          import_type: 'auto',
+        }),
+      );
+      mockReadFile.mockRejectedValueOnce(new Error('disk read failed'));
+      const importFromCsvContent = vi.fn(() =>
+        Effect.succeed(importResult()),
+      );
+      const { handler } = makeProductsRouterHarness({
+        service: {},
+        importService: { importFromCsvContent },
+        permissions: writeAll,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/products/import', {
+          method: 'POST',
+          body: 'ignored',
+        }),
+      );
+
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toMatchObject({
+        statusCode: 500,
+        messageKey: 'products.importReadUploadFailed',
+      });
+      expect(importFromCsvContent).not.toHaveBeenCalled();
+    });
+
+    it('calls the import service and returns ProductImportResultDto', async () => {
+      mockMultipart.mockReturnValue(
+        Effect.succeed({
+          file: makePersistedFile(),
+          import_type: 'auto',
+        }),
+      );
+      const importFromCsvContent = vi.fn(() =>
+        Effect.succeed(importResult()),
+      );
+      const { handler } = makeProductsRouterHarness({
+        service: {},
+        importService: { importFromCsvContent },
+        permissions: writeAll,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/products/import', {
+          method: 'POST',
+          body: 'ignored',
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual(importResult());
+      expect(mockReadFile).toHaveBeenCalledWith('/tmp/products-import.csv');
+      expect(importFromCsvContent).toHaveBeenCalledWith({
+        content: 'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
+        importType: 'auto',
+        userId: '00000000-0000-4000-a000-000000000001',
+      });
     });
   });
 

@@ -8,7 +8,7 @@ Usage:
   sh ./scripts/import.sh products <normalized-products.csv>
 
 Import types:
-  sortly    Normalize a Sortly export, then import products/inventory
+  sortly    Import Sortly Item rows from a raw Sortly export; folder rows are ignored
   products  Import an already-normalized product CSV
 USAGE
 }
@@ -28,12 +28,7 @@ case "$kind" in
       exit 1
     fi
 
-    input_path=$1
-    tmp=${TMPDIR:-/tmp}/sortly-normalized.$$.csv
-    trap 'rm -f "$tmp"' EXIT HUP INT TERM
-
-    nu src/scripts/prepare-sortly-export.nu "$input_path" "$tmp"
-    infisical run --env=dev -- tsx src/scripts/import-products.ts "$tmp"
+    infisical run --env=dev -- tsx src/scripts/import-products.ts --import-type sortly-items "$1"
     ;;
 
   products)
@@ -42,7 +37,7 @@ case "$kind" in
       exit 1
     fi
 
-    infisical run --env=dev -- tsx src/scripts/import-products.ts "$1"
+    infisical run --env=dev -- tsx src/scripts/import-products.ts --import-type normalized-products "$1"
     ;;
 
   -h|--help|help)

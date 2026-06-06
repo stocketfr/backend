@@ -27,9 +27,6 @@ catalogs:
     vitest:
       specifier: ^4.1.1
       version: 4.1.2
-    zod:
-      specifier: ^4.3.6
-      version: 4.3.6
 
 overrides:
   esbuild: 0.25.0
@@ -158,15 +155,15 @@ importers:
   ../packages/types:
     dependencies:
       zod:
-        specifier: 'catalog:'
+        specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
       effect:
-        specifier: 'catalog:'
+        specifier: ^3.21.0
         version: 3.21.2
       typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
+        specifier: ^6.0.2
+        version: 6.0.3
 
 packages:
 
@@ -2578,6 +2575,11 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
+  typescript@6.0.3:
+    resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
   underscore@1.13.8:
     resolution: {integrity: sha512-DXtD3ZtEQzc7M8m4cXotyHR+FAS18C64asBYY5vqZexfYryNNnDc02W4hKg3rdQuqOYas1jkseX0+nZXjTXnvQ==}
 
@@ -4892,6 +4894,8 @@ snapshots:
       underscore: 1.13.8
 
   typescript@5.9.3: {}
+
+  typescript@6.0.3: {}
 
   underscore@1.13.8: {}
 

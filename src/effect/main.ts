@@ -1,5 +1,10 @@
 import { HttpServer } from '@effect/platform';
-import { NodeHttpServer, NodeRuntime } from '@effect/platform-node';
+import {
+  NodeFileSystem,
+  NodeHttpServer,
+  NodePath,
+  NodeRuntime,
+} from '@effect/platform-node';
 import { createServer } from 'node:http';
 import { Effect, Layer } from 'effect';
 import { buildHttpApp } from './http/app';
@@ -14,6 +19,7 @@ import { InventoryService } from './modules/inventory/service';
 import { LocationsService } from './modules/locations/service';
 import { OrdersService } from './modules/orders/service';
 import { PhotosService } from './modules/photos/service';
+import { ProductImportService } from './modules/products/import/service';
 import { ProductsService } from './modules/products/service';
 import type { RolesInfrastructureError } from './modules/roles/roles.errors';
 import { RolesService } from './modules/roles/service';
@@ -148,6 +154,9 @@ const clientsApplicationLayer = withPlatform(ClientsService.Default);
 const productsApplicationLayer = ProductsService.Default.pipe(
   Layer.provide(Layer.mergeAll(platformLayer, categoriesApplicationLayer)),
 );
+const productImportApplicationLayer = ProductImportService.Default.pipe(
+  Layer.provide(platformLayer),
+);
 const workflowServicesLayer = Layer.mergeAll(
   StockMovementsService.Default.pipe(
     Layer.provide(
@@ -192,6 +201,8 @@ const startupLayer = Layer.mergeAll(
 
 const applicationLayer = Layer.mergeAll(
   platformLayer,
+  NodeFileSystem.layer,
+  NodePath.layer,
   TracingLive,
   startupLayer,
   foundationalServicesLayer,
@@ -202,6 +213,7 @@ const applicationLayer = Layer.mergeAll(
   superAdminApplicationLayer,
   areasApplicationLayer,
   productsApplicationLayer,
+  productImportApplicationLayer,
   workflowServicesLayer,
 );
 

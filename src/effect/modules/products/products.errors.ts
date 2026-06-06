@@ -25,6 +25,16 @@ export class ProductNotDeleted extends BadRequestError('ProductNotDeleted')<{
   readonly productId: string;
 }> {}
 
+export class ProductImportUnsupportedFormat extends BadRequestError(
+  'ProductImportUnsupportedFormat',
+)<{}> {}
+
+export class ProductImportCsvParseFailed extends BadRequestError(
+  'ProductImportCsvParseFailed',
+)<{
+  readonly cause?: unknown;
+}> {}
+
 export class ProductsInfrastructureError extends InternalError(
   'ProductInfrastructureError',
 )<{
