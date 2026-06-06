@@ -62,7 +62,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 /uploads
 
 # Local reference clones (Effect-TS source, examples, etc.) — never commit.
-/effect-code
+.repos
 
 # Mutation testing artifacts
 /.stryker-tmp

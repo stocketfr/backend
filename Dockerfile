@@ -9,6 +9,7 @@ RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages ./packages
+RUN sed -i 's#../packages#packages#g' pnpm-workspace.yaml pnpm-lock.yaml
 # Cache the pnpm content-addressable store across builds. Combined with the
 # GHA layer cache this keeps unchanged dependencies off the wire.
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
