@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import { and, eq, type AnyColumn, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, type AnyColumn, type SQL } from 'drizzle-orm';
 import { requireRequestTenantId } from '../tenant-context';
 
 export interface TenantScopedTable {
@@ -46,6 +46,18 @@ export class TenantQuery extends Effect.Service<TenantQuery>()(
         Effect.map(requireRequestTenantId, (tenantId) =>
           combineConditions(
             and(eq(table.tenant_id, tenantId), eq(table.id, id))!,
+            conditions,
+          ),
+        ),
+
+      whereTenantIds: (
+        table: IdentifiedTenantScopedTable,
+        ids: readonly string[],
+        ...conditions: SQL[]
+      ) =>
+        Effect.map(requireRequestTenantId, (tenantId) =>
+          combineConditions(
+            and(eq(table.tenant_id, tenantId), inArray(table.id, ids))!,
             conditions,
           ),
         ),

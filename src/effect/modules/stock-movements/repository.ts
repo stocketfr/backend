@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import { eq, or, gte, lte, and, sql, type SQL, desc } from 'drizzle-orm';
+import { eq, or, gte, lte, sql, type SQL, desc } from 'drizzle-orm';
 import type { StockMovementQueryDto } from '@stocket/types/stock-movements';
 import {
   resolvePaginationWindow,
@@ -60,15 +60,14 @@ export class StockMovementsRepository extends Effect.Service<StockMovementsRepos
 
       const findAllPaginated = (query: StockMovementQueryDto) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenant(
+            stockMovements,
+            ...buildStockMovementFilters(query),
+          );
           return yield* tryAsync('list stock movements paginated', async () => {
             const { page, limit, skip } = resolvePaginationWindow(
               query.page,
               query.limit,
-            );
-            const where = and(
-              eq(stockMovements.tenant_id, tenantId),
-              ...buildStockMovementFilters(query),
             );
 
             const [countResult] = await db
@@ -92,13 +91,10 @@ export class StockMovementsRepository extends Effect.Service<StockMovementsRepos
 
       const findById = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantId(stockMovements, id);
           return yield* tryAsync('find stock movement by id', async () => {
             const row = await db.query.stockMovements.findFirst({
-              where: and(
-                eq(stockMovements.tenant_id, tenantId),
-                eq(stockMovements.id, id),
-              ),
+              where,
               with: withRelations,
             });
 
@@ -108,13 +104,13 @@ export class StockMovementsRepository extends Effect.Service<StockMovementsRepos
 
       const findByProductId = (productId: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenant(
+            stockMovements,
+            eq(stockMovements.product_id, productId),
+          );
           return yield* tryAsync('find stock movements by product', () =>
             db.query.stockMovements.findMany({
-              where: and(
-                eq(stockMovements.tenant_id, tenantId),
-                eq(stockMovements.product_id, productId),
-              ),
+              where,
               with: withRelations,
               orderBy: desc(stockMovements.created_at),
             }),
@@ -123,16 +119,16 @@ export class StockMovementsRepository extends Effect.Service<StockMovementsRepos
 
       const findByLocationId = (locationId: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenant(
+            stockMovements,
+            or(
+              eq(stockMovements.from_location_id, locationId),
+              eq(stockMovements.to_location_id, locationId),
+            )!,
+          );
           return yield* tryAsync('find stock movements by location', () =>
             db.query.stockMovements.findMany({
-              where: and(
-                eq(stockMovements.tenant_id, tenantId),
-                or(
-                  eq(stockMovements.from_location_id, locationId),
-                  eq(stockMovements.to_location_id, locationId),
-                )!,
-              ),
+              where,
               with: withRelations,
               orderBy: desc(stockMovements.created_at),
             }),
@@ -141,11 +137,11 @@ export class StockMovementsRepository extends Effect.Service<StockMovementsRepos
 
       const create = (data: typeof stockMovements.$inferInsert) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const values = yield* tenantQuery.insertValues(data);
           return yield* tryAsync('create stock movement', async () => {
             const rows = await db
               .insert(stockMovements)
-              .values({ ...data, tenant_id: tenantId })
+              .values(values)
               .returning();
             return rows[0]!;
           });
@@ -153,16 +149,14 @@ export class StockMovementsRepository extends Effect.Service<StockMovementsRepos
 
       const orderExistsById = (orderId: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantId(orders, orderId);
           return yield* tryAsync(
             'check stock movement order tenant',
             async () => {
               const rows = await db
                 .select({ id: orders.id })
                 .from(orders)
-                .where(
-                  and(eq(orders.tenant_id, tenantId), eq(orders.id, orderId)),
-                )
+                .where(where)
                 .limit(1);
               return rows.length > 0;
             },

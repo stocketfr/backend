@@ -85,6 +85,45 @@ function mapProductRow(row: ProductJoinRow) {
   };
 }
 
+function buildProductFilters(query: ProductQueryDto): SQL[] {
+  const conditions: SQL[] = [];
+  if (!query.include_deleted) {
+    conditions.push(isNull(products.deleted_at));
+  }
+  if (query.search) {
+    conditions.push(
+      or(
+        ilike(products.name, `%${query.search}%`),
+        ilike(products.sku, `%${query.search}%`),
+      )!,
+    );
+  }
+  if (query.category_id) {
+    conditions.push(eq(products.category_id, query.category_id));
+  }
+  if (query.primary_supplier_id) {
+    conditions.push(
+      eq(products.primary_supplier_id, query.primary_supplier_id),
+    );
+  }
+  if (query.is_active !== undefined) {
+    conditions.push(eq(products.is_active, query.is_active));
+  }
+  if (query.is_perishable !== undefined) {
+    conditions.push(eq(products.is_perishable, query.is_perishable));
+  }
+  if (query.min_price !== undefined && query.max_price !== undefined) {
+    conditions.push(
+      sql`${products.standard_price} BETWEEN ${query.min_price} AND ${query.max_price}`,
+    );
+  } else if (query.min_price !== undefined) {
+    conditions.push(gte(products.standard_price, query.min_price));
+  } else if (query.max_price !== undefined) {
+    conditions.push(lte(products.standard_price, query.max_price));
+  }
+  return conditions;
+}
+
 export class ProductsRepository extends Effect.Service<ProductsRepository>()(
   '@stocket/effect/products/ProductsRepository',
   {
@@ -94,54 +133,15 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const findAllPaginated = (query: ProductQueryDto) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenant(
+            products,
+            ...buildProductFilters(query),
+          );
           return yield* tryAsync('list products paginated', async () => {
             const { page, limit, skip } = resolvePaginationWindow(
               query.page,
               query.limit,
             );
-
-            const conditions: SQL[] = [eq(products.tenant_id, tenantId)];
-
-            if (!query.include_deleted) {
-              conditions.push(isNull(products.deleted_at));
-            }
-            if (query.search) {
-              conditions.push(
-                or(
-                  ilike(products.name, `%${query.search}%`),
-                  ilike(products.sku, `%${query.search}%`),
-                )!,
-              );
-            }
-            if (query.category_id) {
-              conditions.push(eq(products.category_id, query.category_id));
-            }
-            if (query.primary_supplier_id) {
-              conditions.push(
-                eq(products.primary_supplier_id, query.primary_supplier_id),
-              );
-            }
-            if (query.is_active !== undefined) {
-              conditions.push(eq(products.is_active, query.is_active));
-            }
-            if (query.is_perishable !== undefined) {
-              conditions.push(eq(products.is_perishable, query.is_perishable));
-            }
-            if (
-              query.min_price !== undefined &&
-              query.max_price !== undefined
-            ) {
-              conditions.push(
-                sql`${products.standard_price} BETWEEN ${query.min_price} AND ${query.max_price}`,
-              );
-            } else if (query.min_price !== undefined) {
-              conditions.push(gte(products.standard_price, query.min_price));
-            } else if (query.max_price !== undefined) {
-              conditions.push(lte(products.standard_price, query.max_price));
-            }
-
-            const where = and(...conditions);
             const orderBy = buildOrderBy(
               productSortColumns,
               query.sort_by,
@@ -172,12 +172,13 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const findAll = (includeDeleted = false) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenant(
+            products,
+            ...(includeDeleted ? [] : [isNull(products.deleted_at)]),
+          );
           return yield* tryAsync('list all products', async () => {
-            const conditions: SQL[] = [eq(products.tenant_id, tenantId)];
-            if (!includeDeleted) conditions.push(isNull(products.deleted_at));
             const rows = await selectProductWithJoins(db)
-              .where(and(...conditions))
+              .where(where)
               .orderBy(sql`products."name" ASC`);
             return rows.map(mapProductRow);
           });
@@ -185,17 +186,14 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const findById = (id: string, includeDeleted = false) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantId(
+            products,
+            id,
+            ...(includeDeleted ? [] : [isNull(products.deleted_at)]),
+          );
           return yield* tryAsync('find product by id', async () => {
-            const conditions: SQL[] = [
-              eq(products.tenant_id, tenantId),
-              eq(products.id, id),
-            ];
-            if (!includeDeleted) {
-              conditions.push(isNull(products.deleted_at));
-            }
             const rows = await selectProductWithJoins(db)
-              .where(and(...conditions))
+              .where(where)
               .limit(1);
             return rows[0] ? mapProductRow(rows[0]) : null;
           });
@@ -203,19 +201,16 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const findBySku = (sku: string, includeDeleted = false) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenant(
+            products,
+            eq(products.sku, sku),
+            ...(includeDeleted ? [] : [isNull(products.deleted_at)]),
+          );
           return yield* tryAsync('find product by sku', async () => {
-            const conditions: SQL[] = [
-              eq(products.tenant_id, tenantId),
-              eq(products.sku, sku),
-            ];
-            if (!includeDeleted) {
-              conditions.push(isNull(products.deleted_at));
-            }
             const rows = await db
               .select()
               .from(products)
-              .where(and(...conditions))
+              .where(where)
               .limit(1);
             return rows[0] ?? null;
           });
@@ -223,16 +218,14 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const findByCategoryId = (categoryId: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenant(
+            products,
+            eq(products.category_id, categoryId),
+            isNull(products.deleted_at),
+          );
           return yield* tryAsync('find products by category', async () => {
             const rows = await selectProductWithJoins(db)
-              .where(
-                and(
-                  eq(products.tenant_id, tenantId),
-                  eq(products.category_id, categoryId),
-                  isNull(products.deleted_at),
-                ),
-              )
+              .where(where)
               .orderBy(sql`products."name" ASC`);
             return rows.map(mapProductRow);
           });
@@ -240,18 +233,16 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const findByCategoryIds = (categoryIds: string[]) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenant(
+            products,
+            inArray(products.category_id, categoryIds),
+            isNull(products.deleted_at),
+          );
           return yield* tryAsync('find products by categories', async () => {
             if (categoryIds.length === 0) return [];
 
             const rows = await selectProductWithJoins(db)
-              .where(
-                and(
-                  eq(products.tenant_id, tenantId),
-                  inArray(products.category_id, categoryIds),
-                  isNull(products.deleted_at),
-                ),
-              )
+              .where(where)
               .orderBy(sql`products."name" ASC`);
             return rows.map(mapProductRow);
           });
@@ -259,53 +250,40 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const findByIds = (ids: string[], includeDeleted = false) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantIds(
+            products,
+            ids,
+            ...(includeDeleted ? [] : [isNull(products.deleted_at)]),
+          );
           return yield* tryAsync('find products by ids', async () => {
-            const conditions: SQL[] = [
-              eq(products.tenant_id, tenantId),
-              inArray(products.id, ids),
-            ];
-            if (!includeDeleted) {
-              conditions.push(isNull(products.deleted_at));
-            }
-            return db
-              .select()
-              .from(products)
-              .where(and(...conditions));
+            return db.select().from(products).where(where);
           });
         });
 
       const findDeletedByIds = (ids: string[]) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantIds(
+            products,
+            ids,
+            isNotNull(products.deleted_at),
+          );
           return yield* tryAsync('find deleted products by ids', () =>
-            db
-              .select()
-              .from(products)
-              .where(
-                and(
-                  eq(products.tenant_id, tenantId),
-                  inArray(products.id, ids),
-                  isNotNull(products.deleted_at),
-                ),
-              ),
+            db.select().from(products).where(where),
           );
         });
 
       const existsById = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantId(
+            products,
+            id,
+            isNull(products.deleted_at),
+          );
           return yield* tryAsync('check product existence', async () => {
             const rows = await db
               .select({ id: products.id })
               .from(products)
-              .where(
-                and(
-                  eq(products.tenant_id, tenantId),
-                  eq(products.id, id),
-                  isNull(products.deleted_at),
-                ),
-              )
+              .where(where)
               .limit(1);
             return rows.length > 0;
           });
@@ -313,12 +291,9 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const create = (data: typeof products.$inferInsert) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const values = yield* tenantQuery.insertValues(data);
           return yield* tryAsync('create product', async () => {
-            const rows = await db
-              .insert(products)
-              .values({ ...data, tenant_id: tenantId })
-              .returning();
+            const rows = await db.insert(products).values(values).returning();
             return rows[0]!;
           });
         });
@@ -328,19 +303,17 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
         data: Partial<typeof products.$inferInsert>,
       ) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantId(
+            products,
+            id,
+            isNull(products.deleted_at),
+          );
           return yield* tryAsync('update product', async () => {
             const { tenant_id: _tenantId, ...updateData } = data;
             const rows = await db
               .update(products)
               .set({ ...updateData, updated_at: new Date() })
-              .where(
-                and(
-                  eq(products.tenant_id, tenantId),
-                  eq(products.id, id),
-                  isNull(products.deleted_at),
-                ),
-              )
+              .where(where)
               .returning({ id: products.id });
             return rows.length;
           });
@@ -351,19 +324,17 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
         data: Partial<typeof products.$inferInsert>,
       ) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantIds(
+            products,
+            ids,
+            isNull(products.deleted_at),
+          );
           return yield* tryAsync('update multiple products', async () => {
             const { tenant_id: _tenantId, ...updateData } = data;
             const rows = await db
               .update(products)
               .set({ ...updateData, updated_at: new Date() })
-              .where(
-                and(
-                  eq(products.tenant_id, tenantId),
-                  inArray(products.id, ids),
-                  isNull(products.deleted_at),
-                ),
-              )
+              .where(where)
               .returning({ id: products.id });
             return rows.length;
           });
@@ -371,7 +342,11 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const softDelete = (id: string, deletedBy?: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantId(
+            products,
+            id,
+            isNull(products.deleted_at),
+          );
           return yield* tryAsync('soft delete product', async () => {
             await db
               .update(products)
@@ -380,19 +355,17 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
                 deleted_by: deletedBy ?? null,
                 updated_at: new Date(),
               })
-              .where(
-                and(
-                  eq(products.tenant_id, tenantId),
-                  eq(products.id, id),
-                  isNull(products.deleted_at),
-                ),
-              );
+              .where(where);
           });
         });
 
       const softDeleteMany = (ids: string[], deletedBy?: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantIds(
+            products,
+            ids,
+            isNull(products.deleted_at),
+          );
           return yield* tryAsync('soft delete multiple products', async () => {
             const rows = await db
               .update(products)
@@ -401,13 +374,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
                 deleted_by: deletedBy ?? null,
                 updated_at: new Date(),
               })
-              .where(
-                and(
-                  eq(products.tenant_id, tenantId),
-                  inArray(products.id, ids),
-                  isNull(products.deleted_at),
-                ),
-              )
+              .where(where)
               .returning({ id: products.id });
             return rows.length;
           });
@@ -415,7 +382,11 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const restore = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantId(
+            products,
+            id,
+            isNotNull(products.deleted_at),
+          );
           return yield* tryAsync('restore product', async () => {
             await db
               .update(products)
@@ -424,19 +395,17 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
                 deleted_by: null,
                 updated_at: new Date(),
               })
-              .where(
-                and(
-                  eq(products.tenant_id, tenantId),
-                  eq(products.id, id),
-                  isNotNull(products.deleted_at),
-                ),
-              );
+              .where(where);
           });
         });
 
       const restoreMany = (ids: string[]) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantIds(
+            products,
+            ids,
+            isNotNull(products.deleted_at),
+          );
           return yield* tryAsync('restore multiple products', async () => {
             const rows = await db
               .update(products)
@@ -445,13 +414,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
                 deleted_by: null,
                 updated_at: new Date(),
               })
-              .where(
-                and(
-                  eq(products.tenant_id, tenantId),
-                  inArray(products.id, ids),
-                  isNotNull(products.deleted_at),
-                ),
-              )
+              .where(where)
               .returning({ id: products.id });
             return rows.length;
           });
@@ -459,28 +422,19 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
       const hardDelete = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantId(products, id);
           return yield* tryAsync('hard delete product', async () => {
-            await db
-              .delete(products)
-              .where(
-                and(eq(products.tenant_id, tenantId), eq(products.id, id)),
-              );
+            await db.delete(products).where(where);
           });
         });
 
       const hardDeleteMany = (ids: string[]) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantIds(products, ids);
           return yield* tryAsync('hard delete multiple products', async () => {
             const rows = await db
               .delete(products)
-              .where(
-                and(
-                  eq(products.tenant_id, tenantId),
-                  inArray(products.id, ids),
-                ),
-              )
+              .where(where)
               .returning({ id: products.id });
             return rows.length;
           });

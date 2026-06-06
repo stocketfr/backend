@@ -1,7 +1,6 @@
 import { Effect } from 'effect';
 import {
   eq,
-  and,
   desc,
   gte,
   lte,
@@ -80,15 +79,14 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
 
       const findPaginated = (options: AuditLogQueryOptions) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenant(
+            auditLogs,
+            ...buildAuditFilters(options),
+          );
           return yield* tryAsync('query audit logs', async () => {
             const { page, limit, skip } = resolvePaginationWindow(
               options.page,
               options.limit,
-            );
-            const where = and(
-              eq(auditLogs.tenant_id, tenantId),
-              ...buildAuditFilters(options),
             );
 
             const [countResult, data] = await Promise.all([
@@ -116,7 +114,7 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
 
       const findById = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantId(auditLogs, id);
           return yield* tryAsync('load audit log', async () => {
             const rows = await db
               .select(auditLogSelect)
@@ -125,9 +123,7 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
                 betterAuthUsers,
                 sql`${auditLogs.user_id} = ${betterAuthUsers.id}::text`,
               )
-              .where(
-                and(eq(auditLogs.tenant_id, tenantId), eq(auditLogs.id, id)),
-              )
+              .where(where)
               .limit(1);
             return rows[0] ?? null;
           });
@@ -135,7 +131,11 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
 
       const findByEntityId = (entityType: AuditEntityType, entityId: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenant(
+            auditLogs,
+            eq(auditLogs.entity_type, entityType),
+            eq(auditLogs.entity_id, entityId),
+          );
           return yield* tryAsync('load entity audit history', () =>
             db
               .select(auditLogSelect)
@@ -144,20 +144,17 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
                 betterAuthUsers,
                 sql`${auditLogs.user_id} = ${betterAuthUsers.id}::text`,
               )
-              .where(
-                and(
-                  eq(auditLogs.tenant_id, tenantId),
-                  eq(auditLogs.entity_type, entityType),
-                  eq(auditLogs.entity_id, entityId),
-                ),
-              )
+              .where(where)
               .orderBy(desc(auditLogs.created_at)),
           );
         });
 
       const findByUserId = (userId: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenant(
+            auditLogs,
+            eq(auditLogs.user_id, userId),
+          );
           return yield* tryAsync('load user audit history', () =>
             db
               .select(auditLogSelect)
@@ -166,12 +163,7 @@ export class AuditLogsRepository extends Effect.Service<AuditLogsRepository>()(
                 betterAuthUsers,
                 sql`${auditLogs.user_id} = ${betterAuthUsers.id}::text`,
               )
-              .where(
-                and(
-                  eq(auditLogs.tenant_id, tenantId),
-                  eq(auditLogs.user_id, userId),
-                ),
-              )
+              .where(where)
               .orderBy(desc(auditLogs.created_at)),
           );
         });

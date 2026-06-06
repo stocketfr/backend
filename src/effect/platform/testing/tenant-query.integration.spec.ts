@@ -113,6 +113,35 @@ describe('TenantQuery', () => {
     expect(unchanged!.name).toBe('Tenant B Category');
   });
 
+  it('scopes id-list predicates by tenant', async () => {
+    const tenantARow = await getTestDb().query.categories.findFirst({
+      where: eq(categories.tenant_id, TENANT_A),
+    });
+    const tenantBRow = await getTestDb().query.categories.findFirst({
+      where: eq(categories.tenant_id, TENANT_B),
+    });
+
+    const rows = await run(
+      TENANT_A,
+      Effect.gen(function* () {
+        const tenantQuery = yield* TenantQuery;
+        const where = yield* tenantQuery.whereTenantIds(categories, [
+          tenantARow!.id,
+          tenantBRow!.id,
+        ]);
+        return yield* Effect.promise(() =>
+          getTestDb()
+            .select()
+            .from(categories)
+            .where(where)
+            .orderBy(asc(categories.name)),
+        );
+      }),
+    );
+
+    expect(rows.map((row) => row.name)).toEqual(['Tenant A Category']);
+  });
+
   it('scopes delete predicates by tenant and id', async () => {
     const tenantBRow = await getTestDb().query.categories.findFirst({
       where: eq(categories.tenant_id, TENANT_B),
