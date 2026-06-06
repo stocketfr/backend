@@ -3,22 +3,22 @@ import { HttpRouter, HttpServerRequest, Multipart } from '@effect/platform';
 import { Effect, Schema } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
+import {
+  ProductIdSchema,
+  ProductQuerySchema,
+  ProductBooleanQuerySchema,
+  CreateProductRequestSchema,
+  UpdateProductRequestSchema,
+  BulkCreateProductsSchema,
+  BulkUpdateStatusSchema,
+  BulkDeleteSchema,
+  BulkRestoreSchema,
+} from '@stocket/types/products';
 import { requirePermission } from '../../platform/authorization';
 import { respondJson, respondJsonOk } from '../../platform/errors';
 import { AuditLogWriter } from '../../platform/audit';
 import { getOptionalSession, requireSession } from '../../platform/session';
 import { makeMessageResponse } from '../../platform/messages';
-import {
-  ProductIdSchema,
-  ProductQuerySchema,
-  ProductBooleanQuerySchema,
-  CreateProductSchema,
-  UpdateProductSchema,
-  BulkCreateProductsSchema,
-  BulkUpdateStatusSchema,
-  BulkDeleteSchema,
-  BulkRestoreSchema,
-} from './products.schema';
 import { ProductImportService } from './import/service';
 import { ProductImportTypes } from './import/types';
 import { ProductsInfrastructureError } from './products.errors';
@@ -149,7 +149,8 @@ export const productsRouter = HttpRouter.empty.pipe(
     '/',
     Effect.gen(function* () {
       yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
-      const dto = yield* HttpServerRequest.schemaBodyJson(CreateProductSchema);
+      const dto =
+        yield* HttpServerRequest.schemaBodyJson(CreateProductRequestSchema);
       const session = yield* getOptionalSession;
       const userId = session?.user.id;
       const productsService = yield* ProductsService;
@@ -239,7 +240,8 @@ export const productsRouter = HttpRouter.empty.pipe(
     Effect.gen(function* () {
       yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
       const { id } = yield* HttpRouter.schemaPathParams(ProductPathParams);
-      const dto = yield* HttpServerRequest.schemaBodyJson(UpdateProductSchema);
+      const dto =
+        yield* HttpServerRequest.schemaBodyJson(UpdateProductRequestSchema);
       const session = yield* getOptionalSession;
       const userId = session?.user.id;
       const productsService = yield* ProductsService;

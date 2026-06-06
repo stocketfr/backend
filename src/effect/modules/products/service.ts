@@ -12,13 +12,13 @@ import { SuppliersService } from '../suppliers/service';
 import { SupplierNotFound } from '../suppliers/suppliers.errors';
 import type {
   ProductQuerySchema,
-  CreateProductSchema,
-  UpdateProductSchema,
+  CreateProductRequestSchema,
+  UpdateProductRequestSchema,
   BulkCreateProductsSchema,
   BulkUpdateStatusSchema,
   BulkDeleteSchema,
   BulkRestoreSchema,
-} from './products.schema';
+} from '@stocket/types/products';
 import { toCreateProductEntity, toProductResponseDto } from './products.utils';
 import {
   CategoryNotFound,
@@ -32,8 +32,8 @@ import type { TenantNotResolved } from '../../platform/tenant-context';
 import { ProductsRepository } from './repository';
 
 type ProductQueryDto = Schema.Schema.Type<typeof ProductQuerySchema>;
-type CreateProductDto = Schema.Schema.Type<typeof CreateProductSchema>;
-type UpdateProductDto = Schema.Schema.Type<typeof UpdateProductSchema>;
+type CreateProductDto = Schema.Schema.Type<typeof CreateProductRequestSchema>;
+type UpdateProductDto = Schema.Schema.Type<typeof UpdateProductRequestSchema>;
 type BulkCreateProductsDto = Schema.Schema.Type<
   typeof BulkCreateProductsSchema
 >;

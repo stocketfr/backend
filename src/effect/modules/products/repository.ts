@@ -18,12 +18,12 @@ import {
   resolvePaginationWindow,
   toRepositoryPaginatedResult,
 } from '@stocket/types/common';
+import type { ProductQuerySchema } from '@stocket/types/products';
 import { buildOrderBy } from '../../platform/drizzle-sort.utils';
 import { makeTryAsync } from '../../platform/try-async';
 import { TenantQuery } from '../../platform/tenant-query';
 import { DrizzleDatabase, type DrizzleDb } from '../../platform/drizzle';
 import { products, categories, suppliers } from '../../platform/db/schema';
-import type { ProductQuerySchema } from './products.schema';
 import { ProductsInfrastructureError } from './products.errors';
 
 const tryAsync = makeTryAsync(
