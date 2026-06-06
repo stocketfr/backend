@@ -1,6 +1,9 @@
 import type * as HttpServerRequest from '@effect/platform/HttpServerRequest';
 import { Option } from 'effect';
-import { isValidTenantSlug } from '@stocket/types/common';
+import {
+  isValidTenantSlug,
+  normalizeHost as normalizeSharedHost,
+} from '@stocket/types/common';
 
 export { isValidTenantSlug } from '@stocket/types/common';
 
@@ -21,22 +24,6 @@ const DEFAULT_RESERVED_TENANT_SLUGS = [
   'assets',
 ] as const;
 
-const splitListHeader = (value: string) => value.split(',')[0]?.trim() ?? '';
-
-const stripPort = (host: string) => {
-  if (host.startsWith('[')) {
-    const closingBracketIndex = host.indexOf(']');
-    return closingBracketIndex >= 0 ? host.slice(1, closingBracketIndex) : host;
-  }
-
-  const colonCount = (host.match(/:/g) ?? []).length;
-  if (colonCount === 1) {
-    return host.slice(0, host.indexOf(':'));
-  }
-
-  return host;
-};
-
 const parseReservedTenantSlugs = () =>
   new Set(
     (
@@ -48,13 +35,7 @@ const parseReservedTenantSlugs = () =>
       .filter(Boolean),
   );
 
-export const normalizeHost = (value: string | null | undefined) => {
-  const raw = value ? splitListHeader(value) : '';
-  if (!raw) return null;
-
-  const normalized = stripPort(raw).trim().toLowerCase().replace(/\.+$/, '');
-  return normalized.length > 0 ? normalized : null;
-};
+export const normalizeHost = normalizeSharedHost;
 
 const isLocalRuntime = () =>
   process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'staging';
