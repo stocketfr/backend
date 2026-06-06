@@ -7,6 +7,7 @@ import type {
 } from '@stocket/types/suppliers';
 import { toPaginatedResponse } from '@stocket/types/common';
 import { fromNullOr, makeGetOrFail } from '../../platform/from-null-or';
+import { makeServiceTracer } from '../../platform/service-tracer';
 import { toSupplierResponseDto } from './suppliers.utils';
 import { SupplierNotFound } from './suppliers.errors';
 import { SuppliersRepository } from './repository';
@@ -19,6 +20,11 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
   {
     effect: Effect.gen(function* () {
       const repository = yield* SuppliersRepository;
+      const trace = makeServiceTracer({
+        serviceName: 'SuppliersService',
+        module: 'suppliers',
+        layer: 'service',
+      });
 
       const getSupplierOrFail = makeGetOrFail(
         (id: string) => repository.findById(id),
@@ -29,11 +35,11 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
         Effect.map(
           repository.findAllPaginated(query),
           (result) => toPaginatedResponse(result, toSupplierResponseDto),
-        ).pipe(Effect.withSpan('SuppliersService.findAllPaginated'));
+        ).pipe(trace.span('findAllPaginated'));
 
       const findOne = (id: string) =>
         Effect.map(getSupplierOrFail(id), toSupplierResponseDto).pipe(
-          Effect.withSpan('SuppliersService.findOne', { attributes: { id } }),
+          trace.span('findOne', { attributes: { id } }),
         );
 
       const create = (dto: CreateSupplierDto) =>
@@ -49,7 +55,7 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
             is_active: dto.is_active ?? true,
           }),
           toSupplierResponseDto,
-        ).pipe(Effect.withSpan('SuppliersService.create'));
+        ).pipe(trace.span('create'));
 
       const update = (id: string, dto: UpdateSupplierDto) =>
         Effect.gen(function* () {
@@ -63,20 +69,27 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
             () => new SupplierNotFound({ id, messageKey: 'suppliers.notFound' }),
           );
           return toSupplierResponseDto(updated);
-        }).pipe(Effect.withSpan('SuppliersService.update', { attributes: { id } }));
+        }).pipe(trace.span('update', { attributes: { id } }));
 
       const remove = (id: string) =>
         Effect.gen(function* () {
           yield* getSupplierOrFail(id);
           yield* repository.delete(id);
-        }).pipe(Effect.withSpan('SuppliersService.delete', { attributes: { id } }));
+        }).pipe(trace.span('delete', { attributes: { id } }));
 
       const existsById = (id: string) =>
         repository.existsById(id).pipe(
-          Effect.withSpan('SuppliersService.existsById', { attributes: { id } }),
+          trace.span('existsById', { attributes: { id } }),
         );
 
-      return { findAllPaginated, findOne, create, update, delete: remove, existsById };
+      return {
+        findAllPaginated,
+        findOne,
+        create,
+        update,
+        delete: remove,
+        existsById,
+      };
     }),
     dependencies: [SuppliersRepository.Default],
   },

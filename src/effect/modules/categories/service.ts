@@ -1,6 +1,11 @@
 import { Effect } from 'effect';
-import type { CategoryWithChildrenResponseDto, CreateCategoryDto, UpdateCategoryDto } from '@stocket/types/categories';
+import type {
+  CategoryWithChildrenResponseDto,
+  CreateCategoryDto,
+  UpdateCategoryDto,
+} from '@stocket/types/categories';
 import { fromNullOr } from '../../platform/from-null-or';
+import { makeServiceTracer } from '../../platform/service-tracer';
 import type { categories } from '../../platform/db/schema';
 import {
   type CategoriesInfrastructureError,
@@ -50,6 +55,11 @@ export class CategoriesService extends Effect.Service<CategoriesService>()(
   {
     effect: Effect.gen(function* () {
       const repository = yield* CategoriesRepository;
+      const trace = makeServiceTracer({
+        serviceName: 'CategoriesService',
+        module: 'categories',
+        layer: 'service',
+      });
 
       const getCategoryOrFail = (id: string) =>
         fromNullOr(repository.findById(id), () =>
@@ -85,7 +95,7 @@ export class CategoriesService extends Effect.Service<CategoriesService>()(
         Effect.map(
           repository.findAll(),
           (categories) => buildTree(categories),
-        ).pipe(Effect.withSpan('CategoriesService.findAll'));
+        ).pipe(trace.span('findAll'));
 
       const create = (
         dto: CreateCategoryDto,
@@ -109,7 +119,10 @@ export class CategoriesService extends Effect.Service<CategoriesService>()(
             }
           }
 
-          const nameExists = yield* repository.existsByName(dto.name, dto.parent_id);
+          const nameExists = yield* repository.existsByName(
+            dto.name,
+            dto.parent_id,
+          );
           if (nameExists) {
             return yield* Effect.fail(
               new CategoryNameAlreadyExists({
@@ -125,7 +138,7 @@ export class CategoriesService extends Effect.Service<CategoriesService>()(
             parent_id: dto.parent_id ?? null,
             description: dto.description ?? null,
           });
-        }).pipe(Effect.withSpan('CategoriesService.create'));
+        }).pipe(trace.span('create'));
 
       const update = (
         id: string,
@@ -185,7 +198,10 @@ export class CategoriesService extends Effect.Service<CategoriesService>()(
             targetName !== category.name ||
             targetParentId !== category.parent_id
           ) {
-            const nameExists = yield* repository.existsByName(targetName, targetParentId);
+            const nameExists = yield* repository.existsByName(
+              targetName,
+              targetParentId,
+            );
             if (nameExists) {
               return yield* Effect.fail(
                 new CategoryNameAlreadyExists({
@@ -211,7 +227,7 @@ export class CategoriesService extends Effect.Service<CategoriesService>()(
             repository.update(id, updateData),
             () => new CategoryNotFound({ id, messageKey: 'categories.notFound' }),
           );
-        }).pipe(Effect.withSpan('CategoriesService.update', { attributes: { id } }));
+        }).pipe(trace.span('update', { attributes: { id } }));
 
       const remove = (
         id: string,
@@ -222,16 +238,16 @@ export class CategoriesService extends Effect.Service<CategoriesService>()(
         Effect.gen(function* () {
           yield* getCategoryOrFail(id);
           yield* repository.delete(id);
-        }).pipe(Effect.withSpan('CategoriesService.delete', { attributes: { id } }));
+        }).pipe(trace.span('delete', { attributes: { id } }));
 
       const existsById = (id: string) =>
         repository.existsById(id).pipe(
-          Effect.withSpan('CategoriesService.existsById', { attributes: { id } }),
+          trace.span('existsById', { attributes: { id } }),
         );
 
       const findAllDescendantIds = (parentId: string) =>
         repository.findAllDescendantIds(parentId).pipe(
-          Effect.withSpan('CategoriesService.findAllDescendantIds', { attributes: { parentId } }),
+          trace.span('findAllDescendantIds', { attributes: { parentId } }),
         );
 
       return {

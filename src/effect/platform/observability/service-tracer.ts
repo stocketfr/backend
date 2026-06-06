@@ -3,7 +3,16 @@ import { CurrentRequestContext } from '../request-context';
 
 type AnyEffect = Effect.Effect<any, any, any>;
 
-export type TraceModule = 'auth' | 'users' | 'orders' | 'health' | 'superadmin';
+export type TraceModule =
+  | 'auth'
+  | 'categories'
+  | 'clients'
+  | 'health'
+  | 'locations'
+  | 'orders'
+  | 'superadmin'
+  | 'suppliers'
+  | 'users';
 export type TraceLayer = 'service';
 export type TraceEntityType = 'user' | 'order' | 'tenant';
 export type TraceOutcome =

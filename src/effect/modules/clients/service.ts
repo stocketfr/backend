@@ -8,6 +8,7 @@ import type {
 } from '@stocket/types/clients';
 import { toPaginatedResponse, type PaginationMeta } from '@stocket/types/common';
 import { fromNullOr, makeGetOrFail } from '../../platform/from-null-or';
+import { makeServiceTracer } from '../../platform/service-tracer';
 import { toClientResponseDto } from './clients.utils';
 import {
   ClientEmailAlreadyExists,
@@ -25,6 +26,11 @@ export class ClientsService extends Effect.Service<ClientsService>()(
   {
     effect: Effect.gen(function* () {
       const repository = yield* ClientsRepository;
+      const trace = makeServiceTracer({
+        serviceName: 'ClientsService',
+        module: 'clients',
+        layer: 'service',
+      });
 
       const getClientOrFail = makeGetOrFail(
         (id: string) => repository.findById(id),
@@ -39,7 +45,7 @@ export class ClientsService extends Effect.Service<ClientsService>()(
       > =>
         Effect.map(repository.findAllPaginated(query), (result) =>
           toPaginatedResponse(result, toClientResponseDto),
-        ).pipe(Effect.withSpan('ClientsService.findAllPaginated'));
+        ).pipe(trace.span('findAllPaginated'));
 
       const findOne = (
         id: string,
@@ -48,7 +54,7 @@ export class ClientsService extends Effect.Service<ClientsService>()(
         ClientNotFound | ClientsInfrastructureError | TenantNotResolved
       > =>
         Effect.map(getClientOrFail(id), toClientResponseDto).pipe(
-          Effect.withSpan('ClientsService.findOne', { attributes: { id } }),
+          trace.span('findOne', { attributes: { id } }),
         );
 
       const create = (
@@ -83,7 +89,7 @@ export class ClientsService extends Effect.Service<ClientsService>()(
           });
 
           return toClientResponseDto(client);
-        }).pipe(Effect.withSpan('ClientsService.create'));
+        }).pipe(trace.span('create'));
 
       const update = (
         id: string,
@@ -119,7 +125,7 @@ export class ClientsService extends Effect.Service<ClientsService>()(
             () => new ClientNotFound({ id, messageKey: 'clients.notFound' }),
           );
           return toClientResponseDto(updated);
-        }).pipe(Effect.withSpan('ClientsService.update', { attributes: { id } }));
+        }).pipe(trace.span('update', { attributes: { id } }));
 
       const remove = (
         id: string,
@@ -130,14 +136,21 @@ export class ClientsService extends Effect.Service<ClientsService>()(
         Effect.gen(function* () {
           yield* getClientOrFail(id);
           yield* repository.delete(id);
-        }).pipe(Effect.withSpan('ClientsService.delete', { attributes: { id } }));
+        }).pipe(trace.span('delete', { attributes: { id } }));
 
       const existsById = (id: string) =>
         repository.existsById(id).pipe(
-          Effect.withSpan('ClientsService.existsById', { attributes: { id } }),
+          trace.span('existsById', { attributes: { id } }),
         );
 
-      return { findAllPaginated, findOne, create, update, delete: remove, existsById };
+      return {
+        findAllPaginated,
+        findOne,
+        create,
+        update,
+        delete: remove,
+        existsById,
+      };
     }),
     dependencies: [ClientsRepository.Default],
   },

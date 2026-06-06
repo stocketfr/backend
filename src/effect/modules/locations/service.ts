@@ -8,6 +8,7 @@ import type {
   PaginatedLocationsResponseDto,
 } from '@stocket/types/locations';
 import { fromNullOr, makeGetOrFail } from '../../platform/from-null-or';
+import { makeServiceTracer } from '../../platform/service-tracer';
 import { toLocationResponseDto } from './locations.utils';
 import {
   LocationNotFound,
@@ -21,6 +22,11 @@ export class LocationsService extends Effect.Service<LocationsService>()(
   {
     effect: Effect.gen(function* () {
       const repository = yield* LocationsRepository;
+      const trace = makeServiceTracer({
+        serviceName: 'LocationsService',
+        module: 'locations',
+        layer: 'service',
+      });
 
       const getLocationOrFail = makeGetOrFail(
         (id: string) => repository.findById(id),
@@ -35,7 +41,7 @@ export class LocationsService extends Effect.Service<LocationsService>()(
       > =>
         Effect.map(repository.findAllPaginated(query), (result) =>
           toPaginatedResponse(result, toLocationResponseDto),
-        ).pipe(Effect.withSpan('LocationsService.findAllPaginated'));
+        ).pipe(trace.span('findAllPaginated'));
 
       const findAll = (): Effect.Effect<
         LocationResponseDto[],
@@ -43,7 +49,7 @@ export class LocationsService extends Effect.Service<LocationsService>()(
       > =>
         Effect.map(repository.findAll(), (locations) =>
           locations.map(toLocationResponseDto),
-        ).pipe(Effect.withSpan('LocationsService.findAll'));
+        ).pipe(trace.span('findAll'));
 
       const findOne = (
         id: string,
@@ -52,7 +58,7 @@ export class LocationsService extends Effect.Service<LocationsService>()(
         LocationNotFound | LocationsInfrastructureError | TenantNotResolved
       > =>
         Effect.map(getLocationOrFail(id), toLocationResponseDto).pipe(
-          Effect.withSpan('LocationsService.findOne', { attributes: { id } }),
+          trace.span('findOne', { attributes: { id } }),
         );
 
       const create = (
@@ -71,7 +77,7 @@ export class LocationsService extends Effect.Service<LocationsService>()(
             is_active: dto.is_active ?? true,
           }),
           toLocationResponseDto,
-        ).pipe(Effect.withSpan('LocationsService.create'));
+        ).pipe(trace.span('create'));
 
       const update = (
         id: string,
@@ -91,7 +97,7 @@ export class LocationsService extends Effect.Service<LocationsService>()(
             () => new LocationNotFound({ id, messageKey: 'locations.notFound' }),
           );
           return toLocationResponseDto(updated);
-        }).pipe(Effect.withSpan('LocationsService.update', { attributes: { id } }));
+        }).pipe(trace.span('update', { attributes: { id } }));
 
       const remove = (
         id: string,
@@ -102,11 +108,11 @@ export class LocationsService extends Effect.Service<LocationsService>()(
         Effect.gen(function* () {
           yield* getLocationOrFail(id);
           yield* repository.delete(id);
-        }).pipe(Effect.withSpan('LocationsService.delete', { attributes: { id } }));
+        }).pipe(trace.span('delete', { attributes: { id } }));
 
       const existsById = (id: string) =>
         repository.existsById(id).pipe(
-          Effect.withSpan('LocationsService.existsById', { attributes: { id } }),
+          trace.span('existsById', { attributes: { id } }),
         );
 
       return {
