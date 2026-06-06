@@ -7,12 +7,13 @@
  * tag here because the mocked service never reads it — `provideService`
  * is a no-op when the underlying effect doesn't require the tag.
  */
-import { HttpApp, HttpRouter } from '@effect/platform';
-import { type Context, Effect, Layer } from 'effect';
+import { type Effect } from 'effect';
 import type { Permission, Resource } from '@stocket/types/auth';
-import { AuditLogWriter, type AuditWriteParams } from '../../../platform/audit';
-import { respondCause } from '../../../platform/errors';
-import { PermissionProvider } from '../../../platform/permission-provider';
+import type { AuditWriteParams } from '../../../platform/audit';
+import {
+  makeRouterServiceLayer,
+  makeRouterTestHarness,
+} from '../../../testing/router-harness';
 import { usersRouter } from '../router';
 import { UsersService } from '../service';
 
@@ -34,33 +35,10 @@ export interface UsersRouterHarness {
 export const makeUsersRouterHarness = (
   opts: UsersRouterHarnessOptions,
 ): UsersRouterHarness => {
-  const permissions = opts.permissions ?? {};
-  const auditSpy = opts.auditLog ?? (() => Effect.void);
-
-  const permissionProviderLayer = Layer.succeed(PermissionProvider, {
-    getPermissionsForUser: () =>
-      Effect.succeed({ roleNames: ['Tester'], permissions }),
+  return makeRouterTestHarness({
+    router: usersRouter,
+    layers: [makeRouterServiceLayer(UsersService, opts.service)],
+    permissions: opts.permissions,
+    auditLog: opts.auditLog,
   });
-
-  const auditLayer = Layer.succeed(AuditLogWriter, { log: auditSpy });
-  const serviceLayer = Layer.succeed(
-    UsersService,
-    opts.service as unknown as Context.Tag.Service<typeof UsersService>,
-  );
-
-  const routerWithErrorHandling = usersRouter.pipe(
-    HttpRouter.catchAllCause(respondCause),
-  );
-  const app = Effect.runSync(HttpRouter.toHttpApp(routerWithErrorHandling));
-
-  const { handler } = HttpApp.toWebHandlerLayer(
-    app as never,
-    Layer.mergeAll(
-      serviceLayer,
-      auditLayer,
-      permissionProviderLayer,
-    ) as never,
-  );
-
-  return { handler, auditSpy };
 };

@@ -12,12 +12,13 @@
  * without it, `PermissionDenied` / `SessionUnauthorized` failures escape
  * as 500s instead of being mapped to 403 / 401.
  */
-import { HttpApp, HttpRouter } from '@effect/platform';
-import { type Context, Effect, Layer } from 'effect';
+import { type Effect } from 'effect';
 import type { Permission, Resource } from '@stocket/types/auth';
-import { AuditLogWriter, type AuditWriteParams } from '../../../platform/audit';
-import { respondCause } from '../../../platform/errors';
-import { PermissionProvider } from '../../../platform/permission-provider';
+import type { AuditWriteParams } from '../../../platform/audit';
+import {
+  makeRouterServiceLayer,
+  makeRouterTestHarness,
+} from '../../../testing/router-harness';
 import { rolesRouter } from '../router';
 import { RolesService } from '../service';
 
@@ -45,33 +46,10 @@ export interface RolesRouterHarness {
 export const makeRolesRouterHarness = (
   opts: RolesRouterHarnessOptions,
 ): RolesRouterHarness => {
-  const permissions = opts.permissions ?? {};
-  const auditSpy = opts.auditLog ?? (() => Effect.void);
-
-  const permissionProviderLayer = Layer.succeed(PermissionProvider, {
-    getPermissionsForUser: () =>
-      Effect.succeed({ roleNames: ['Tester'], permissions }),
+  return makeRouterTestHarness({
+    router: rolesRouter,
+    layers: [makeRouterServiceLayer(RolesService, opts.service)],
+    permissions: opts.permissions,
+    auditLog: opts.auditLog,
   });
-
-  const auditLayer = Layer.succeed(AuditLogWriter, { log: auditSpy });
-  const serviceLayer = Layer.succeed(
-    RolesService,
-    opts.service as unknown as Context.Tag.Service<typeof RolesService>,
-  );
-
-  const routerWithErrorHandling = rolesRouter.pipe(
-    HttpRouter.catchAllCause(respondCause),
-  );
-  const app = Effect.runSync(HttpRouter.toHttpApp(routerWithErrorHandling));
-
-  const { handler } = HttpApp.toWebHandlerLayer(
-    app as never,
-    Layer.mergeAll(
-      serviceLayer,
-      auditLayer,
-      permissionProviderLayer,
-    ) as never,
-  );
-
-  return { handler, auditSpy };
 };

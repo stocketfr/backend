@@ -7,38 +7,18 @@
  * `buildHttpApp` — without it, guard failures escape as 500 instead of
  * 401/403.
  */
-import { HttpApp, HttpRouter } from '@effect/platform';
-import { type Context, Effect, Layer } from 'effect';
+import { type Effect } from 'effect';
 import type { Permission, Resource } from '@stocket/types/auth';
-import { AuditLogWriter, type AuditWriteParams } from '../../../platform/audit';
-import { BetterAuth, type BetterAuthService } from '../../../platform/better-auth';
-import { respondCause } from '../../../platform/errors';
-import { PermissionProvider } from '../../../platform/permission-provider';
+import type { AuditWriteParams } from '../../../platform/audit';
+import {
+  type makeFakeSession,
+  makeRouterServiceLayer,
+  makeRouterTestHarness,
+} from '../../../testing/router-harness';
 import { locationsRouter } from '../router';
 import { LocationsService } from '../service';
 
-export const FAKE_USER_ID = '00000000-0000-4000-a000-000000000001';
-
-export const makeFakeSession = (userId = FAKE_USER_ID) => ({
-  user: {
-    id: userId,
-    name: 'Test User',
-    email: 'test@example.com',
-    image: null,
-    emailVerified: true,
-    createdAt: new Date('2026-01-01T00:00:00.000Z'),
-    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-    role: 'user' as const,
-  },
-  session: {
-    id: 'session-1',
-    userId,
-    token: 'tok',
-    createdAt: new Date('2026-01-01T00:00:00.000Z'),
-    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-    expiresAt: new Date('2026-12-01T00:00:00.000Z'),
-  },
-});
+export { FAKE_USER_ID, makeFakeSession } from '../../../testing/router-harness';
 
 export interface LocationsRouterHarnessOptions {
   readonly service: Record<string, unknown>;
@@ -60,46 +40,13 @@ export interface LocationsRouterHarness {
 export const makeLocationsRouterHarness = (
   opts: LocationsRouterHarnessOptions,
 ): LocationsRouterHarness => {
-  const permissions = opts.permissions ?? {};
-  const session =
-    opts.session === undefined ? makeFakeSession() : opts.session;
-  const auditSpy = opts.auditLog ?? (() => Effect.void);
-
-  const permissionProviderLayer = Layer.succeed(PermissionProvider, {
-    getPermissionsForUser: () =>
-      Effect.succeed({ roleNames: [], permissions }),
+  return makeRouterTestHarness({
+    router: locationsRouter,
+    layers: [makeRouterServiceLayer(LocationsService, opts.service)],
+    permissions: opts.permissions,
+    roleNames: [],
+    session: opts.session,
+    provideBetterAuth: true,
+    auditLog: opts.auditLog,
   });
-
-  const betterAuthLayer = Layer.succeed(BetterAuth, {
-    api: {
-      getSession: async () => session,
-    } as unknown as BetterAuthService['api'],
-    auth: {} as BetterAuthService['auth'],
-    handler: (() => {
-      throw new Error('handler not available in tests');
-    }) as unknown as BetterAuthService['handler'],
-  });
-
-  const auditLayer = Layer.succeed(AuditLogWriter, { log: auditSpy });
-  const serviceLayer = Layer.succeed(
-    LocationsService,
-    opts.service as unknown as Context.Tag.Service<typeof LocationsService>,
-  );
-
-  const routerWithErrorHandling = locationsRouter.pipe(
-    HttpRouter.catchAllCause(respondCause),
-  );
-  const app = Effect.runSync(HttpRouter.toHttpApp(routerWithErrorHandling));
-
-  const { handler } = HttpApp.toWebHandlerLayer(
-    app as never,
-    Layer.mergeAll(
-      serviceLayer,
-      auditLayer,
-      betterAuthLayer,
-      permissionProviderLayer,
-    ) as never,
-  );
-
-  return { handler, auditSpy };
 };
