@@ -9,8 +9,8 @@ import {
   UpdateLocationSchema,
 } from '@stocket/types/locations';
 import { requirePermission } from '../../platform/authorization';
-import { respondJson, respondJsonOk } from '../../platform/errors';
-import { AuditLogWriter } from '../../platform/audit';
+import { respondJson } from '../../platform/errors';
+import { respondAuditedMutation } from '../../platform/audited-mutation';
 import { makeMessageResponse } from '../../platform/messages';
 import { LocationsService } from './service';
 
@@ -49,14 +49,12 @@ export const locationsRouter = HttpRouter.empty.pipe(
       yield* requirePermission(Resource.LOCATIONS, Permission.WRITE);
       const dto = yield* HttpServerRequest.schemaBodyJson(CreateLocationSchema);
       const locationsService = yield* LocationsService;
-      const result = yield* locationsService.create(dto);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
+      return yield* respondAuditedMutation(locationsService.create(dto), {
         action: AuditAction.CREATE,
         entityType: AuditEntityType.LOCATION,
-        entityId: result.id,
+        entityId: (location) => location.id,
+        responseOptions: { status: 201 },
       });
-      return yield* respondJsonOk(result, { status: 201 });
     }),
   ),
   HttpRouter.put(
@@ -66,14 +64,11 @@ export const locationsRouter = HttpRouter.empty.pipe(
       const { id } = yield* HttpRouter.schemaPathParams(LocationPathParams);
       const dto = yield* HttpServerRequest.schemaBodyJson(UpdateLocationSchema);
       const locationsService = yield* LocationsService;
-      const result = yield* locationsService.update(id, dto);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
+      return yield* respondAuditedMutation(locationsService.update(id, dto), {
         action: AuditAction.UPDATE,
         entityType: AuditEntityType.LOCATION,
         entityId: id,
       });
-      return yield* respondJsonOk(result);
     }),
   ),
   HttpRouter.del(
@@ -82,16 +77,12 @@ export const locationsRouter = HttpRouter.empty.pipe(
       yield* requirePermission(Resource.LOCATIONS, Permission.WRITE);
       const { id } = yield* HttpRouter.schemaPathParams(LocationPathParams);
       const locationsService = yield* LocationsService;
-      yield* locationsService.delete(id);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
+      return yield* respondAuditedMutation(locationsService.delete(id), {
         action: AuditAction.DELETE,
         entityType: AuditEntityType.LOCATION,
         entityId: id,
+        mapResponse: () => makeMessageResponse('locations.deleted'),
       });
-      return yield* respondJson(
-        Effect.succeed(makeMessageResponse('locations.deleted')),
-      );
     }),
   ),
   HttpRouter.prefixAll('/locations'),

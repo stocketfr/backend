@@ -9,8 +9,8 @@ import {
   UpdateClientSchema,
 } from '@stocket/types/clients';
 import { requirePermission } from '../../platform/authorization';
-import { respondJson, respondJsonOk } from '../../platform/errors';
-import { AuditLogWriter } from '../../platform/audit';
+import { respondJson } from '../../platform/errors';
+import { respondAuditedMutation } from '../../platform/audited-mutation';
 import { makeMessageResponse } from '../../platform/messages';
 import { ClientsService } from './service';
 
@@ -41,14 +41,12 @@ export const clientsRouter = HttpRouter.empty.pipe(
       yield* requirePermission(Resource.CLIENTS, Permission.WRITE);
       const dto = yield* HttpServerRequest.schemaBodyJson(CreateClientSchema);
       const clientsService = yield* ClientsService;
-      const result = yield* clientsService.create(dto);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
+      return yield* respondAuditedMutation(clientsService.create(dto), {
         action: AuditAction.CREATE,
         entityType: AuditEntityType.CLIENT,
-        entityId: result.id,
+        entityId: (client) => client.id,
+        responseOptions: { status: 201 },
       });
-      return yield* respondJsonOk(result, { status: 201 });
     }),
   ),
   HttpRouter.put(
@@ -58,14 +56,11 @@ export const clientsRouter = HttpRouter.empty.pipe(
       const { id } = yield* HttpRouter.schemaPathParams(ClientPathParams);
       const dto = yield* HttpServerRequest.schemaBodyJson(UpdateClientSchema);
       const clientsService = yield* ClientsService;
-      const result = yield* clientsService.update(id, dto);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
+      return yield* respondAuditedMutation(clientsService.update(id, dto), {
         action: AuditAction.UPDATE,
         entityType: AuditEntityType.CLIENT,
         entityId: id,
       });
-      return yield* respondJsonOk(result);
     }),
   ),
   HttpRouter.del(
@@ -74,16 +69,12 @@ export const clientsRouter = HttpRouter.empty.pipe(
       yield* requirePermission(Resource.CLIENTS, Permission.WRITE);
       const { id } = yield* HttpRouter.schemaPathParams(ClientPathParams);
       const clientsService = yield* ClientsService;
-      yield* clientsService.delete(id);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
+      return yield* respondAuditedMutation(clientsService.delete(id), {
         action: AuditAction.DELETE,
         entityType: AuditEntityType.CLIENT,
         entityId: id,
+        mapResponse: () => makeMessageResponse('clients.deleted'),
       });
-      return yield* respondJson(
-        Effect.succeed(makeMessageResponse('clients.deleted')),
-      );
     }),
   ),
   HttpRouter.prefixAll('/clients'),

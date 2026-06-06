@@ -3,8 +3,8 @@ import { Effect, Schema } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
 import { requirePermission } from '../../platform/authorization';
-import { respondJson, respondJsonOk } from '../../platform/errors';
-import { AuditLogWriter } from '../../platform/audit';
+import { respondJson } from '../../platform/errors';
+import { respondAuditedMutation } from '../../platform/audited-mutation';
 import { makeMessageResponse } from '../../platform/messages';
 import {
   CategoryIdSchema,
@@ -30,14 +30,12 @@ export const categoriesRouter = HttpRouter.empty.pipe(
       yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
       const dto = yield* HttpServerRequest.schemaBodyJson(CreateCategorySchema);
       const categoriesService = yield* CategoriesService;
-      const result = yield* categoriesService.create(dto);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
+      return yield* respondAuditedMutation(categoriesService.create(dto), {
         action: AuditAction.CREATE,
         entityType: AuditEntityType.CATEGORY,
-        entityId: result.id,
+        entityId: (category) => category.id,
+        responseOptions: { status: 201 },
       });
-      return yield* respondJsonOk(result, { status: 201 });
     }),
   ),
   HttpRouter.put(
@@ -47,14 +45,11 @@ export const categoriesRouter = HttpRouter.empty.pipe(
       const { id } = yield* HttpRouter.schemaPathParams(CategoryPathParams);
       const dto = yield* HttpServerRequest.schemaBodyJson(UpdateCategorySchema);
       const categoriesService = yield* CategoriesService;
-      const result = yield* categoriesService.update(id, dto);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
+      return yield* respondAuditedMutation(categoriesService.update(id, dto), {
         action: AuditAction.UPDATE,
         entityType: AuditEntityType.CATEGORY,
         entityId: id,
       });
-      return yield* respondJsonOk(result);
     }),
   ),
   HttpRouter.del(
@@ -63,16 +58,12 @@ export const categoriesRouter = HttpRouter.empty.pipe(
       yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
       const { id } = yield* HttpRouter.schemaPathParams(CategoryPathParams);
       const categoriesService = yield* CategoriesService;
-      yield* categoriesService.delete(id);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
+      return yield* respondAuditedMutation(categoriesService.delete(id), {
         action: AuditAction.DELETE,
         entityType: AuditEntityType.CATEGORY,
         entityId: id,
+        mapResponse: () => makeMessageResponse('categories.deleted'),
       });
-      return yield* respondJson(
-        Effect.succeed(makeMessageResponse('categories.deleted')),
-      );
     }),
   ),
   HttpRouter.prefixAll('/categories'),

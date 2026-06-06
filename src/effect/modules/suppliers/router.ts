@@ -9,8 +9,8 @@ import {
   UpdateSupplierSchema,
 } from '@stocket/types/suppliers';
 import { requirePermission } from '../../platform/authorization';
-import { respondJson, respondJsonOk } from '../../platform/errors';
-import { AuditLogWriter } from '../../platform/audit';
+import { respondJson } from '../../platform/errors';
+import { respondAuditedMutation } from '../../platform/audited-mutation';
 import { makeMessageResponse } from '../../platform/messages';
 import { SuppliersService } from './service';
 
@@ -41,14 +41,12 @@ export const suppliersRouter = HttpRouter.empty.pipe(
       yield* requirePermission(Resource.SUPPLIERS, Permission.WRITE);
       const dto = yield* HttpServerRequest.schemaBodyJson(CreateSupplierSchema);
       const suppliersService = yield* SuppliersService;
-      const result = yield* suppliersService.create(dto);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
+      return yield* respondAuditedMutation(suppliersService.create(dto), {
         action: AuditAction.CREATE,
         entityType: AuditEntityType.SUPPLIER,
-        entityId: result.id,
+        entityId: (supplier) => supplier.id,
+        responseOptions: { status: 201 },
       });
-      return yield* respondJsonOk(result, { status: 201 });
     }),
   ),
   HttpRouter.put(
@@ -58,14 +56,11 @@ export const suppliersRouter = HttpRouter.empty.pipe(
       const { id } = yield* HttpRouter.schemaPathParams(SupplierPathParams);
       const dto = yield* HttpServerRequest.schemaBodyJson(UpdateSupplierSchema);
       const suppliersService = yield* SuppliersService;
-      const result = yield* suppliersService.update(id, dto);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
+      return yield* respondAuditedMutation(suppliersService.update(id, dto), {
         action: AuditAction.UPDATE,
         entityType: AuditEntityType.SUPPLIER,
         entityId: id,
       });
-      return yield* respondJsonOk(result);
     }),
   ),
   HttpRouter.del(
@@ -74,16 +69,12 @@ export const suppliersRouter = HttpRouter.empty.pipe(
       yield* requirePermission(Resource.SUPPLIERS, Permission.WRITE);
       const { id } = yield* HttpRouter.schemaPathParams(SupplierPathParams);
       const suppliersService = yield* SuppliersService;
-      yield* suppliersService.delete(id);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
+      return yield* respondAuditedMutation(suppliersService.delete(id), {
         action: AuditAction.DELETE,
         entityType: AuditEntityType.SUPPLIER,
         entityId: id,
+        mapResponse: () => makeMessageResponse('suppliers.deleted'),
       });
-      return yield* respondJson(
-        Effect.succeed(makeMessageResponse('suppliers.deleted')),
-      );
     }),
   ),
   HttpRouter.prefixAll('/suppliers'),
