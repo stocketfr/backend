@@ -34,6 +34,12 @@ ENV PORT=4000
 
 COPY --from=build /tmp/stocket-api ./
 
+# Run as the unprivileged node user shipped with the base image. The photos
+# module writes under ./uploads, so that directory must exist and be owned
+# by node before dropping privileges.
+RUN mkdir -p uploads && chown -R node:node uploads
+USER node
+
 EXPOSE 4000
 
 # Node-based healthcheck so we don't have to add curl. Probes the liveness
