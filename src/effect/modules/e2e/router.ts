@@ -30,6 +30,13 @@ const requireE2eSeedEnabled = Effect.gen(function* () {
 
   const secret = process.env.E2E_SEED_SECRET;
   if (!secret) {
+    // Fail closed: a missing secret must not leave the seed endpoint open on
+    // shared environments such as staging.
+    if (process.env.NODE_ENV !== 'development') {
+      return yield* Effect.fail(
+        new E2eSeedDisabled({ messageKey: 'e2e.seedDisabled' }),
+      );
+    }
     return;
   }
 
