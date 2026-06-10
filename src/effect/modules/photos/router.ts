@@ -103,7 +103,7 @@ export const photosRouter = HttpRouter.empty.pipe(
         ),
         HttpServerResponse.setHeader(
           'Cache-Control',
-          'public, max-age=86400',
+          'private, max-age=86400',
         ),
       );
     }).pipe(Effect.catchAllCause(respondCause)),
