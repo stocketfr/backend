@@ -191,19 +191,23 @@ export const members = pgTable(
   ],
 );
 
-export const categories = pgTable('categories', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  tenant_id: uuid('tenant_id').default(DEFAULT_TENANT_ID).notNull(),
-  name: varchar('name', { length: 100 }).notNull(),
-  parent_id: uuid('parent_id'),
-  description: varchar('description', { length: 500 }),
-  created_at: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updated_at: timestamp('updated_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const categories = pgTable(
+  'categories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenant_id: uuid('tenant_id').default(DEFAULT_TENANT_ID).notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    parent_id: uuid('parent_id'),
+    description: varchar('description', { length: 500 }),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index('categories_tenant_id_idx').on(table.tenant_id)],
+);
 
 export const roles = pgTable(
   'roles',
@@ -265,22 +269,26 @@ export const userRoles = pgTable(
   ],
 );
 
-export const locations = pgTable('locations', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  tenant_id: uuid('tenant_id').default(DEFAULT_TENANT_ID).notNull(),
-  name: varchar('name').notNull(),
-  type: locationTypeEnum('type').notNull(),
-  address: text('address').notNull().default(''),
-  contact_person: varchar('contact_person').notNull().default(''),
-  phone: varchar('phone').notNull().default(''),
-  is_active: boolean('is_active').notNull().default(true),
-  created_at: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updated_at: timestamp('updated_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const locations = pgTable(
+  'locations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenant_id: uuid('tenant_id').default(DEFAULT_TENANT_ID).notNull(),
+    name: varchar('name').notNull(),
+    type: locationTypeEnum('type').notNull(),
+    address: text('address').notNull().default(''),
+    contact_person: varchar('contact_person').notNull().default(''),
+    phone: varchar('phone').notNull().default(''),
+    is_active: boolean('is_active').notNull().default(true),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index('locations_tenant_id_idx').on(table.tenant_id)],
+);
 
 export const areas = pgTable(
   'areas',
@@ -303,30 +311,35 @@ export const areas = pgTable(
       .defaultNow(),
   },
   (table) => [
+    index('areas_tenant_id_idx').on(table.tenant_id),
     index('areas_location_id_idx').on(table.location_id),
     index('areas_parent_id_idx').on(table.parent_id),
     index('areas_location_parent_idx').on(table.location_id, table.parent_id),
   ],
 );
 
-export const suppliers = pgTable('suppliers', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  tenant_id: uuid('tenant_id').default(DEFAULT_TENANT_ID).notNull(),
-  name: varchar('name').notNull(),
-  contact_person: varchar('contact_person'),
-  email: varchar('email'),
-  phone: varchar('phone'),
-  address: text('address'),
-  website: varchar('website'),
-  notes: text('notes'),
-  is_active: boolean('is_active').notNull().default(true),
-  created_at: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updated_at: timestamp('updated_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const suppliers = pgTable(
+  'suppliers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenant_id: uuid('tenant_id').default(DEFAULT_TENANT_ID).notNull(),
+    name: varchar('name').notNull(),
+    contact_person: varchar('contact_person'),
+    email: varchar('email'),
+    phone: varchar('phone'),
+    address: text('address'),
+    website: varchar('website'),
+    notes: text('notes'),
+    is_active: boolean('is_active').notNull().default(true),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index('suppliers_tenant_id_idx').on(table.tenant_id)],
+);
 
 export const products = pgTable(
   'products',
