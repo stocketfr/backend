@@ -33,7 +33,7 @@ const makeMockRepository = (
   findById: vi.fn().mockReturnValue(Effect.succeed(makeSupplierEntity())),
   existsById: vi.fn().mockReturnValue(Effect.succeed(true)),
   create: vi.fn().mockReturnValue(Effect.succeed(makeSupplierEntity())),
-  update: vi.fn().mockReturnValue(Effect.succeed(1)),
+  update: vi.fn().mockReturnValue(Effect.succeed(makeSupplierEntity())),
   delete: vi.fn().mockReturnValue(Effect.void),
   ...overrides,
 });

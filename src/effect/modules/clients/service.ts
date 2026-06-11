@@ -7,7 +7,7 @@ import type {
   UpdateClientSchema,
 } from '@stocket/types/clients';
 import { toPaginatedResponse, type PaginationMeta } from '@stocket/types/common';
-import { makeGetOrFail } from '../../platform/from-null-or';
+import { fromNullOr, makeGetOrFail } from '../../platform/from-null-or';
 import { toClientResponseDto } from './clients.utils';
 import {
   ClientEmailAlreadyExists,
@@ -114,9 +114,10 @@ export class ClientsService extends Effect.Service<ClientsService>()(
             }
           }
 
-          yield* repository.update(id, dto);
-
-          const updated = yield* getClientOrFail(id);
+          const updated = yield* fromNullOr(
+            repository.update(id, dto),
+            () => new ClientNotFound({ id, messageKey: 'clients.notFound' }),
+          );
           return toClientResponseDto(updated);
         }).pipe(Effect.withSpan('ClientsService.update', { attributes: { id } }));
 

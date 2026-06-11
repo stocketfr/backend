@@ -6,7 +6,8 @@ import type {
   BanUserDto,
 } from '@stocket/types/users';
 import { makeTryAsync } from '../../platform/try-async';
-import { BetterAuth } from '../../platform/better-auth';
+import { BetterAuth, BetterAuthHeaders } from '../../platform/better-auth';
+import { type LogPayload } from '../../platform/messages';
 import { makeServiceTracer } from '../../platform/service-tracer';
 import {
   requireRequestTenantId,
@@ -15,6 +16,7 @@ import {
 import { RolesService } from '../roles/service';
 import { UserNotFound, UsersInfrastructureError } from './users.errors';
 import { UsersRepository } from './repository';
+import { welcomeRedirectUrl } from './users.utils';
 
 const tryAsync = makeTryAsync(
   (action, cause) =>
@@ -40,6 +42,10 @@ interface BetterAuthCreateUserBody {
   readonly email: string;
   readonly name: string;
   readonly password: string;
+  // Admin-created users skip self-serve verification: clicking the emailed
+  // set-password link proves mailbox ownership, and without this flag
+  // `requireEmailVerification` would lock them out of sign-in.
+  readonly data?: { readonly emailVerified: boolean };
 }
 
 interface BetterAuthCreateUserResponse {
@@ -173,6 +179,32 @@ export class UsersService extends Effect.Service<UsersService>()(
         }),
       );
 
+      // Welcome emails reuse the password-reset machinery: the `flow=welcome`
+      // marker in `redirectTo` is what flips the template. Failures only log —
+      // user creation must never roll back because an email could not be sent.
+      const requestWelcomeEmail = (email: string) =>
+        Effect.gen(function* () {
+          const headers = yield* BetterAuthHeaders;
+          const redirectTo = welcomeRedirectUrl(headers.get('origin'));
+          yield* Effect.tryPromise(() =>
+            betterAuth.api.requestPasswordReset({
+              body: { email, redirectTo },
+              headers,
+              // better-auth only forwards ctx.request to the sendResetPassword
+              // hook; without it the email loses the Accept-Language locale.
+              request: new Request(redirectTo, { headers }),
+            }),
+          );
+        }).pipe(
+          Effect.catchAll((cause) =>
+            Effect.logError({
+              messageKey: 'email.welcomeRequestFailed',
+              to: email,
+              cause,
+            } satisfies LogPayload),
+          ),
+        );
+
       const createUser = trace.traced('createUser', (dto: CreateUserDto) =>
           Effect.gen(function* () {
             const tenantId = yield* requireRequestTenantId;
@@ -186,6 +218,7 @@ export class UsersService extends Effect.Service<UsersService>()(
                     email: dto.email,
                     name: dto.name,
                     password: dto.password,
+                    data: { emailVerified: true },
                   } satisfies BetterAuthCreateUserBody,
                 }) as Promise<BetterAuthCreateUserResponse>,
             );
@@ -211,6 +244,8 @@ export class UsersService extends Effect.Service<UsersService>()(
               ).pipe(Effect.ignore),
             ),
           );
+
+          yield* Effect.forkDaemon(requestWelcomeEmail(dto.email));
 
           const roleEntities = yield* usersRepository.findUserRoles(
             userId,

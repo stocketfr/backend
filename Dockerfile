@@ -20,7 +20,7 @@ COPY drizzle ./drizzle
 COPY drizzle.config.ts tsconfig.json tsconfig.build.json ./
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm --filter @stocket/types barrels \
-  && pnpm --filter @stocket/types build \
+  && pnpm --filter @stocket/types --filter @stocket/emails build \
   && pnpm run build \
   && rm -rf /tmp/stocket-api \
   && pnpm deploy --prod --legacy --filter=@stocket/api /tmp/stocket-api \

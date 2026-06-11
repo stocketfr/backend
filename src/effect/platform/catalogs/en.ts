@@ -14,6 +14,8 @@ export const enCatalog = {
   'auditLogs.repositoryFailed': 'Audit log operation failed.',
   'auth.permissionDenied': 'Insufficient permissions.',
   'auth.unauthorized': 'Unauthorized.',
+  'email.sendFailed': 'Email delivery failed.',
+  'email.welcomeRequestFailed': 'Failed to request the welcome email.',
   'tenant.membershipRejected':
     'The active tenant is not available for this user.',
   'tenant.notResolved': 'No active tenant could be resolved for this request.',

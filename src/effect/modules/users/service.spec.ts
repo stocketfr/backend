@@ -1,5 +1,5 @@
 import { Effect, Layer } from 'effect';
-import { BetterAuth } from '../../platform/better-auth';
+import { BetterAuth, BetterAuthHeaders } from '../../platform/better-auth';
 import { CurrentRequestContext } from '../../platform/request-context';
 import { RolesService } from '../roles/service';
 import { UsersRepository } from './repository';
@@ -98,8 +98,18 @@ describe('Effect UsersService', () => {
   const run = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect);
   const fail = <A, E>(effect: Effect.Effect<A, E>) =>
     Effect.runPromise(Effect.flip(effect));
-  const withTenantContext = <A, E>(effect: Effect.Effect<A, E>) =>
-    effect.pipe(Effect.provideService(CurrentRequestContext, requestContext));
+  const requestHeaders = new Headers({ origin: 'https://app.stocket.test' });
+  const withTenantContext = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    effect.pipe(
+      Effect.provideService(CurrentRequestContext, requestContext),
+      Effect.provideService(BetterAuthHeaders, requestHeaders),
+    );
+  const waitForCall = async (spy: ReturnType<typeof vi.fn>) => {
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      if (spy.mock.calls.length > 0) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  };
 
   it('creates a tenant member and keeps Better Auth role at the default user level', async () => {
     const createdUser = {
@@ -111,6 +121,7 @@ describe('Effect UsersService', () => {
     const betterAuth = {
       api: {
         createUser: vi.fn().mockResolvedValue({ user: createdUser }),
+        requestPasswordReset: vi.fn().mockResolvedValue({ status: true }),
       },
     };
     const usersRepository = makeBaseRepository();
@@ -142,6 +153,7 @@ describe('Effect UsersService', () => {
         email: 'new-admin@example.com',
         name: 'New Admin',
         password: 'password123',
+        data: { emailVerified: true },
       },
     });
     expect(usersRepository.createTenantMembership).toHaveBeenCalledWith(
@@ -154,6 +166,53 @@ describe('Effect UsersService', () => {
       tenantId,
     );
     expect(result.roles).toEqual(['Admin']);
+
+    await waitForCall(betterAuth.api.requestPasswordReset);
+    expect(betterAuth.api.requestPasswordReset).toHaveBeenCalledWith({
+      body: {
+        email: 'new-admin@example.com',
+        redirectTo: 'https://app.stocket.test/reset-password?flow=welcome',
+      },
+      headers: requestHeaders,
+      request: expect.any(Request),
+    });
+  });
+
+  it('still creates the user when the welcome email request fails', async () => {
+    const betterAuth = {
+      api: {
+        createUser: vi.fn().mockResolvedValue({
+          user: { ...betterAuthUser, id: 'user-3' },
+        }),
+        requestPasswordReset: vi
+          .fn()
+          .mockRejectedValue(new Error('resend is down')),
+      },
+    };
+    const usersRepository = makeBaseRepository();
+    const rolesService = {
+      clearCacheForUser: vi.fn().mockReturnValue(Effect.void),
+    };
+    const service = await makeService({
+      betterAuth,
+      usersRepository,
+      rolesService,
+    });
+
+    const result = await run(
+      withTenantContext(
+        service.createUser({
+          name: 'New User',
+          email: 'new-user@example.com',
+          password: 'password123',
+          roles: ['role-1'],
+        }),
+      ),
+    );
+
+    expect(result.id).toBe('user-3');
+    await waitForCall(betterAuth.api.requestPasswordReset);
+    expect(usersRepository.deleteBetterAuthUser).not.toHaveBeenCalled();
   });
 
   it('deletes the auth user directly when local tenant setup fails after create', async () => {

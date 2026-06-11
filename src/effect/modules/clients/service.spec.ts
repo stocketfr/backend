@@ -42,7 +42,7 @@ const makeMockRepository = (
   findByEmail: vi.fn().mockReturnValue(Effect.succeed(null)),
   existsById: vi.fn().mockReturnValue(Effect.succeed(true)),
   create: vi.fn().mockReturnValue(Effect.succeed(makeClientEntity())),
-  update: vi.fn().mockReturnValue(Effect.succeed(1)),
+  update: vi.fn().mockReturnValue(Effect.succeed(makeClientEntity())),
   delete: vi.fn().mockReturnValue(Effect.void),
   ...overrides,
 });

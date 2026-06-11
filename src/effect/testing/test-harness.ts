@@ -28,6 +28,7 @@ import {
   truncateAll,
 } from '../test/integration-layer';
 import { makeBetterAuthTestLayer } from './better-auth-test';
+import { makeEmailTestLayer } from './email-test';
 
 export { makeTestLayer, createChainableMock } from '../test/utils';
 export {
@@ -82,6 +83,7 @@ export const testPlatformLayer = Layer.suspend(() =>
     makeTestDrizzleLayer(),
     makeBetterAuthTestLayer(),
     betterAuthHeadersLayer,
+    makeEmailTestLayer().layer,
   ),
 );
 

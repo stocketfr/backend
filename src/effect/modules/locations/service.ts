@@ -7,7 +7,7 @@ import type {
   LocationResponseDto,
   PaginatedLocationsResponseDto,
 } from '@stocket/types/locations';
-import { makeGetOrFail } from '../../platform/from-null-or';
+import { fromNullOr, makeGetOrFail } from '../../platform/from-null-or';
 import { toLocationResponseDto } from './locations.utils';
 import {
   LocationNotFound,
@@ -81,15 +81,15 @@ export class LocationsService extends Effect.Service<LocationsService>()(
         LocationNotFound | LocationsInfrastructureError | TenantNotResolved
       > =>
         Effect.gen(function* () {
-          const location = yield* getLocationOrFail(id);
-
           if (Object.keys(dto).length === 0) {
+            const location = yield* getLocationOrFail(id);
             return toLocationResponseDto(location);
           }
 
-          yield* repository.update(id, dto);
-
-          const updated = yield* getLocationOrFail(id);
+          const updated = yield* fromNullOr(
+            repository.update(id, dto),
+            () => new LocationNotFound({ id, messageKey: 'locations.notFound' }),
+          );
           return toLocationResponseDto(updated);
         }).pipe(Effect.withSpan('LocationsService.update', { attributes: { id } }));
 

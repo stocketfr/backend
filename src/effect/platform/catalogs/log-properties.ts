@@ -13,6 +13,7 @@ export interface LogProperties {
   readonly path: string;
   readonly requestId: string;
   readonly statusCode: number;
+  readonly template: string;
   readonly tenantId: string;
   readonly to: string;
   readonly userAgent: string;

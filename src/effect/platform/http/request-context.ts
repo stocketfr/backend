@@ -19,8 +19,9 @@ export const CurrentRequestContext = Context.GenericTag<RequestContext>(
   '@stocket/effect/platform/CurrentRequestContext',
 );
 
-export const makeRequestContext = Effect.gen(function* () {
-  const request = yield* HttpServerRequest.HttpServerRequest;
+const fromRequest = (
+  request: HttpServerRequest.HttpServerRequest,
+): RequestContext => {
   const headerValue = Headers.get(request.headers, 'x-request-id');
 
   const requestId =
@@ -34,16 +35,19 @@ export const makeRequestContext = Effect.gen(function* () {
     Option.getOrNull(Headers.get(request.headers, 'accept-language')),
   );
 
-  const requestContext: RequestContext = {
+  return {
     requestId,
     path,
     method: request.method,
     ip: Option.getOrNull(request.remoteAddress),
     locale,
   };
+};
 
-  return requestContext;
-});
+export const makeRequestContext = Effect.map(
+  HttpServerRequest.HttpServerRequest,
+  fromRequest,
+);
 
 export const getRequestContext = Effect.flatMap(
   Effect.serviceOption(CurrentRequestContext),
@@ -52,3 +56,22 @@ export const getRequestContext = Effect.flatMap(
     onSome: Effect.succeed,
   }),
 );
+
+/**
+ * Like `getRequestContext`, but resolves to `Option.none` instead of dying
+ * when neither a `CurrentRequestContext` nor an `HttpServerRequest` is in
+ * scope — for callers (background fibers, scripts) that merely prefer
+ * request-derived data when it exists.
+ */
+export const getOptionalRequestContext: Effect.Effect<
+  Option.Option<RequestContext>
+> = Effect.gen(function* () {
+  const current = yield* Effect.serviceOption(CurrentRequestContext);
+  if (Option.isSome(current)) {
+    return current;
+  }
+  const request = yield* Effect.serviceOption(
+    HttpServerRequest.HttpServerRequest,
+  );
+  return Option.map(request, fromRequest);
+});

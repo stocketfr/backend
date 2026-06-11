@@ -2,19 +2,16 @@ import { betterAuth } from 'better-auth';
 import { admin, organization } from 'better-auth/plugins';
 import { Pool } from 'pg';
 import { getCrossSubDomainCookieConfig } from './auth-cookie-domain';
+import { makeAuthEmailHooks } from './email/auth-emails';
+import { defaultMailer } from './email/default-mailer';
 import {
   getSSLConfig,
   getPoolMax,
   IDLE_TIMEOUT_MS,
   getDbConnectionParams,
 } from './config/db-connection.utils';
+import { parseOrigins } from './config/frontend-url.utils';
 import { isPlatformHost, normalizeHost } from './effect/platform/host';
-function parseOrigins(value: string | undefined): string[] {
-  return (value ?? '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter((origin) => origin.length > 0);
-}
 
 const normalizeForwardedProto = (proto: string | null | undefined) => {
   const normalizedProto = proto?.split(',')[0]?.trim().toLowerCase() || 'https';
@@ -214,6 +211,8 @@ const organizationSchema = {
 // snake_case (Drizzle schema, hand-written SQL in this file and in repositories,
 // and the committed migrations). Map every camelCase field Better Auth knows
 // about to its snake_case column so a single naming convention holds end-to-end.
+const authEmails = makeAuthEmailHooks(defaultMailer);
+
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,
@@ -221,6 +220,15 @@ export const auth = betterAuth({
   database: pool,
   emailAndPassword: {
     enabled: true,
+    requireEmailVerification: true,
+    sendResetPassword: authEmails.sendResetPassword,
+    revokeSessionsOnPasswordReset: true,
+  },
+  emailVerification: {
+    sendVerificationEmail: authEmails.sendVerificationEmail,
+    sendOnSignUp: true,
+    autoSignInAfterVerification: false,
+    expiresIn: 60 * 60 * 24,
   },
   ...coreAuthSchema,
   rateLimit: {
@@ -230,7 +238,9 @@ export const auth = betterAuth({
     customRules: {
       '/sign-in/email': { window: 60, max: 10 },
       '/sign-up/email': { window: 60, max: 5 },
-      '/forget-password': { window: 60, max: 5 },
+      '/request-password-reset': { window: 60, max: 5 },
+      '/send-verification-email': { window: 60, max: 3 },
+      '/reset-password': { window: 60, max: 10 },
     },
   },
   plugins: [

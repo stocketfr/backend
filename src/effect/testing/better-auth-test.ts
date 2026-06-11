@@ -118,6 +118,10 @@ export function makeBetterAuthApi(
     unbanUser: async (_args: UserActionArgs) => undefined,
     removeUser: async (_args: UserActionArgs) => undefined,
     revokeUserSessions: async (_args: UserActionArgs) => undefined,
+    requestPasswordReset: async (_args: {
+      body: { email: string; redirectTo?: string };
+      headers?: globalThis.Headers;
+    }) => ({ status: true }),
   };
 
   return {

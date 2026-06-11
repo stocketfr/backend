@@ -207,9 +207,10 @@ export class CategoriesService extends Effect.Service<CategoriesService>()(
             return category;
           }
 
-          yield* repository.update(id, updateData);
-
-          return yield* getCategoryOrFail(id);
+          return yield* fromNullOr(
+            repository.update(id, updateData),
+            () => new CategoryNotFound({ id, messageKey: 'categories.notFound' }),
+          );
         }).pipe(Effect.withSpan('CategoriesService.update', { attributes: { id } }));
 
       const remove = (

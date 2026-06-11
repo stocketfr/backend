@@ -8,6 +8,36 @@ import {
   IDLE_TIMEOUT_MS,
 } from '../config/db-connection.utils';
 
+const usage = `Seed a platform superadmin (better-auth user + super_admins row).
+
+Usage:
+  # 1. Hash the password (read from stdin)
+  printf '%s' 'your-password' | pnpm --filter @stocket/api superadmin:hash-password
+
+  # 2. Seed the account
+  SUPERADMIN_EMAIL=<email> \\
+  SUPERADMIN_NAME='<display name>' \\
+  SUPERADMIN_PASSWORD_HASH='<hash from step 1>' \\
+  pnpm --filter @stocket/api superadmin:seed
+
+Options:
+  --hash-password   Read a password from stdin, print its better-auth hash, and exit.
+  --help, -h        Show this message.
+
+Environment variables (seed mode):
+  SUPERADMIN_EMAIL                Required. Login email for the superadmin.
+  SUPERADMIN_NAME                 Required. Display name (used only when creating a new user).
+  SUPERADMIN_PASSWORD_HASH        Required. Hash produced by --hash-password.
+  SUPERADMIN_ROTATE_PASSWORD      "true" to overwrite the password of an existing credential account.
+  SUPERADMIN_ALLOW_TENANT_MEMBER  "true" to promote a user that already belongs to a tenant.
+                                  Refused by default: superadmins are platform-only accounts.
+
+Notes:
+  - Connects using the same DATABASE_URL / PG* settings as the API server.
+  - Idempotent: reruns keep the existing user, credential account, and super_admins row.
+  - Sign in on the platform host (localhost:3000 in dev) and open /platform.
+`;
+
 interface BetterAuthUserRow {
   readonly id: string;
   readonly email: string | null;
@@ -19,7 +49,7 @@ const normalizeEmail = (email: string) => email.trim().toLowerCase();
 function readRequiredEnv(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) {
-    throw new Error(`${name} is required`);
+    throw new Error(`${name} is required. Run with --help for usage.`);
   }
   return value;
 }
@@ -152,9 +182,9 @@ async function seedSuperAdmin(): Promise<void> {
             created_at,
             updated_at
           )
-          VALUES ($1, $2, 'credential', $2, $3, NOW(), NOW())
+          VALUES ($1, $2, 'credential', $3, $4, NOW(), NOW())
         `,
-        [randomUUID(), userId, passwordHash],
+        [randomUUID(), userId, userId, passwordHash],
       );
     } else if (rotatePassword) {
       await client.query(
@@ -192,6 +222,11 @@ async function seedSuperAdmin(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    console.log(usage);
+    return;
+  }
+
   if (process.argv.includes('--hash-password')) {
     await runHashPassword();
     return;

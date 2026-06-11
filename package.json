@@ -39,6 +39,7 @@
     "@effect/rpc": "^0.75.1",
     "@effect/sql": "^0.51.1",
     "@effect/workflow": "^0.18.2",
+    "@stocket/emails": "workspace:*",
     "@stocket/types": "workspace:*",
     "@opentelemetry/exporter-trace-otlp-http": "^0.218.0",
     "@opentelemetry/resources": "^2.7.1",

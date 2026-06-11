@@ -32,7 +32,7 @@ const makeMockRepository = (
   findById: vi.fn().mockReturnValue(Effect.succeed(makeLocationEntity())),
   existsById: vi.fn().mockReturnValue(Effect.succeed(true)),
   create: vi.fn().mockReturnValue(Effect.succeed(makeLocationEntity())),
-  update: vi.fn().mockReturnValue(Effect.succeed(1)),
+  update: vi.fn().mockReturnValue(Effect.succeed(makeLocationEntity())),
   delete: vi.fn().mockReturnValue(Effect.void),
   ...overrides,
 });
@@ -119,14 +119,11 @@ describe('Effect LocationsService', () => {
     expect(repo.update).not.toHaveBeenCalled();
   });
 
-  it('updates and reloads', async () => {
+  it('updates and returns the updated row', async () => {
     const repo = makeMockRepository({
-      findById: vi
+      update: vi
         .fn()
-        .mockReturnValueOnce(Effect.succeed(makeLocationEntity()))
-        .mockReturnValueOnce(
-          Effect.succeed(makeLocationEntity({ name: 'Updated' })),
-        ),
+        .mockReturnValue(Effect.succeed(makeLocationEntity({ name: 'Updated' }))),
     });
     const service = await buildService(repo);
 

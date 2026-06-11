@@ -6,7 +6,7 @@ import type {
   UpdateSupplierSchema,
 } from '@stocket/types/suppliers';
 import { toPaginatedResponse } from '@stocket/types/common';
-import { makeGetOrFail } from '../../platform/from-null-or';
+import { fromNullOr, makeGetOrFail } from '../../platform/from-null-or';
 import { toSupplierResponseDto } from './suppliers.utils';
 import { SupplierNotFound } from './suppliers.errors';
 import { SuppliersRepository } from './repository';
@@ -53,15 +53,15 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
 
       const update = (id: string, dto: UpdateSupplierDto) =>
         Effect.gen(function* () {
-          const supplier = yield* getSupplierOrFail(id);
-
           if (Object.keys(dto).length === 0) {
+            const supplier = yield* getSupplierOrFail(id);
             return toSupplierResponseDto(supplier);
           }
 
-          yield* repository.update(id, dto);
-
-          const updated = yield* getSupplierOrFail(id);
+          const updated = yield* fromNullOr(
+            repository.update(id, dto),
+            () => new SupplierNotFound({ id, messageKey: 'suppliers.notFound' }),
+          );
           return toSupplierResponseDto(updated);
         }).pipe(Effect.withSpan('SuppliersService.update', { attributes: { id } }));
 

@@ -20,7 +20,7 @@ const makeMockRepository = (overrides: Record<string, Mock> = {}) => ({
   existsById: vi.fn().mockReturnValue(Effect.succeed(true)),
   existsByName: vi.fn().mockReturnValue(Effect.succeed(false)),
   create: vi.fn().mockReturnValue(Effect.succeed(makeCategoryEntity())),
-  update: vi.fn().mockReturnValue(Effect.succeed(1)),
+  update: vi.fn().mockReturnValue(Effect.succeed(makeCategoryEntity())),
   delete: vi.fn().mockReturnValue(Effect.void),
   findOne: vi.fn().mockReturnValue(Effect.succeed(null)),
   findAllDescendantIds: vi.fn().mockReturnValue(Effect.succeed([])),
@@ -118,10 +118,9 @@ describe('Effect CategoriesService', () => {
   describe('update', () => {
     it('updates a category', async () => {
       const repo = makeMockRepository({
-        findById: vi
+        update: vi
           .fn()
-          .mockReturnValueOnce(Effect.succeed(makeCategoryEntity()))
-          .mockReturnValueOnce(
+          .mockReturnValue(
             Effect.succeed(makeCategoryEntity({ name: 'Updated' })),
           ),
       });

@@ -85,6 +85,13 @@ export async function seedE2eTenant(
       );
     }
 
+    // The user was created through the public sign-up endpoint, so it starts
+    // unverified; with requireEmailVerification enabled, sign-in would 403.
+    await client.query(
+      'UPDATE "user" SET email_verified = true WHERE id = $1',
+      [userId],
+    );
+
     const tenantResult = await client.query<TenantRow>(
       `
         INSERT INTO organization (id, name, slug)
