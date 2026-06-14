@@ -62,7 +62,8 @@ export async function truncateAll(): Promise<void> {
 	      audit_logs, stock_movements, order_items, orders,
 	      inventory, photos, supplier_products, products,
 	      areas, locations, categories, suppliers, clients,
-	      branding_settings, role_permissions, user_roles, roles
+	      branding_settings, notification_preferences, notifications,
+	      role_permissions, user_roles, roles
 	    CASCADE
 	  `);
   await testDb.execute(sql`

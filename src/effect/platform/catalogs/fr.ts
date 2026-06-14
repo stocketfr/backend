@@ -87,6 +87,10 @@ export const frCatalog: Record<MessageKey, string> = {
   'locations.deleted': 'Emplacement supprime avec succes.',
   'locations.notFound': 'Emplacement introuvable.',
   'locations.repositoryFailed': "L'operation sur lemplacement a echoue.",
+  'notifications.preferencesUpdated':
+    'Preferences de notification mises a jour.',
+  'notifications.repositoryFailed': "L'operation de notification a echoue.",
+  'notifications.sendFailed': "L'envoi de la notification a echoue.",
   'orders.clientNotFound': 'Client introuvable.',
   'orders.deleteOnlyDraft':
     'Seules les commandes brouillon peuvent etre supprimees.',

@@ -9,6 +9,7 @@ export type TraceModule =
   | 'clients'
   | 'health'
   | 'locations'
+  | 'notifications'
   | 'orders'
   | 'superadmin'
   | 'suppliers'

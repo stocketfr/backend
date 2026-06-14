@@ -17,6 +17,7 @@ import { ClientsService } from './modules/clients/service';
 import { HealthService } from './modules/health/service';
 import { InventoryService } from './modules/inventory/service';
 import { LocationsService } from './modules/locations/service';
+import { NotificationsService } from './modules/notifications/service';
 import { OrdersService } from './modules/orders/service';
 import { PhotosService } from './modules/photos/service';
 import { ProductImportService } from './modules/products/import/service';
@@ -135,6 +136,8 @@ const startupMigrations = Effect.gen(function* () {
   yield* runDevelopmentTenantDomainCleanup;
 });
 
+const notificationsApplicationLayer = withPlatform(NotificationsService.Default);
+
 const foundationalServicesLayer = Layer.mergeAll(
   withPlatform(HealthService.Default),
   withPlatform(AuditLogsService.Default),
@@ -144,6 +147,7 @@ const foundationalServicesLayer = Layer.mergeAll(
   withPlatform(ClientsService.Default),
   withPlatform(SuppliersService.Default),
   withPlatform(PhotosService.Default),
+  notificationsApplicationLayer,
 );
 
 const locationsApplicationLayer = withPlatform(LocationsService.Default);
@@ -196,8 +200,23 @@ const startupLayer = Layer.mergeAll(
       yield* startupMigrations;
       const rolesService = yield* RolesService;
       yield* rolesService.seed();
+      // Launch the periodic notifications scan only after migrations have
+      // created the tables it reads/writes. forkDaemon detaches it for the
+      // app lifetime; runScan logs and swallows its own errors.
+      const notifications = yield* NotificationsService;
+      yield* Effect.forkDaemon(
+        Effect.repeat(notifications.runScan, notifications.scanInterval),
+      );
     }),
-  ).pipe(Layer.provide(Layer.mergeAll(platformLayer, rolesApplicationLayer))),
+  ).pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        platformLayer,
+        rolesApplicationLayer,
+        notificationsApplicationLayer,
+      ),
+    ),
+  ),
 );
 
 const applicationLayer = Layer.mergeAll(

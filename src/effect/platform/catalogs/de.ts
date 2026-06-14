@@ -90,6 +90,12 @@ export const deCatalog: Record<MessageKey, string> = {
   'locations.deleted': 'Standort erfolgreich geloescht.',
   'locations.notFound': 'Standort nicht gefunden.',
   'locations.repositoryFailed': 'Der Standortvorgang ist fehlgeschlagen.',
+  'notifications.preferencesUpdated':
+    'Benachrichtigungseinstellungen aktualisiert.',
+  'notifications.repositoryFailed':
+    'Der Benachrichtigungsvorgang ist fehlgeschlagen.',
+  'notifications.sendFailed':
+    'Die Benachrichtigungszustellung ist fehlgeschlagen.',
   'orders.clientNotFound': 'Kunde nicht gefunden.',
   'orders.deleteOnlyDraft':
     'Nur Entwurfsbestellungen koennen geloescht werden.',

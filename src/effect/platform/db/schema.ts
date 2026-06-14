@@ -112,6 +112,11 @@ export const betterAuthUsers = pgTable('user', {
   banned: boolean('banned'),
   ban_reason: text('ban_reason'),
   ban_expires: timestamp('ban_expires', { withTimezone: true }),
+  // Notification fields (better-auth additionalFields). Nullable: existing
+  // users have neither; SMS only fires when phone is present, and locale falls
+  // back to DEFAULT_LOCALE for scheduled sends that have no request to read.
+  phone: text('phone'),
+  locale: text('locale'),
   created_at: timestamp('created_at', { withTimezone: true }),
   updated_at: timestamp('updated_at', { withTimezone: true }),
 });
@@ -700,5 +705,73 @@ export const brandingSettings = pgTable(
       name: 'branding_settings_tenant_id_id_pk',
       columns: [table.tenant_id, table.id],
     }),
+  ],
+);
+
+// Per-(category, channel) opt-in/out for a user within a tenant (D5). Absence
+// of a row means "use the code default" — see effectivePref. This table also
+// powers the audience resolver, hence the (tenant, category, channel) index.
+export const notificationPreferences = pgTable(
+  'notification_preferences',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenant_id: uuid('tenant_id').default(DEFAULT_TENANT_ID).notNull(),
+    user_id: text('user_id').notNull(),
+    category: varchar('category', { length: 50 }).notNull(),
+    channel: varchar('channel', { length: 20 }).notNull(),
+    enabled: boolean('enabled').notNull(),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('notification_preferences_unique').on(
+      table.tenant_id,
+      table.user_id,
+      table.category,
+      table.channel,
+    ),
+    index('notification_preferences_tenant_user_idx').on(
+      table.tenant_id,
+      table.user_id,
+    ),
+    index('notification_preferences_audience_idx').on(
+      table.tenant_id,
+      table.category,
+      table.channel,
+    ),
+  ],
+);
+
+// Delivery ledger + dedupe ledger (D8). One row per (recipient, channel) send.
+// The partial unique index on dedupe_key makes a concurrent double-send safe;
+// scheduled alerts also check it in-window before enqueuing.
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenant_id: uuid('tenant_id').default(DEFAULT_TENANT_ID).notNull(),
+    user_id: text('user_id').notNull(),
+    event_kind: varchar('event_kind', { length: 50 }).notNull(),
+    category: varchar('category', { length: 50 }).notNull(),
+    channel: varchar('channel', { length: 20 }).notNull(),
+    dedupe_key: text('dedupe_key'),
+    status: varchar('status', { length: 20 }).notNull(),
+    provider_message_id: text('provider_message_id'),
+    error: text('error'),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    sent_at: timestamp('sent_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('notifications_tenant_user_idx').on(table.tenant_id, table.user_id),
+    index('notifications_status_idx').on(table.status),
+    uniqueIndex('notifications_dedupe_key_unique')
+      .on(table.dedupe_key)
+      .where(sql`dedupe_key is not null`),
   ],
 );
