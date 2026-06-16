@@ -7,6 +7,7 @@ import {
 } from '@stocket/types/notifications';
 import type { EmailTemplate } from '@stocket/emails';
 import { defaultMailer } from '../../../email/default-mailer';
+import { defaultTexter } from '../../../sms/default-texter';
 import { makeServiceTracer } from '../../platform/service-tracer';
 import { DEFAULT_LOCALE, type SupportedLocale } from '../../platform/messages';
 import {
@@ -64,6 +65,19 @@ const toEmailTemplate = (event: NotificationEvent): EmailTemplate => {
   }
 };
 
+// Plaintext SMS body for an event. The auth events carry their action URL; the
+// alert events carry a one-line summary. Localized rendering (the SMS analogue
+// of renderEmail) is Phase 2 — the stub transport never transmits this, but
+// building it keeps the seam drop-in for a real provider.
+const toSmsBody = (event: NotificationEvent): string => {
+  switch (event.kind) {
+    case 'low-stock':
+      return `Low stock: ${event.productName} (${event.sku}) at ${event.locationName} is at ${event.quantity}/${event.reorderPoint}.`;
+    default:
+      return `${event.userName}: ${event.actionUrl}`;
+  }
+};
+
 // Synthetic request context so tenant-scoped repository calls resolve a tenant
 // id during a scheduled scan that has no real HTTP request.
 const makeScanContext = (tenantId: string): RequestContext => ({
@@ -76,7 +90,8 @@ const makeScanContext = (tenantId: string): RequestContext => ({
 });
 
 // Which channels a candidate should receive, applying the D6 default policy to
-// their stored preference. Phase 1 only resolves the email channel.
+// their stored preference for each channel. SMS resolves here too (default off,
+// opt-in); delivery routes through the Phase-2 stub transport.
 const resolveChannels = (
   category: NotificationCategory,
   candidate: AudienceCandidate,
@@ -90,6 +105,15 @@ const resolveChannels = (
     )
   ) {
     channels.push(NotificationChannel.EMAIL);
+  }
+  if (
+    effectivePref(
+      category,
+      NotificationChannel.SMS,
+      candidate.smsEnabled ?? undefined,
+    )
+  ) {
+    channels.push(NotificationChannel.SMS);
   }
   return channels;
 };
@@ -138,6 +162,34 @@ export class NotificationsService extends Effect.Service<NotificationsService>()
           }),
         );
 
+      // SMS counterpart of deliverEmail. No retry: the Phase-2 stub transport
+      // fails deterministically (no provider wired), so a row that reaches here
+      // is marked failed with that reason rather than retried. Swapping in a
+      // real transport (default-texter.ts) makes this the live SMS path.
+      const deliverSms = (
+        phone: string,
+        event: NotificationEvent,
+        notificationId: string,
+      ) =>
+        Effect.tryPromise({
+          try: () => defaultTexter.send({ to: phone, body: toSmsBody(event) }),
+          catch: (cause) =>
+            new NotificationSendError({
+              channel: 'sms',
+              cause,
+              messageKey: 'notifications.sendFailed',
+            }),
+        }).pipe(
+          Effect.matchEffect({
+            onFailure: (error) =>
+              repository
+                .markFailed(notificationId, describeError(error.cause))
+                .pipe(Effect.ignore),
+            onSuccess: (sent) =>
+              repository.markSent(notificationId, sent.id).pipe(Effect.ignore),
+          }),
+        );
+
       // Deliver an event to one recipient over the resolved channels. Records a
       // pending ledger row first; a null id means the dedupe key was already
       // claimed (prior tick or concurrent instance), so we skip delivery.
@@ -150,8 +202,11 @@ export class NotificationsService extends Effect.Service<NotificationsService>()
           channels,
           (channel) =>
             Effect.gen(function* () {
-              // Phase 1 delivers email only; SMS/push arrive in Phase 2.
-              if (channel !== NotificationChannel.EMAIL) return;
+              const phone = recipient.phone;
+              // SMS needs a phone number; skip before claiming a ledger row so a
+              // recipient without one leaves no failed-row noise.
+              if (channel === NotificationChannel.SMS && phone === null) return;
+
               const notificationId = yield* repository.recordPending({
                 userId: recipient.userId,
                 eventKind: event.kind,
@@ -165,11 +220,16 @@ export class NotificationsService extends Effect.Service<NotificationsService>()
                 ),
               });
               if (notificationId === null) return;
-              yield* deliverEmail(recipient, event, notificationId);
+
+              if (channel === NotificationChannel.EMAIL) {
+                yield* deliverEmail(recipient, event, notificationId);
+              } else if (phone !== null) {
+                yield* deliverSms(phone, event, notificationId);
+              }
             }).pipe(
-              // The only failure reaching here is recordPending (deliverEmail
-              // self-reconciles). Log it — a swallowed failure here means we
-              // never attempted delivery, which must stay observable.
+              // The only failure reaching here is recordPending (deliverEmail /
+              // deliverSms self-reconcile). Log it — a swallowed failure here
+              // means we never attempted delivery, which must stay observable.
               Effect.catchAll((cause) =>
                 Effect.logError({ messageKey: 'notifications.sendFailed', cause }),
               ),

@@ -29,6 +29,7 @@ import {
   type BetterAuthStubOptions,
 } from './better-auth-test';
 import { makeEmailTestLayer, type EmailTestHarness } from './email-test';
+import { makeInMemoryStorageAdapterLayer } from '../platform/storage';
 import { TEST_BETTER_AUTH_HEADERS } from './test-harness';
 
 interface TestHttpAppOptions {
@@ -38,6 +39,7 @@ interface TestHttpAppOptions {
 }
 
 export const makeTestApplicationLayer = (options: TestHttpAppOptions = {}) => {
+  const storage = makeInMemoryStorageAdapterLayer();
   const platformLayer = Layer.mergeAll(
     makeTestDrizzleLayer(),
     makeBetterAuthTestLayer({
@@ -48,6 +50,7 @@ export const makeTestApplicationLayer = (options: TestHttpAppOptions = {}) => {
     }),
     Layer.succeed(BetterAuthHeaders, TEST_BETTER_AUTH_HEADERS),
     (options.email ?? makeEmailTestLayer()).layer,
+    storage.layer,
   );
 
   const withPlatform = <A, E, R>(layer: Layer.Layer<A, E, R>) =>

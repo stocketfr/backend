@@ -1,7 +1,4 @@
 import { Effect, Layer } from 'effect';
-import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import { eq } from 'drizzle-orm';
 import {
   getTestDb,
@@ -13,6 +10,11 @@ import { photos, categories, products } from '../../platform/db/schema';
 import { randomUUID } from 'node:crypto';
 import type { DrizzleDb } from '../../platform/drizzle';
 import { PhotosService, type UploadedFile } from './service';
+import {
+  makeInMemoryStorageAdapter,
+  StorageAdapter,
+  type InMemoryStorageAdapter,
+} from '../../platform/storage';
 
 // Valid magic-byte headers, padded so that they pass matchesMagicBytes
 // (JPEG requires 0xff 0xd8 0xff at offset 0; PNG requires 0x89 0x50 0x4e 0x47).
@@ -37,32 +39,27 @@ const makeUpload = (overrides: Partial<UploadedFile> = {}): UploadedFile => ({
 
 let db: DrizzleDb;
 let TestLayer: Layer.Layer<PhotosService>;
-let tempDir: string;
-let previousUploadsDir: string | undefined;
+let storage: InMemoryStorageAdapter;
 
 beforeAll(async () => {
-  // Create a temp dir BEFORE the service layer is constructed — the service
-  // reads `process.env.UPLOADS_DIR` once during layer build in `service.ts`.
-  tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'stocket-photos-it-'));
-  previousUploadsDir = process.env.UPLOADS_DIR;
-  process.env.UPLOADS_DIR = tempDir;
-
   db = getTestDb();
+  storage = makeInMemoryStorageAdapter();
   const dbLayer = makeTestDrizzleLayer();
-  TestLayer = PhotosService.Default.pipe(Layer.provide(dbLayer));
+  TestLayer = PhotosService.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(dbLayer, Layer.succeed(StorageAdapter, storage)),
+    ),
+  );
 });
 
 afterAll(async () => {
   await closeTestDb();
-  await fs.rm(tempDir, { recursive: true, force: true });
-  if (previousUploadsDir === undefined) {
-    delete process.env.UPLOADS_DIR;
-  } else {
-    process.env.UPLOADS_DIR = previousUploadsDir;
-  }
 });
 
-beforeEach(() => truncateAll());
+beforeEach(() => {
+  storage.reset();
+  return truncateAll();
+});
 
 const run = <A, E>(effect: Effect.Effect<A, E, PhotosService>) =>
   Effect.runPromise(effect.pipe(Effect.provide(TestLayer)));
@@ -147,6 +144,7 @@ async function withSharedDbRetry<T>(
     } catch (error) {
       last = error;
       if (!isTransientSharedDbError(error)) throw error;
+      storage.reset();
       // Small backoff so we don't re-collide immediately.
       await new Promise((r) => setTimeout(r, 25 * (i + 1)));
     }
@@ -184,29 +182,31 @@ async function seedPhotoPrereqs() {
   });
 }
 
-async function listTempDirFiles(): Promise<string[]> {
-  try {
-    return await fs.readdir(tempDir);
-  } catch {
-    return [];
+function requireOnlyStorageKey(): string {
+  const keys = [...storage.store.keys()];
+  expect(keys).toHaveLength(1);
+  const key = keys[0];
+  if (!key) {
+    throw new Error('expected one object key in storage');
   }
+  return key;
 }
 
 describe('PhotosService Integration', () => {
   describe('uploadPhoto', () => {
-    it('writes a file to disk and inserts a DB row on a valid upload', async () => {
-      const { result, filePath } = await withSharedDbRetry(async () => {
+    it('writes an object and inserts a DB row on a valid upload', async () => {
+      const { result, file } = await withSharedDbRetry(async () => {
         const { product } = await seedPhotoPrereqs();
-        // Upload and immediately resolve storage path via the service, in one
+        // Upload and immediately resolve storage bytes via the service, in one
         // Effect chain so the shared-DB truncation race window stays small.
         return run(
           Effect.flatMap(PhotosService, (svc) =>
             Effect.flatMap(
               svc.uploadPhoto(product.id, makeUpload(), undefined),
               (created) =>
-                Effect.map(svc.getFilePath(created.id), (info) => ({
+                Effect.map(svc.getFile(created.id), (info) => ({
                   result: created,
-                  filePath: info.filePath,
+                  file: info,
                   product,
                 })),
             ),
@@ -217,11 +217,18 @@ describe('PhotosService Integration', () => {
       expect(result.mimetype).toBe('image/jpeg');
       expect(result.display_order).toBe(0);
       expect(result.size).toBe(JPEG_HEADER.length);
-      expect(filePath.startsWith(tempDir)).toBe(true);
+      expect(file.mimetype).toBe('image/jpeg');
+      expect(Buffer.from(file.bytes).equals(JPEG_HEADER)).toBe(true);
 
-      // Bytes on disk match what we uploaded.
-      const onDisk = await fs.readFile(filePath);
-      expect(onDisk.equals(JPEG_HEADER)).toBe(true);
+      const objectKey = requireOnlyStorageKey();
+      expect(objectKey).toMatch(
+        /^products\/[0-9a-f-]+\/photos\/[0-9a-f-]+\.jpg$/,
+      );
+      const rows = await db
+        .select()
+        .from(photos)
+        .where(eq(photos.id, result.id));
+      expect(rows[0]?.storage_path).toBe(objectKey);
     });
 
     it('assigns incrementing display_order for photos on the same product', async () => {
@@ -253,9 +260,9 @@ describe('PhotosService Integration', () => {
       expect(second.display_order).toBe(1);
     });
 
-    it('rejects invalid mime type and writes no file', async () => {
+    it('rejects invalid mime type and writes no object', async () => {
       const { product } = await seedPhotoPrereqs();
-      const before = await listTempDirFiles();
+      const before = storage.store.size;
 
       const error = await fail(
         Effect.flatMap(PhotosService, (svc) =>
@@ -274,8 +281,7 @@ describe('PhotosService Integration', () => {
 
       expect(error._tag).toBe('InvalidPhotoMimeType');
 
-      const after = await listTempDirFiles();
-      expect(after).toEqual(before);
+      expect(storage.store.size).toBe(before);
 
       // No DB row created either.
       const rows = await db
@@ -285,9 +291,9 @@ describe('PhotosService Integration', () => {
       expect(rows).toHaveLength(0);
     });
 
-    it('rejects mismatched magic bytes and writes no file', async () => {
+    it('rejects mismatched magic bytes and writes no object', async () => {
       const { product } = await seedPhotoPrereqs();
-      const before = await listTempDirFiles();
+      const before = storage.store.size;
 
       // Declared image/jpeg, but bytes are not a JPEG header.
       const error = await fail(
@@ -307,8 +313,7 @@ describe('PhotosService Integration', () => {
 
       expect(error._tag).toBe('InvalidPhotoMimeType');
 
-      const after = await listTempDirFiles();
-      expect(after).toEqual(before);
+      expect(storage.store.size).toBe(before);
 
       const rows = await db
         .select()
@@ -317,9 +322,9 @@ describe('PhotosService Integration', () => {
       expect(rows).toHaveLength(0);
     });
 
-    it('rejects files over MAX_FILE_SIZE and writes no file', async () => {
+    it('rejects files over MAX_FILE_SIZE and writes no object', async () => {
       const { product } = await seedPhotoPrereqs();
-      const before = await listTempDirFiles();
+      const before = storage.store.size;
 
       const error = await fail(
         Effect.flatMap(PhotosService, (svc) =>
@@ -327,8 +332,7 @@ describe('PhotosService Integration', () => {
             product.id,
             makeUpload({
               originalname: 'huge.jpg',
-              // Size field is over the limit — the service trusts the declared
-              // size (multer sets it) and short-circuits before touching disk.
+              // Size field is over the limit and short-circuits before storage.
               size: MAX_FILE_SIZE + 1,
               buffer: JPEG_HEADER,
             }),
@@ -339,8 +343,7 @@ describe('PhotosService Integration', () => {
 
       expect(error._tag).toBe('PhotoTooLarge');
 
-      const after = await listTempDirFiles();
-      expect(after).toEqual(before);
+      expect(storage.store.size).toBe(before);
 
       const rows = await db
         .select()
@@ -398,15 +401,15 @@ describe('PhotosService Integration', () => {
     });
   });
 
-  describe('getFilePath', () => {
-    it('returns filePath, mimetype, filename for a stored photo', async () => {
+  describe('getFile', () => {
+    it('returns bytes, mimetype, filename for a stored photo', async () => {
       const result = await withSharedDbRetry(async () => {
         const { product } = await seedPhotoPrereqs();
         return run(
           Effect.flatMap(PhotosService, (svc) =>
             Effect.flatMap(
               svc.uploadPhoto(product.id, makeUpload(), undefined),
-              (created) => svc.getFilePath(created.id),
+              (created) => svc.getFile(created.id),
             ),
           ),
         );
@@ -414,40 +417,35 @@ describe('PhotosService Integration', () => {
 
       expect(result.mimetype).toBe('image/jpeg');
       expect(result.filename).toBe('photo.jpg');
-      expect(result.filePath.startsWith(tempDir)).toBe(true);
-      await expect(fs.access(result.filePath)).resolves.toBeUndefined();
+      expect(Buffer.from(result.bytes).equals(JPEG_HEADER)).toBe(true);
     });
 
     it('fails with PhotoNotFound for an unknown id', async () => {
       const error = await fail(
         Effect.flatMap(PhotosService, (svc) =>
-          svc.getFilePath('00000000-0000-0000-0000-000000000000'),
+          svc.getFile('00000000-0000-0000-0000-000000000000'),
         ),
       );
 
       expect(error._tag).toBe('PhotoNotFound');
     });
 
-    it('fails with PhotoFileNotFound when the file is gone but the row remains', async () => {
-      const { id, filePath } = await withSharedDbRetry(async () => {
+    it('fails with PhotoFileNotFound when the object is gone but the row remains', async () => {
+      const id = await withSharedDbRetry(async () => {
         const { product } = await seedPhotoPrereqs();
         return run(
           Effect.flatMap(PhotosService, (svc) =>
-            Effect.flatMap(
+            Effect.map(
               svc.uploadPhoto(product.id, makeUpload(), undefined),
-              (created) =>
-                Effect.map(svc.getFilePath(created.id), (info) => ({
-                  id: created.id,
-                  filePath: info.filePath,
-                })),
+              (created) => created.id,
             ),
           ),
         );
       });
-      await fs.unlink(filePath);
+      storage.store.delete(requireOnlyStorageKey());
 
       const error = await fail(
-        Effect.flatMap(PhotosService, (svc) => svc.getFilePath(id)),
+        Effect.flatMap(PhotosService, (svc) => svc.getFile(id)),
       );
 
       // If another agent truncated the row, we get PhotoNotFound instead —
@@ -458,36 +456,27 @@ describe('PhotosService Integration', () => {
   });
 
   describe('deletePhoto', () => {
-    it('removes the file from disk and deletes the DB row', async () => {
-      // Upload + capture path + delete, all in one retry block — on FK
+    it('removes the object and deletes the DB row', async () => {
+      // Upload + delete in one retry block — on FK
       // violations from parallel TRUNCATE, re-seed and re-upload.
-      const { id, storagePath } = await withSharedDbRetry(async () => {
+      const id = await withSharedDbRetry(async () => {
         const { product } = await seedPhotoPrereqs();
-        const captured = await run(
+        return run(
           Effect.flatMap(PhotosService, (svc) =>
             Effect.flatMap(
               svc.uploadPhoto(product.id, makeUpload(), undefined),
               (created) =>
-                Effect.flatMap(svc.getFilePath(created.id), (info) =>
-                  Effect.map(svc.deletePhoto(created.id), () => ({
-                    id: created.id,
-                    storagePath: info.filePath,
-                  })),
-                ),
+                Effect.map(svc.deletePhoto(created.id), () => created.id),
             ),
           ),
         );
-        return captured;
       });
 
-      // File gone from disk.
-      await expect(fs.access(storagePath)).rejects.toMatchObject({
-        code: 'ENOENT',
-      });
+      expect(storage.store.size).toBe(0);
 
       // Service reports the photo as gone.
       const error = await fail(
-        Effect.flatMap(PhotosService, (svc) => svc.getFilePath(id)),
+        Effect.flatMap(PhotosService, (svc) => svc.getFile(id)),
       );
       expect(error._tag).toBe('PhotoNotFound');
     });
@@ -502,35 +491,29 @@ describe('PhotosService Integration', () => {
       expect(error._tag).toBe('PhotoNotFound');
     });
 
-    it('succeeds even if the file is already missing (idempotent unlink)', async () => {
+    it('succeeds even if the object is already missing', async () => {
       const id = await withSharedDbRetry(async () => {
         const { product } = await seedPhotoPrereqs();
-        const captured = await run(
+        const createdId = await run(
           Effect.flatMap(PhotosService, (svc) =>
-            Effect.flatMap(
+            Effect.map(
               svc.uploadPhoto(product.id, makeUpload(), undefined),
-              (created) =>
-                Effect.map(svc.getFilePath(created.id), (info) => ({
-                  id: created.id,
-                  storagePath: info.filePath,
-                })),
+              (created) => created.id,
             ),
           ),
         );
 
-        // Remove the file so deletePhoto must tolerate ENOENT.
-        await fs.unlink(captured.storagePath);
+        storage.store.delete(requireOnlyStorageKey());
 
-        // safeUnlink should swallow ENOENT and the row delete should succeed.
         await run(
-          Effect.flatMap(PhotosService, (svc) => svc.deletePhoto(captured.id)),
+          Effect.flatMap(PhotosService, (svc) => svc.deletePhoto(createdId)),
         );
-        return captured.id;
+        return createdId;
       });
 
       // Service reports the photo as gone.
       const error = await fail(
-        Effect.flatMap(PhotosService, (svc) => svc.getFilePath(id)),
+        Effect.flatMap(PhotosService, (svc) => svc.getFile(id)),
       );
       expect(error._tag).toBe('PhotoNotFound');
     });

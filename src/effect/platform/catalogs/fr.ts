@@ -101,20 +101,21 @@ export const frCatalog: Record<MessageKey, string> = {
   'orders.notFound': 'Commande introuvable.',
   'orders.productNotFound': 'Produit introuvable.',
   'photos.deleted': 'Photo supprimee avec succes.',
-  'photos.deleteFailed': 'La suppression du fichier photo a echoue.',
+  'photos.deleteFailed': "La suppression de l'objet photo a echoue.",
   'photos.existenceCheckFailed':
     'La verification de lexistence de la photo a echoue.',
-  'photos.fileNotFound': 'Le fichier photo est introuvable sur le disque.',
+  'photos.fileNotFound': "L'objet photo est introuvable dans le stockage.",
   'photos.invalidMimeType':
     'Type de fichier invalide. Types autorises : {allowedTypes}.',
   'photos.notFound': 'Photo introuvable.',
+  'photos.readFailed': "La lecture de l'objet photo a echoue.",
   'photos.readUploadFailed': 'La lecture du fichier televerse a echoue.',
   'photos.repositoryFailed': "L'operation sur la photo a echoue.",
   'photos.statUploadFailed':
     'La lecture des metadonnees du fichier televerse a echoue.',
   'photos.tooLarge':
     'Le fichier est trop volumineux. Taille maximale autorisee : {maxSize} octets.',
-  'photos.writeFailed': "L'ecriture du fichier photo a echoue.",
+  'photos.writeFailed': "L'ecriture de l'objet photo a echoue.",
   'platform.hostRequired': 'La route plateforme est introuvable pour cet hote.',
   'products.categoryNotFound': 'Categorie introuvable.',
   'products.createdProductLoadFailed':

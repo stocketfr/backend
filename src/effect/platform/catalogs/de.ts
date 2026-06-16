@@ -106,13 +106,14 @@ export const deCatalog: Record<MessageKey, string> = {
   'orders.notFound': 'Bestellung nicht gefunden.',
   'orders.productNotFound': 'Produkt nicht gefunden.',
   'photos.deleted': 'Foto erfolgreich geloescht.',
-  'photos.deleteFailed': 'Die Fotodatei konnte nicht geloescht werden.',
+  'photos.deleteFailed': 'Das Fotoobjekt konnte nicht geloescht werden.',
   'photos.existenceCheckFailed':
     'Die Pruefung auf das Vorhandensein des Fotos ist fehlgeschlagen.',
-  'photos.fileNotFound': 'Fotodatei auf dem Datentraeger nicht gefunden.',
+  'photos.fileNotFound': 'Fotoobjekt im Speicher nicht gefunden.',
   'photos.invalidMimeType':
     'Ungueltiger Dateityp. Erlaubte Typen: {allowedTypes}.',
   'photos.notFound': 'Foto nicht gefunden.',
+  'photos.readFailed': 'Das Fotoobjekt konnte nicht gelesen werden.',
   'photos.readUploadFailed':
     'Die hochgeladene Datei konnte nicht gelesen werden.',
   'photos.repositoryFailed': 'Der Fotovorgang ist fehlgeschlagen.',
@@ -120,7 +121,7 @@ export const deCatalog: Record<MessageKey, string> = {
     'Die Metadaten der hochgeladenen Datei konnten nicht gelesen werden.',
   'photos.tooLarge':
     'Die Datei ist zu gross. Maximal zulaessige Groesse: {maxSize} Byte.',
-  'photos.writeFailed': 'Die Fotodatei konnte nicht geschrieben werden.',
+  'photos.writeFailed': 'Das Fotoobjekt konnte nicht geschrieben werden.',
   'platform.hostRequired':
     'Die Plattformroute wurde fuer diesen Host nicht gefunden.',
   'products.categoryNotFound': 'Kategorie nicht gefunden.',

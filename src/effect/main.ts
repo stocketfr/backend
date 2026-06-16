@@ -40,6 +40,10 @@ import {
 import { applyCommittedSqlMigrations } from './platform/db/committed-sql-migrations';
 import { normalizeDevelopmentTenantDomains } from './platform/db/dev-tenant-domain-cleanup';
 import { emailLayer } from './platform/email';
+import {
+  StorageConfigurationError,
+  storageLayer,
+} from './platform/storage';
 import { TracingLive } from './platform/tracing';
 
 const VALID_NODE_ENVS = ['development', 'staging', 'production'] as const;
@@ -55,7 +59,12 @@ const isDevelopment = nodeEnv === 'development';
 
 const port = Number(process.env.PORT ?? 8080);
 
-const platformLayer = Layer.mergeAll(drizzleLayer, betterAuthLayer, emailLayer);
+const platformLayer = Layer.mergeAll(
+  drizzleLayer,
+  betterAuthLayer,
+  emailLayer,
+  storageLayer,
+);
 const withPlatform = <A, E, R>(layer: Layer.Layer<A, E, R>) =>
   layer.pipe(Layer.provide(platformLayer));
 
@@ -253,7 +262,9 @@ NodeRuntime.runMain(
     Effect.provide(runtimeLoggingLayer),
   ) as Effect.Effect<
     never,
-    RolesInfrastructureError | DrizzleInitializationError,
+    | RolesInfrastructureError
+    | DrizzleInitializationError
+    | StorageConfigurationError,
     never
   >,
 );

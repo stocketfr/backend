@@ -139,9 +139,9 @@ describe('MyService Integration', () => {
   `makeTestLayer`.
 - `better-auth-test.ts` — `makeBetterAuthStub`,
   `makeBetterAuthTestLayer`, `makeFakeBetterAuthUser`.
-- `storage-adapter-test.ts` — `StorageAdapter` interface (new),
-  `makeInMemoryStorageAdapter`, `makeInMemoryStorageAdapterLayer`.
-  Forward-looking; `PhotosService` still uses `fs/promises` directly.
+- `storage-adapter-test.ts` — re-exports the platform `StorageAdapter`
+  test helpers, including `makeInMemoryStorageAdapter` and
+  `makeInMemoryStorageAdapterLayer`.
 
 ## Legacy `src/effect/test/`
 

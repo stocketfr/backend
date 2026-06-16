@@ -96,7 +96,7 @@ const makePhotoResponse = (overrides: Record<string, unknown> = {}) => ({
   filename: 'hero.png',
   mimetype: 'image/png',
   size: 1234,
-  storage_path: '/uploads/hero.png',
+  storage_path: 'products/product-1/photos/hero.png',
   display_order: 0,
   uploaded_by: null,
   created_at: '2026-01-01T00:00:00.000Z',
@@ -365,7 +365,7 @@ describe('photos routers', () => {
             Effect.fail(
               new PhotosInfrastructureError({
                 action: 'findByProductId',
-                messageKey: 'photos.infrastructureError',
+                messageKey: 'photos.repositoryFailed',
               }),
             ),
         },
@@ -380,15 +380,15 @@ describe('photos routers', () => {
   });
 
   // -------------------------------------------------------------------
-  // GET /photos/:id/file — stream file
+  // GET /photos/:id/file — read object bytes
   // -------------------------------------------------------------------
   describe('GET /photos/:id/file', () => {
     it('rejects without PRODUCTS:read permission', async () => {
       const { handler } = makePhotosRouterHarness({
         service: {
-          getFilePath: () =>
+          getFile: () =>
             Effect.succeed({
-              filePath: '/uploads/hero.png',
+              bytes: Buffer.from('image-bytes'),
               mimetype: 'image/png',
               filename: 'hero.png',
             }),
@@ -405,7 +405,7 @@ describe('photos routers', () => {
     it('returns 400 when id is not a UUID', async () => {
       const { handler } = makePhotosRouterHarness({
         service: {
-          getFilePath: () => Effect.die('service should not be called'),
+          getFile: () => Effect.die('service should not be called'),
         },
         permissions: readOnly,
       });
@@ -416,10 +416,39 @@ describe('photos routers', () => {
       expect(response.status).toBe(400);
     });
 
+    it('returns bytes and image headers on success', async () => {
+      const getFile = vi.fn(() =>
+        Effect.succeed({
+          bytes: Buffer.from('image-bytes'),
+          mimetype: 'image/png',
+          filename: 'hero.png',
+        }),
+      );
+      const { handler } = makePhotosRouterHarness({
+        service: { getFile },
+        permissions: readOnly,
+      });
+
+      const response = await handler(
+        new Request(`http://localhost/photos/${PHOTO_ID}/file`),
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toBe('image/png');
+      expect(response.headers.get('cache-control')).toBe(
+        'private, max-age=86400',
+      );
+      expect(response.headers.get('content-disposition')).toBe(
+        'inline; filename="hero.png"',
+      );
+      await expect(response.text()).resolves.toBe('image-bytes');
+      expect(getFile).toHaveBeenCalledWith(PHOTO_ID);
+    });
+
     it('maps PhotoNotFound → 404', async () => {
       const { handler } = makePhotosRouterHarness({
         service: {
-          getFilePath: (id: string) =>
+          getFile: (id: string) =>
             Effect.fail(new PhotoNotFound({ id, messageKey: 'photos.notFound' })),
         },
         permissions: readOnly,
@@ -434,7 +463,7 @@ describe('photos routers', () => {
     it('maps PhotoFileNotFound → 404', async () => {
       const { handler } = makePhotosRouterHarness({
         service: {
-          getFilePath: (id: string) =>
+          getFile: (id: string) =>
             Effect.fail(
               new PhotoFileNotFound({
                 id,

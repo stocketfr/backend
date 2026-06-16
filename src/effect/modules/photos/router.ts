@@ -33,7 +33,7 @@ export const productPhotosRouter = HttpRouter.empty.pipe(
       const { productId } =
         yield* HttpRouter.schemaPathParams(ProductIdPathParams);
       const parts = yield* HttpServerRequest.schemaBodyMultipart(UploadSchema);
-      const {file} = parts;
+      const { file } = parts;
       const session = yield* getOptionalSession;
       const userId = session?.user.id;
       const photosService = yield* PhotosService;
@@ -92,20 +92,14 @@ export const photosRouter = HttpRouter.empty.pipe(
       yield* requirePermission(Resource.PRODUCTS, Permission.READ);
       const { id } = yield* HttpRouter.schemaPathParams(PhotoPathParams);
       const photosService = yield* PhotosService;
-      const { filePath, mimetype, filename } =
-        yield* photosService.getFilePath(id);
-      const response = yield* HttpServerResponse.file(filePath);
-      return response.pipe(
-        HttpServerResponse.setHeader('Content-Type', mimetype),
-        HttpServerResponse.setHeader(
-          'Content-Disposition',
-          `inline; filename="${encodeURIComponent(filename)}"`,
-        ),
-        HttpServerResponse.setHeader(
-          'Cache-Control',
-          'private, max-age=86400',
-        ),
-      );
+      const { bytes, mimetype, filename } = yield* photosService.getFile(id);
+      return HttpServerResponse.uint8Array(bytes, {
+        contentType: mimetype,
+        headers: {
+          'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,
+          'Cache-Control': 'private, max-age=86400',
+        },
+      });
     }).pipe(Effect.catchAllCause(respondCause)),
   ),
   HttpRouter.del(

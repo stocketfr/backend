@@ -1,5 +1,6 @@
 import { Effect } from 'effect';
 import { and, eq, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import {
   type NotificationCategory,
   NotificationChannel,
@@ -24,14 +25,15 @@ import type { TenantNotResolved } from '../../platform/tenant-context';
 import { NotificationsInfrastructureError } from './notifications.errors';
 import type { NotificationEventKind, NotificationStatus } from './types';
 
-// A tenant user eligible for an alert, plus their stored email preference for
-// the category (null when they've never set one — resolved via effectivePref).
+// A tenant user eligible for an alert, plus their stored per-channel preference
+// for the category (null when they've never set one — resolved via effectivePref).
 export interface AudienceCandidate {
   readonly userId: string;
   readonly email: string | null;
   readonly phone: string | null;
   readonly locale: string | null;
   readonly emailEnabled: boolean | null;
+  readonly smsEnabled: boolean | null;
 }
 
 export interface StoredPreferenceRow {
@@ -249,21 +251,26 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
         });
 
       // Audience resolver (D10): tenant users who hold inventory:read, joined to
-      // their stored email preference for the category. The service applies
-      // effectivePref to decide who actually receives the alert.
+      // their stored per-channel preference for the category. One aliased left
+      // join per channel keeps the result one row per user (each (tenant, user,
+      // category, channel) pref is unique). The service applies effectivePref to
+      // decide which channels actually fire.
       const findAudience = (
         category: NotificationCategory,
       ): RepoEffect<AudienceCandidate[]> =>
         Effect.gen(function* () {
           const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('resolve notification audience', async () => {
+            const emailPref = alias(notificationPreferences, 'email_pref');
+            const smsPref = alias(notificationPreferences, 'sms_pref');
             return db
               .selectDistinct({
                 userId: betterAuthUsers.id,
                 email: betterAuthUsers.email,
                 phone: betterAuthUsers.phone,
                 locale: betterAuthUsers.locale,
-                emailEnabled: notificationPreferences.enabled,
+                emailEnabled: emailPref.enabled,
+                smsEnabled: smsPref.enabled,
               })
               .from(betterAuthUsers)
               .innerJoin(
@@ -289,12 +296,21 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
                 ),
               )
               .leftJoin(
-                notificationPreferences,
+                emailPref,
                 and(
-                  eq(notificationPreferences.user_id, betterAuthUsers.id),
-                  eq(notificationPreferences.tenant_id, tenantId),
-                  eq(notificationPreferences.category, category),
-                  eq(notificationPreferences.channel, NotificationChannel.EMAIL),
+                  eq(emailPref.user_id, betterAuthUsers.id),
+                  eq(emailPref.tenant_id, tenantId),
+                  eq(emailPref.category, category),
+                  eq(emailPref.channel, NotificationChannel.EMAIL),
+                ),
+              )
+              .leftJoin(
+                smsPref,
+                and(
+                  eq(smsPref.user_id, betterAuthUsers.id),
+                  eq(smsPref.tenant_id, tenantId),
+                  eq(smsPref.category, category),
+                  eq(smsPref.channel, NotificationChannel.SMS),
                 ),
               );
           });

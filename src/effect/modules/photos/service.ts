@@ -1,9 +1,12 @@
-import * as path from 'node:path';
 import * as crypto from 'node:crypto';
-import { access, mkdir, unlink, writeFile } from 'node:fs/promises';
 import { Effect } from 'effect';
 import type { PhotoResponseDto } from '@stocket/types/photos';
 import { fromNullOr } from '../../platform/from-null-or';
+import {
+  StorageAdapter,
+  StorageObjectNotFound,
+  type StorageError,
+} from '../../platform/storage';
 import { toPhotoResponseDto } from './photos.utils';
 import {
   InvalidPhotoMimeType,
@@ -63,23 +66,7 @@ export class PhotosService extends Effect.Service<PhotosService>()(
   {
     effect: Effect.gen(function* () {
       const repository = yield* PhotosRepository;
-
-      const uploadsDir =
-        process.env.UPLOADS_DIR ??
-        path.join(process.cwd(), 'uploads', 'photos');
-
-      const ensureUploadsDir = () => mkdir(uploadsDir, { recursive: true });
-
-      const safeUnlink = (storagePath: string) =>
-        Effect.tryPromise({
-          try: () => unlink(storagePath),
-          catch: (error) => error,
-        }).pipe(
-          Effect.catchIf(
-            (error) => (error as NodeJS.ErrnoException).code === 'ENOENT',
-            () => Effect.void,
-          ),
-        );
+      const storage = yield* StorageAdapter;
 
       const getExtFromMime = (mimetype: string): string =>
         MIME_EXT_MAP[mimetype] ?? '.bin';
@@ -89,6 +76,27 @@ export class PhotosService extends Effect.Service<PhotosService>()(
           repository.findById(id),
           () => new PhotoNotFound({ id, messageKey: 'photos.notFound' }),
         );
+
+      const mapStorageWriteError = (cause: StorageError) =>
+        new PhotosInfrastructureError({
+          action: 'write photo object',
+          cause,
+          messageKey: 'photos.writeFailed',
+        });
+
+      const mapStorageReadError = (cause: StorageError) =>
+        new PhotosInfrastructureError({
+          action: 'read photo object',
+          cause,
+          messageKey: 'photos.readFailed',
+        });
+
+      const mapStorageDeleteError = (cause: StorageError) =>
+        new PhotosInfrastructureError({
+          action: 'delete photo object',
+          cause,
+          messageKey: 'photos.deleteFailed',
+        });
 
       const uploadPhoto = (
         productId: string,
@@ -132,39 +140,30 @@ export class PhotosService extends Effect.Service<PhotosService>()(
           );
         }
 
-        const ext =
-          path.extname(file.originalname) || getExtFromMime(file.mimetype);
-        const uniqueName = `${productId}_${crypto.randomUUID()}${ext}`;
-        const storagePath = path.join(uploadsDir, uniqueName);
+        const ext = getExtFromMime(file.mimetype);
+        const objectKey = `products/${productId}/photos/${crypto.randomUUID()}${ext}`;
 
         return Effect.gen(function* () {
-          yield* Effect.tryPromise({
-            try: async () => {
-              await ensureUploadsDir();
-              await writeFile(storagePath, file.buffer);
-            },
-            catch: (cause) =>
-              new PhotosInfrastructureError({
-                action: 'write photo file',
-                cause,
-                messageKey: 'photos.writeFailed',
-              }),
-          });
+          yield* storage
+            .putObject(objectKey, file.buffer, { contentType: file.mimetype })
+            .pipe(Effect.mapError(mapStorageWriteError));
 
-          const existingCount = yield* repository.countByProductId(productId);
-          const photo = yield* repository
-            .create({
+          const photo = yield* Effect.gen(function* () {
+            const existingCount = yield* repository.countByProductId(productId);
+            return yield* repository.create({
               product_id: productId,
               filename: file.originalname,
               mimetype: file.mimetype,
               size: file.size,
-              storage_path: storagePath,
+              storage_path: objectKey,
               display_order: existingCount,
               uploaded_by: userId ?? null,
-            })
-            .pipe(
-              Effect.tapError(() => Effect.ignore(safeUnlink(storagePath))),
-            );
+            });
+          }).pipe(
+            Effect.tapError(() =>
+              Effect.ignore(storage.deleteObject(objectKey)),
+            ),
+          );
 
           return toPhotoResponseDto(photo);
         }).pipe(
@@ -188,10 +187,10 @@ export class PhotosService extends Effect.Service<PhotosService>()(
           }),
         );
 
-      const getFilePath = (
+      const getFile = (
         id: string,
       ): Effect.Effect<
-        { filePath: string; mimetype: string; filename: string },
+        { bytes: Uint8Array; mimetype: string; filename: string },
         | PhotoFileNotFound
         | PhotoNotFound
         | PhotosInfrastructureError
@@ -200,40 +199,25 @@ export class PhotosService extends Effect.Service<PhotosService>()(
         Effect.gen(function* () {
           const photo = yield* findPhotoOrFail(id);
 
-          const accessible = yield* Effect.tryPromise({
-            try: async () => {
-              try {
-                await access(photo.storage_path);
-                return true;
-              } catch {
-                return false;
-              }
-            },
-            catch: (cause) =>
-              new PhotosInfrastructureError({
-                action: 'check photo file existence',
-                cause,
-                messageKey: 'photos.existenceCheckFailed',
-              }),
-          });
-
-          if (!accessible) {
-            return yield* Effect.fail(
-              new PhotoFileNotFound({
-                id,
-                path: photo.storage_path,
-                messageKey: 'photos.fileNotFound',
-              }),
-            );
-          }
+          const stored = yield* storage.getObject(photo.storage_path).pipe(
+            Effect.mapError((cause) =>
+              cause instanceof StorageObjectNotFound
+                ? new PhotoFileNotFound({
+                    id,
+                    path: photo.storage_path,
+                    messageKey: 'photos.fileNotFound',
+                  })
+                : mapStorageReadError(cause),
+            ),
+          );
 
           return {
-            filePath: photo.storage_path,
+            bytes: stored.bytes,
             mimetype: photo.mimetype,
             filename: photo.filename,
           };
         }).pipe(
-          Effect.withSpan('PhotosService.getFilePath', { attributes: { id } }),
+          Effect.withSpan('PhotosService.getFile', { attributes: { id } }),
         );
 
       const deletePhoto = (
@@ -244,22 +228,15 @@ export class PhotosService extends Effect.Service<PhotosService>()(
       > =>
         Effect.gen(function* () {
           const photo = yield* findPhotoOrFail(id);
-          yield* safeUnlink(photo.storage_path).pipe(
-            Effect.mapError(
-              (cause) =>
-                new PhotosInfrastructureError({
-                  action: 'delete photo file',
-                  cause,
-                  messageKey: 'photos.deleteFailed',
-                }),
-            ),
-          );
+          yield* storage
+            .deleteObject(photo.storage_path)
+            .pipe(Effect.mapError(mapStorageDeleteError));
           yield* repository.delete(id);
         }).pipe(
           Effect.withSpan('PhotosService.deletePhoto', { attributes: { id } }),
         );
 
-      return { uploadPhoto, findByProductId, getFilePath, deletePhoto };
+      return { uploadPhoto, findByProductId, getFile, deletePhoto };
     }),
     dependencies: [PhotosRepository.Default],
   },
