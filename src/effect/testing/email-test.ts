@@ -3,7 +3,7 @@ import { createMailer } from '../../email/mailer';
 import {
   createMemoryTransport,
   type MemoryTransport,
-} from '../../email/memory-transport';
+} from '../../email/transports/memory';
 import { type EmailService, makeEmailServiceLayer } from '../platform/email';
 
 export const TEST_EMAIL_FROM = 'Stocket Test <test@stocket.test>';

@@ -1,9 +1,9 @@
 import { betterAuth } from 'better-auth';
 import { memoryAdapter } from 'better-auth/adapters/memory';
 import { describe, expect, it } from 'vitest';
-import { makeAuthEmailHooks } from './auth-emails';
-import { createMailer } from './mailer';
-import { createMemoryTransport } from './memory-transport';
+import { createMailer } from '../mailer';
+import { createMemoryTransport } from '../transports/memory';
+import { makeAuthEmailHooks } from './hooks';
 
 const FRONTEND_ORIGIN = 'http://localhost:3000';
 const SIGNUP = {

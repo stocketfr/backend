@@ -1,4 +1,4 @@
-import type { EmailMessage, EmailTransport, SentEmail } from './types';
+import type { EmailMessage, EmailTransport, SentEmail } from '../types';
 
 export interface MemoryTransport {
   readonly transport: EmailTransport;

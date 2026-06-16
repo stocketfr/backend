@@ -2,7 +2,7 @@ import { betterAuth } from 'better-auth';
 import { admin, organization } from 'better-auth/plugins';
 import { Pool } from 'pg';
 import { getCrossSubDomainCookieConfig } from './auth-cookie-domain';
-import { makeAuthEmailHooks } from './email/auth-emails';
+import { makeAuthEmailHooks } from './email/auth';
 import { defaultMailer } from './email/default-mailer';
 import {
   getSSLConfig,

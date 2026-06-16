@@ -4,7 +4,7 @@ import { createMailer } from '../../../email/mailer';
 import {
   createMemoryTransport,
   type MemoryTransport,
-} from '../../../email/memory-transport';
+} from '../../../email/transports/memory';
 import type { EmailTransport } from '../../../email/types';
 import { TEST_EMAIL_FROM } from '../../testing/email-test';
 import { CurrentRequestContext, type RequestContext } from '../http/request-context';
