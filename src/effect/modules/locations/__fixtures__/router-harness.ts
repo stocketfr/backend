@@ -9,7 +9,7 @@
  */
 import { type Effect } from 'effect';
 import type { Permission, Resource } from '@stocket/types/auth';
-import type { AuditWriteParams } from '../../../platform/audit';
+import type { AuditWriteParams } from '../../../platform/audit/index';
 import {
   type makeFakeSession,
   makeRouterServiceLayer,

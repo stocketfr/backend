@@ -19,7 +19,7 @@ import {
   TEST_USER_ID_2,
 } from '../../test/seed';
 import { stockMovements } from '../../platform/db/schema';
-import type { DrizzleDb } from '../../platform/drizzle';
+import type { DrizzleDb } from '../../platform/db/drizzle';
 import { FulfillmentService } from './service';
 
 let db: DrizzleDb;

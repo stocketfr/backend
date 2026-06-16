@@ -1,4 +1,4 @@
-import { localizeMessageTree } from '../messages';
+import { localizeMessageTree } from '../observability/messages';
 
 describe('localizeMessageTree', () => {
   it('preserves Date objects so JSON responses serialize them as ISO strings', () => {

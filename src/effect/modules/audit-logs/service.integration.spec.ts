@@ -8,7 +8,7 @@ import {
   makeTestDrizzleLayer,
 } from '../../test/integration-layer';
 import { seedAuditLog, TEST_USER_ID, TEST_USER_ID_2 } from '../../test/seed';
-import type { DrizzleDb } from '../../platform/drizzle';
+import type { DrizzleDb } from '../../platform/db/drizzle';
 import { AuditLogsService } from './service';
 
 let db: DrizzleDb;

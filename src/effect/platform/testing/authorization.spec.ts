@@ -1,8 +1,8 @@
 import { HttpServerRequest } from '@effect/platform';
 import { Effect, Layer } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
-import { DrizzleDatabase } from '../drizzle';
-import { PermissionProvider } from '../permission-provider';
+import { DrizzleDatabase } from '../db/drizzle';
+import { PermissionProvider } from '../auth/permission-provider';
 import {
   requirePermission,
   requireSuperAdmin,
@@ -10,7 +10,7 @@ import {
   PlatformHostRequired,
   SuperAdminDenied,
   SuperAdminInfrastructureError,
-} from '../authorization';
+} from '../auth/authorization';
 
 const mockRequireSession = vi.fn();
 const run = <A, E>(effect: Effect.Effect<A, E, any>) =>
@@ -18,7 +18,7 @@ const run = <A, E>(effect: Effect.Effect<A, E, any>) =>
 const fail = <A, E>(effect: Effect.Effect<A, E, any>) =>
   Effect.runPromise(Effect.flip(effect as Effect.Effect<A, E, never>));
 
-vi.mock('../session', async () => {
+vi.mock('../http/session', async () => {
   const { Effect } = await vi.importActual<typeof import('effect')>('effect');
 
   return {

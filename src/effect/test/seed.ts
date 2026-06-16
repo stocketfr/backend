@@ -5,7 +5,7 @@ import { ClientStatus } from '@stocket/types/clients';
 import { StockMovementReason } from '@stocket/types/stock-movements';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
 import * as s from '../platform/db/schema';
-import type { DrizzleDb } from '../platform/drizzle';
+import type { DrizzleDb } from '../platform/db/drizzle';
 
 const shortId = () => randomUUID().slice(0, 8);
 

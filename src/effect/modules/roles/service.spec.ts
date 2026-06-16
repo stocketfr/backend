@@ -1,8 +1,8 @@
 import { type Mock } from 'vitest';
 import { Effect, Layer } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
-import { DrizzleDatabase, type DrizzleDb } from '../../platform/drizzle';
-import { CurrentRequestContext } from '../../platform/request-context';
+import { DrizzleDatabase, type DrizzleDb } from '../../platform/db/drizzle';
+import { CurrentRequestContext } from '../../platform/http/request-context';
 import { createChainableMock } from '../../test/utils';
 import { RolesService } from './service';
 import { RolesRepository } from './repository';

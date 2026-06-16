@@ -4,13 +4,13 @@ import { type Context, Effect, Layer } from 'effect';
 import {
   AuditLogWriter,
   type AuditWriteParams,
-} from '../platform/audit';
+} from '../platform/audit/index';
 import {
   BetterAuth,
   type BetterAuthService,
-} from '../platform/better-auth';
-import { respondCause } from '../platform/errors';
-import { PermissionProvider } from '../platform/permission-provider';
+} from '../platform/auth/better-auth';
+import { respondCause } from '../platform/http/errors';
+import { PermissionProvider } from '../platform/auth/permission-provider';
 import type { UserSession } from '../platform/auth/user-session';
 
 export const FAKE_USER_ID = '00000000-0000-4000-a000-000000000001';

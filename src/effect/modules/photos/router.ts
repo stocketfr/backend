@@ -11,10 +11,10 @@ import {
   PhotoIdSchema,
   PhotoProductIdSchema,
 } from '@stocket/types/photos';
-import { requirePermission } from '../../platform/authorization';
-import { respondJson, respondJsonOk, respondCause } from '../../platform/errors';
-import { makeMessageResponse } from '../../platform/messages';
-import { getOptionalSession } from '../../platform/session';
+import { requirePermission } from '../../platform/auth/authorization';
+import { respondJson, respondJsonOk, respondCause } from '../../platform/http/errors';
+import { makeMessageResponse } from '../../platform/observability/messages';
+import { getOptionalSession } from '../../platform/http/session';
 import { PhotosInfrastructureError } from './photos.errors';
 import { PhotosService } from './service';
 

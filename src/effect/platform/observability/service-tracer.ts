@@ -1,5 +1,5 @@
 import { Cause, Effect, Option, type Tracer } from 'effect';
-import { CurrentRequestContext } from '../request-context';
+import { CurrentRequestContext } from '../http/request-context';
 
 type AnyEffect = Effect.Effect<any, any, any>;
 

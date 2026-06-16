@@ -17,7 +17,7 @@ import {
   categories,
   organizations,
 } from '../../effect/platform/db/schema';
-import { DEFAULT_TENANT_ID } from '../../effect/platform/tenant-constants';
+import { DEFAULT_TENANT_ID } from '../../effect/platform/tenancy/tenant-constants';
 import {
   getDbConnectionParams,
   getPoolMax,

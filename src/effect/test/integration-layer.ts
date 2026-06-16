@@ -2,18 +2,18 @@ import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { Layer } from 'effect';
-import { DrizzleDatabase, type DrizzleDb } from '../platform/drizzle';
+import { DrizzleDatabase, type DrizzleDb } from '../platform/db/drizzle';
 import * as schema from '../platform/db/schema';
 import * as relations from '../platform/db/relations';
 import {
   CurrentRequestContext,
   type RequestContext,
-} from '../platform/request-context';
+} from '../platform/http/request-context';
 import {
   DEFAULT_TENANT_ID,
   DEFAULT_TENANT_NAME,
   DEFAULT_TENANT_SLUG,
-} from '../platform/tenant-constants';
+} from '../platform/tenancy/tenant-constants';
 
 const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ??

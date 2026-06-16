@@ -1,4 +1,4 @@
-import { NotFoundError, InternalError } from '../../platform/domain-errors';
+import { NotFoundError, InternalError } from '../../platform/effect/domain-errors';
 
 export class LocationNotFound extends NotFoundError('LocationNotFound')<{
   readonly id: string;

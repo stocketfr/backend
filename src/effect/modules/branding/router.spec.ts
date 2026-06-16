@@ -1,8 +1,8 @@
 import { type Context, Effect, Layer } from 'effect';
 import { HttpApp, HttpRouter } from '@effect/platform';
 import { Permission, Resource } from '@stocket/types/auth';
-import { respondCause } from '../../platform/errors';
-import { PermissionProvider } from '../../platform/permission-provider';
+import { respondCause } from '../../platform/http/errors';
+import { PermissionProvider } from '../../platform/auth/permission-provider';
 import { makeBetterAuthTestLayer } from '../../testing/better-auth-test';
 import { brandingRouter } from './router';
 import { BrandingInfrastructureError } from './branding.errors';

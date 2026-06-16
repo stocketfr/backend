@@ -1,4 +1,4 @@
-import { NotFoundError, BadRequestError, InternalError } from '../../platform/domain-errors';
+import { NotFoundError, BadRequestError, InternalError } from '../../platform/effect/domain-errors';
 
 export class CategoryNotFound extends NotFoundError('CategoryNotFound')<{ readonly id: string }> {}
 

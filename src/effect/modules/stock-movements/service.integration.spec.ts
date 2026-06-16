@@ -13,7 +13,7 @@ import {
   seedStockMovement,
   TEST_USER_ID,
 } from '../../test/seed';
-import type { DrizzleDb } from '../../platform/drizzle';
+import type { DrizzleDb } from '../../platform/db/drizzle';
 import { StockMovementsService } from './service';
 
 let db: DrizzleDb;

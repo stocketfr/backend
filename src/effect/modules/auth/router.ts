@@ -1,6 +1,6 @@
 import { HttpRouter } from '@effect/platform';
 import { Effect } from 'effect';
-import { respondJson } from '../../platform/errors';
+import { respondJson } from '../../platform/http/errors';
 import { AuthService } from './service';
 
 export const authRouter = HttpRouter.empty.pipe(

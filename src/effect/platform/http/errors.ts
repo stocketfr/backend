@@ -1,15 +1,15 @@
 import { HttpServerError, HttpServerResponse } from '@effect/platform';
 import { Effect, Cause, ParseResult } from 'effect';
 import { TreeFormatter } from 'effect/ParseResult';
-import { isAppError } from '../domain-errors';
-import { getRequestContext } from '../request-context';
+import { isAppError } from '../effect/domain-errors';
+import { getRequestContext } from './request-context';
 import {
   localizeMessageTree,
   translateMessage,
   type AnyMessageKey,
   type LogPayload,
   type MessageArgs,
-} from '../messages';
+} from '../observability/messages';
 
 const STATUS_NAMES: Record<number, string> = {
   400: 'Bad Request',

@@ -6,9 +6,9 @@ import {
   NotificationChannel,
 } from '@stocket/types/notifications';
 import { Permission, Resource } from '@stocket/types/auth';
-import { makeTryAsync } from '../../platform/try-async';
-import { TenantQuery } from '../../platform/tenant-query';
-import { DrizzleDatabase } from '../../platform/drizzle';
+import { makeTryAsync } from '../../platform/effect/try-async';
+import { TenantQuery } from '../../platform/tenancy/tenant-query';
+import { DrizzleDatabase } from '../../platform/db/drizzle';
 import {
   betterAuthUsers,
   inventory,
@@ -21,7 +21,7 @@ import {
   roles,
   userRoles,
 } from '../../platform/db/schema';
-import type { TenantNotResolved } from '../../platform/tenant-context';
+import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { NotificationsInfrastructureError } from './notifications.errors';
 import type { NotificationEventKind, NotificationStatus } from './types';
 

@@ -9,11 +9,11 @@ import {
 } from '@stocket/types/orders';
 import { Permission, Resource } from '@stocket/types/auth';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
-import { requirePermission } from '../../platform/authorization';
-import { respondJson, respondJsonOk } from '../../platform/errors';
-import { AuditLogWriter } from '../../platform/audit';
-import { getOptionalSession } from '../../platform/session';
-import { makeMessageResponse } from '../../platform/messages';
+import { requirePermission } from '../../platform/auth/authorization';
+import { respondJson, respondJsonOk } from '../../platform/http/errors';
+import { AuditLogWriter } from '../../platform/audit/index';
+import { getOptionalSession } from '../../platform/http/session';
+import { makeMessageResponse } from '../../platform/observability/messages';
 import { OrdersService } from './service';
 
 const OrderPathParams = Schema.Struct({ id: OrderIdSchema });

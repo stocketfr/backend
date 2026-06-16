@@ -1,9 +1,9 @@
 import { HttpRouter, HttpServerRequest } from '@effect/platform';
 import { Effect } from 'effect';
-import { requireSuperAdmin } from '../../platform/authorization';
-import { respondJson } from '../../platform/errors';
+import { requireSuperAdmin } from '../../platform/auth/authorization';
+import { respondJson } from '../../platform/http/errors';
 import { CreateSuperAdminTenantSchema } from '@stocket/types/superadmin';
-import { getRequestContext } from '../../platform/request-context';
+import { getRequestContext } from '../../platform/http/request-context';
 import { SuperAdminService } from './service';
 
 export const superAdminRouter = HttpRouter.empty.pipe(

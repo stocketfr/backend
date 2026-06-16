@@ -27,7 +27,7 @@ const VALID_USER_ID = '00000000-0000-4000-a000-000000000001';
 const mockRequireSession = vi.fn();
 const mockGetOptionalSession = vi.fn();
 
-vi.mock('../../platform/session', async () => {
+vi.mock('../../platform/http/session', async () => {
   const { Effect } = await vi.importActual<typeof import('effect')>('effect');
   return {
     requireSession: Effect.suspend(() => mockRequireSession()),

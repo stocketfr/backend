@@ -1,7 +1,7 @@
 import * as crypto from 'node:crypto';
 import { Effect } from 'effect';
 import type { PhotoResponseDto } from '@stocket/types/photos';
-import { fromNullOr } from '../../platform/from-null-or';
+import { fromNullOr } from '../../platform/effect/from-null-or';
 import {
   StorageAdapter,
   StorageObjectNotFound,
@@ -15,7 +15,7 @@ import {
   PhotoTooLarge,
   PhotosInfrastructureError,
 } from './photos.errors';
-import type { TenantNotResolved } from '../../platform/tenant-context';
+import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { PhotosRepository } from './repository';
 
 const ALLOWED_MIMETYPES = [

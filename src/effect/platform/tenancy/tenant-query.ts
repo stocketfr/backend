@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import { and, eq, inArray, type AnyColumn, type SQL } from 'drizzle-orm';
-import { requireRequestTenantId } from '../tenant-context';
+import { requireRequestTenantId } from './tenant-context';
 
 export interface TenantScopedTable {
   readonly tenant_id: AnyColumn;

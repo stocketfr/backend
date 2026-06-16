@@ -2,7 +2,7 @@ import {
   NotFoundError,
   ConflictError,
   InternalError,
-} from '../../platform/domain-errors';
+} from '../../platform/effect/domain-errors';
 
 export class ClientNotFound extends NotFoundError('ClientNotFound')<{
   readonly id: string;

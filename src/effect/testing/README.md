@@ -51,7 +51,7 @@ foreign keys where a real Better Auth user isn't needed.
 
 `UsersService` is the only consumer of `BetterAuth.api` in production
 code. For unit tests, follow the pattern in
-`modules/users/service.spec.ts` — `vi.mock('../../platform/better-auth', ...)`.
+`modules/users/service.spec.ts` — `vi.mock('../../platform/auth/better-auth', ...)`.
 For integration / router tests where you want a real layer graph, use:
 
 ```ts

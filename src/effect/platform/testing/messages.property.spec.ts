@@ -7,7 +7,7 @@ import {
   localizeMessageTree,
   resolveLocale,
   translateMessage,
-} from '../messages';
+} from '../observability/messages';
 
 const supportedLocaleArbitrary = fc.constantFrom<SupportedLocale>(
   'en',

@@ -1,11 +1,11 @@
 import { Effect, Layer } from 'effect';
-import { BetterAuth, BetterAuthHeaders } from '../../platform/better-auth';
-import { CurrentRequestContext } from '../../platform/request-context';
+import { BetterAuth, BetterAuthHeaders } from '../../platform/auth/better-auth';
+import { CurrentRequestContext } from '../../platform/http/request-context';
 import { RolesService } from '../roles/service';
 import { UsersRepository } from './repository';
 import { UsersService } from './service';
 
-vi.mock('../../platform/better-auth', async () => {
+vi.mock('../../platform/auth/better-auth', async () => {
   const { Context, Layer } =
     await vi.importActual<typeof import('effect')>('effect');
 

@@ -14,9 +14,9 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { type Context, Effect, Layer } from 'effect';
 import { HttpApp, HttpRouter } from '@effect/platform';
 import { Permission, Resource } from '@stocket/types/auth';
-import { respondCause } from '../../platform/errors';
-import { PermissionProvider } from '../../platform/permission-provider';
-import { AuditLogWriter } from '../../platform/audit';
+import { respondCause } from '../../platform/http/errors';
+import { PermissionProvider } from '../../platform/auth/permission-provider';
+import { AuditLogWriter } from '../../platform/audit/index';
 import { inventoryRouter } from './router';
 import { InventoryService } from './service';
 import {
@@ -38,7 +38,7 @@ vi.mock('./service', async () => {
 // `requireSession` is the only piece of `session.ts` the router path hits
 // (via `requirePermission`).
 const mockRequireSession = vi.fn();
-vi.mock('../../platform/session', async () => {
+vi.mock('../../platform/http/session', async () => {
   const { Effect } = await vi.importActual<typeof import('effect')>('effect');
   return {
     requireSession: Effect.suspend(() => mockRequireSession()),

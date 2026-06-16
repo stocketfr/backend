@@ -5,16 +5,16 @@ import { Effect, Layer } from 'effect';
 import {
   DrizzleDatabase,
   type DrizzleDb,
-} from '../effect/platform/drizzle';
+} from '../effect/platform/db/drizzle';
 import {
   CurrentRequestContext,
   type RequestContext,
-} from '../effect/platform/request-context';
+} from '../effect/platform/http/request-context';
 import {
   DEFAULT_TENANT_ID,
   DEFAULT_TENANT_NAME,
   DEFAULT_TENANT_SLUG,
-} from '../effect/platform/tenant-constants';
+} from '../effect/platform/tenancy/tenant-constants';
 import * as schema from '../effect/platform/db/schema';
 import * as relations from '../effect/platform/db/relations';
 import { ProductImportService } from '../effect/modules/products/import/service';

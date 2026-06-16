@@ -5,9 +5,9 @@ import {
   resolvePaginationWindow,
   toRepositoryPaginatedResult,
 } from '@stocket/types/common';
-import { makeTryAsync } from '../../platform/try-async';
-import { TenantQuery } from '../../platform/tenant-query';
-import { DrizzleDatabase } from '../../platform/drizzle';
+import { makeTryAsync } from '../../platform/effect/try-async';
+import { TenantQuery } from '../../platform/tenancy/tenant-query';
+import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { orders, stockMovements } from '../../platform/db/schema';
 import { StockMovementsInfrastructureError } from './stock-movements.errors';
 

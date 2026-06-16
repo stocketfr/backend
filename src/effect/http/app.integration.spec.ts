@@ -17,9 +17,9 @@ import {
   DEFAULT_TENANT_ID,
   DEFAULT_TENANT_NAME,
   DEFAULT_TENANT_SLUG,
-} from '../platform/tenant-constants';
-import type { DrizzleDb } from '../platform/drizzle';
-import { hostnameForTenantSlug } from '../platform/host';
+} from '../platform/tenancy/tenant-constants';
+import type { DrizzleDb } from '../platform/db/drizzle';
+import { hostnameForTenantSlug } from '../platform/tenancy/host';
 import { BRANDING_SETTINGS_ID } from '../modules/branding/branding.constants';
 import { makeTestHttpAppHandler } from '../testing/app-harness';
 import {

@@ -1,8 +1,8 @@
 import { Effect } from 'effect';
 import { eq, asc, sql, and } from 'drizzle-orm';
-import { makeTryAsync } from '../../platform/try-async';
-import { TenantQuery } from '../../platform/tenant-query';
-import { DrizzleDatabase } from '../../platform/drizzle';
+import { makeTryAsync } from '../../platform/effect/try-async';
+import { TenantQuery } from '../../platform/tenancy/tenant-query';
+import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { photos, products } from '../../platform/db/schema';
 import { PhotosInfrastructureError } from './photos.errors';
 

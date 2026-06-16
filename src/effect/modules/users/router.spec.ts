@@ -16,7 +16,7 @@
 import { Effect } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
 import type { UserResponseDto } from '@stocket/types/users';
-import { BetterAuthHeaders } from '../../platform/better-auth';
+import { BetterAuthHeaders } from '../../platform/auth/better-auth';
 import { UserNotFound, UsersInfrastructureError } from './users.errors';
 import { makeUsersRouterHarness } from './__fixtures__/router-harness';
 import { UsersService } from './service';
@@ -25,7 +25,7 @@ const VALID_USER_ID = '00000000-0000-4000-a000-000000000001';
 const mockRequireSession = vi.fn();
 const mockGetOptionalSession = vi.fn();
 
-vi.mock('../../platform/session', async () => {
+vi.mock('../../platform/http/session', async () => {
   const { Effect } = await vi.importActual<typeof import('effect')>('effect');
   return {
     requireSession: Effect.suspend(() => mockRequireSession()),
@@ -34,8 +34,8 @@ vi.mock('../../platform/session', async () => {
     // re-exporting the actual implementation so the users router keeps
     // working. We only override the session helpers.
     getRequestHeaders: (
-      await vi.importActual<typeof import('../../platform/session')>(
-        '../../platform/session',
+      await vi.importActual<typeof import('../../platform/http/session')>(
+        '../../platform/http/session',
       )
     ).getRequestHeaders,
   };

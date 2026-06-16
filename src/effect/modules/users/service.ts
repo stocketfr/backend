@@ -5,14 +5,14 @@ import type {
   UserResponseDto,
   BanUserDto,
 } from '@stocket/types/users';
-import { makeTryAsync } from '../../platform/try-async';
-import { BetterAuth, BetterAuthHeaders } from '../../platform/better-auth';
-import { type LogPayload } from '../../platform/messages';
-import { makeServiceTracer } from '../../platform/service-tracer';
+import { makeTryAsync } from '../../platform/effect/try-async';
+import { BetterAuth, BetterAuthHeaders } from '../../platform/auth/better-auth';
+import { type LogPayload } from '../../platform/observability/messages';
+import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import {
   requireRequestTenantId,
   type TenantNotResolved,
-} from '../../platform/tenant-context';
+} from '../../platform/tenancy/tenant-context';
 import { RolesService } from '../roles/service';
 import { UserNotFound, UsersInfrastructureError } from './users.errors';
 import { UsersRepository } from './repository';

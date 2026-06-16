@@ -12,13 +12,13 @@ import {
   tenantDomains,
   userRoles,
 } from '../../../platform/db/schema';
-import type { DrizzleDb } from '../../../platform/drizzle';
-import { hostnameForTenantSlug } from '../../../platform/host';
+import type { DrizzleDb } from '../../../platform/db/drizzle';
+import { hostnameForTenantSlug } from '../../../platform/tenancy/host';
 import {
   DEFAULT_TENANT_ID,
   DEFAULT_TENANT_NAME,
   DEFAULT_TENANT_SLUG,
-} from '../../../platform/tenant-constants';
+} from '../../../platform/tenancy/tenant-constants';
 import { makeTestHttpAppHandler } from '../../../testing/app-harness';
 import {
   getTestDb,

@@ -2,9 +2,9 @@ import { HttpRouter, HttpServerRequest } from '@effect/platform';
 import { Effect } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
 import { UpdateBrandingSchema } from '@stocket/types/branding';
-import { requirePermission } from '../../platform/authorization';
-import { respondJson } from '../../platform/errors';
-import { requireSession } from '../../platform/session';
+import { requirePermission } from '../../platform/auth/authorization';
+import { respondJson } from '../../platform/http/errors';
+import { requireSession } from '../../platform/http/session';
 import { BrandingUnauthorized } from './branding.errors';
 import { BrandingService } from './service';
 

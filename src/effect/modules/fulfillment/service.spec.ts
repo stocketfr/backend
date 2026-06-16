@@ -1,7 +1,7 @@
 import { type Mock } from 'vitest';
 import { Effect, Layer } from 'effect';
 import { OrderStatus } from '@stocket/types/orders';
-import { DrizzleDatabase } from '../../platform/drizzle';
+import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { InventoryRepository } from '../inventory/repository';
 import { OrderItemsRepository, OrdersRepository } from '../orders/repository';
 import { StockMovementsRepository } from '../stock-movements/repository';

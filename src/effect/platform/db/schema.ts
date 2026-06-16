@@ -19,7 +19,7 @@ import { ClientStatus } from '@stocket/types/clients';
 import { LocationType } from '@stocket/types/locations';
 import { OrderStatus } from '@stocket/types/orders';
 import { StockMovementReason } from '@stocket/types/stock-movements';
-import { DEFAULT_TENANT_ID } from '../tenant-constants';
+import { DEFAULT_TENANT_ID } from '../tenancy/tenant-constants';
 
 // ── pgEnums ──────────────────────────────────────────────────────────────
 

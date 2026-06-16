@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { getProductionTenantBaseDomain } from '../host';
-import type { DrizzleDb } from '../drizzle';
+import { getProductionTenantBaseDomain } from '../tenancy/host';
+import type { DrizzleDb } from './drizzle';
 
 const LEGACY_PRODUCTION_TENANT_BASE_DOMAIN = 'librestock.maximilian.pw';
 const LOCALHOST_TENANT_BASE_DOMAIN = 'localhost';

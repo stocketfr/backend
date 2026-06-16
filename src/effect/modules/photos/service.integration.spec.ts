@@ -8,7 +8,7 @@ import {
 } from '../../test/integration-layer';
 import { photos, categories, products } from '../../platform/db/schema';
 import { randomUUID } from 'node:crypto';
-import type { DrizzleDb } from '../../platform/drizzle';
+import type { DrizzleDb } from '../../platform/db/drizzle';
 import { PhotosService, type UploadedFile } from './service';
 import {
   makeInMemoryStorageAdapter,

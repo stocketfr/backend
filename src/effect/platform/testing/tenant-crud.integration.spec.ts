@@ -2,13 +2,13 @@ import { Effect, Layer } from 'effect';
 import { eq, ilike, sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { suppliers } from '../db/schema';
-import { DrizzleDatabase } from '../drizzle';
-import { CurrentRequestContext, type RequestContext } from '../request-context';
-import { TenantQuery } from '../tenant-query';
+import { DrizzleDatabase } from '../db/drizzle';
+import { CurrentRequestContext, type RequestContext } from '../http/request-context';
+import { TenantQuery } from '../tenancy/tenant-query';
 import {
   makeTenantCrud,
   type TenantCrudUpdatePatch,
-} from '../tenant-crud';
+} from '../db/tenant-crud';
 import { SuppliersInfrastructureError } from '../../modules/suppliers/suppliers.errors';
 import {
   getTestDb,

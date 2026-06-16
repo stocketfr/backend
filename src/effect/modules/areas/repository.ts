@@ -5,9 +5,9 @@ import type {
   UpdateAreaDto,
   AreaQueryDto,
 } from '@stocket/types/areas';
-import { makeTryAsync } from '../../platform/try-async';
-import { TenantQuery } from '../../platform/tenant-query';
-import { DrizzleDatabase } from '../../platform/drizzle';
+import { makeTryAsync } from '../../platform/effect/try-async';
+import { TenantQuery } from '../../platform/tenancy/tenant-query';
+import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { areas, locations } from '../../platform/db/schema';
 import {
   AreaLocationNotFound,

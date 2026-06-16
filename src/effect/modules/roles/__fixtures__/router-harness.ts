@@ -6,7 +6,7 @@
  *   - `AuditLogWriter` (vitest spy so we can assert fire-and-forget calls)
  *   - `RolesService` (each test injects its own service stub)
  *
- * Tests also `vi.mock('../../platform/session', ...)` so `requireSession`
+ * Tests also `vi.mock('../../platform/http/session', ...)` so `requireSession`
  * doesn't need a real Better Auth layer. The router is wrapped with
  * `HttpRouter.catchAllCause(respondCause)` to mirror `buildHttpApp` —
  * without it, `PermissionDenied` / `SessionUnauthorized` failures escape
@@ -14,7 +14,7 @@
  */
 import { type Effect } from 'effect';
 import type { Permission, Resource } from '@stocket/types/auth';
-import type { AuditWriteParams } from '../../../platform/audit';
+import type { AuditWriteParams } from '../../../platform/audit/index';
 import {
   makeRouterServiceLayer,
   makeRouterTestHarness,

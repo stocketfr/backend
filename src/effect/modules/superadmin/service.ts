@@ -9,11 +9,11 @@ import {
   hostnameForTenantSlug,
   isReservedTenantSlug,
   isValidTenantSlug,
-} from '../../platform/host';
+} from '../../platform/tenancy/host';
 import type { UserSession } from '../../platform/auth/user-session';
-import { makeServiceTracer } from '../../platform/service-tracer';
-import { makeTryAsync } from '../../platform/try-async';
-import { BetterAuth } from '../../platform/better-auth';
+import { makeServiceTracer } from '../../platform/observability/service-tracer';
+import { makeTryAsync } from '../../platform/effect/try-async';
+import { BetterAuth } from '../../platform/auth/better-auth';
 import { UsersRepository } from '../users/repository';
 import {
   InvalidTenantSlug,

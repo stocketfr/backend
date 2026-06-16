@@ -8,9 +8,9 @@ import {
   UpdateRoleSchema,
   type UpdateRoleDto,
 } from '@stocket/types/roles';
-import { requirePermission } from '../../platform/authorization';
-import { respondEmpty, respondJson } from '../../platform/errors';
-import { AuditLogWriter } from '../../platform/audit';
+import { requirePermission } from '../../platform/auth/authorization';
+import { respondEmpty, respondJson } from '../../platform/http/errors';
+import { AuditLogWriter } from '../../platform/audit/index';
 import { RolesService } from './service';
 
 const RolePathParamsSchema = Schema.Struct({

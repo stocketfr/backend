@@ -10,10 +10,10 @@ import {
   withTestDb,
 } from '../../testing/test-harness';
 import { auditLogs } from '../db/schema';
-import type { DrizzleDb } from '../drizzle';
-import { CurrentRequestContext, type RequestContext } from '../request-context';
-import { DEFAULT_TENANT_ID } from '../tenant-constants';
-import { makeAuditLogWriter } from '../audit';
+import type { DrizzleDb } from '../db/drizzle';
+import { CurrentRequestContext, type RequestContext } from '../http/request-context';
+import { DEFAULT_TENANT_ID } from '../tenancy/tenant-constants';
+import { makeAuditLogWriter } from '../audit/index';
 
 const TEST_ENTITY_ID = '00000000-0000-4000-b000-000000000101';
 

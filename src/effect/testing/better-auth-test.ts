@@ -18,7 +18,7 @@
  * or to assert on method calls (spy with `vi.fn()`).
  */
 import { Layer } from 'effect';
-import { BetterAuth, type BetterAuthService } from '../platform/better-auth';
+import { BetterAuth, type BetterAuthService } from '../platform/auth/better-auth';
 
 /** A minimal Better Auth user shape compatible with what the admin plugin returns. */
 export interface FakeBetterAuthUser {

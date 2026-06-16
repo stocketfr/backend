@@ -27,7 +27,7 @@ import { Effect, Layer } from 'effect';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DrizzleDatabase, type DrizzleDb } from '../../platform/drizzle';
+import { DrizzleDatabase, type DrizzleDb } from '../../platform/db/drizzle';
 import * as schema from '../../platform/db/schema';
 import * as relations from '../../platform/db/relations';
 import {

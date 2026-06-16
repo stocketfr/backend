@@ -3,8 +3,8 @@ import * as HttpServerRequest from '@effect/platform/HttpServerRequest';
 import type { HttpApp } from '@effect/platform';
 import { Effect } from 'effect';
 import { findTenantByHostname } from '../platform/db/tenant-queries';
-import { DrizzleDatabase } from '../platform/drizzle';
-import { isPlatformHost, normalizeHost } from '../platform/host';
+import { DrizzleDatabase } from '../platform/db/drizzle';
+import { isPlatformHost, normalizeHost } from '../platform/tenancy/host';
 
 const CORS_MAX_AGE_SECONDS = 86_400;
 

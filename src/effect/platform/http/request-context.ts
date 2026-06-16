@@ -2,7 +2,7 @@ import { Headers, HttpServerRequest } from '@effect/platform';
 import type { HttpMethod } from '@effect/platform/HttpMethod';
 import { Context, Effect, Option } from 'effect';
 import { v4 as uuidv4, validate as uuidValidate } from 'uuid';
-import { resolveLocale, type SupportedLocale } from '../messages';
+import { resolveLocale, type SupportedLocale } from '../observability/messages';
 
 export interface RequestContext {
   readonly requestId: string;

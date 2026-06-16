@@ -1,13 +1,13 @@
 import { HttpServerRequest, HttpServerResponse } from '@effect/platform';
 import { Effect, Layer } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
-import type { BetterAuthService } from '../platform/better-auth';
+import type { BetterAuthService } from '../platform/auth/better-auth';
 import {
   CurrentRequestContext,
   type RequestContext,
-} from '../platform/request-context';
-import { respondCause } from '../platform/errors';
-import { DEFAULT_TENANT_ID } from '../platform/tenant-context';
+} from '../platform/http/request-context';
+import { respondCause } from '../platform/http/errors';
+import { DEFAULT_TENANT_ID } from '../platform/tenancy/tenant-context';
 import { makeBetterAuthTestLayer } from '../testing/better-auth-test';
 import { tenantContextMiddleware } from './tenant';
 

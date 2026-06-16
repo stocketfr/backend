@@ -6,8 +6,8 @@ import {
   AuditLogQuerySchema,
 } from '@stocket/types/audit-logs';
 import { Permission, Resource } from '@stocket/types/auth';
-import { requirePermission } from '../../platform/authorization';
-import { respondJson } from '../../platform/errors';
+import { requirePermission } from '../../platform/auth/authorization';
+import { respondJson } from '../../platform/http/errors';
 import { AuditLogsService } from './service';
 
 const AuditLogPathParamsSchema = Schema.Struct({

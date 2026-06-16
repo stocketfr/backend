@@ -1,7 +1,7 @@
 import { HttpRouter, HttpServerRequest } from '@effect/platform';
 import { Effect, Schema } from 'effect';
-import { ForbiddenError, InternalError } from '../../platform/domain-errors';
-import { respondJson } from '../../platform/errors';
+import { ForbiddenError, InternalError } from '../../platform/effect/domain-errors';
+import { respondJson } from '../../platform/http/errors';
 import { seedE2eTenant } from '../../../scripts/seed-e2e';
 
 class E2eSeedDisabled extends ForbiddenError('E2eSeedDisabled') {}

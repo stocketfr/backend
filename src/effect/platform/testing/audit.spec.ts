@@ -2,10 +2,10 @@ import { HttpServerRequest } from '@effect/platform';
 import { Effect, Layer } from 'effect';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
 import { makeBetterAuthTestLayer } from '../../testing/better-auth-test';
-import { DrizzleDatabase } from '../drizzle';
-import { CurrentRequestContext, type RequestContext } from '../request-context';
-import { DEFAULT_TENANT_ID } from '../tenant-constants';
-import { makeAuditLogWriter } from '../audit';
+import { DrizzleDatabase } from '../db/drizzle';
+import { CurrentRequestContext, type RequestContext } from '../http/request-context';
+import { DEFAULT_TENANT_ID } from '../tenancy/tenant-constants';
+import { makeAuditLogWriter } from '../audit/index';
 
 const TEST_USER_ID = '00000000-0000-4000-a000-000000000001';
 const TEST_ENTITY_ID = '00000000-0000-4000-b000-000000000001';

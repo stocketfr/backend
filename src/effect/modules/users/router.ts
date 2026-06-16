@@ -10,10 +10,10 @@ import {
   UserIdSchema,
   UserQuerySchema,
 } from '@stocket/types/users';
-import { requirePermission } from '../../platform/authorization';
-import { respondEmpty, respondJson } from '../../platform/errors';
-import { BetterAuthHeaders } from '../../platform/better-auth';
-import { getRequestHeaders } from '../../platform/session';
+import { requirePermission } from '../../platform/auth/authorization';
+import { respondEmpty, respondJson } from '../../platform/http/errors';
+import { BetterAuthHeaders } from '../../platform/auth/better-auth';
+import { getRequestHeaders } from '../../platform/http/session';
 import { UsersService } from './service';
 
 const UserPathParamsSchema = Schema.Struct({

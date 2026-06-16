@@ -7,16 +7,16 @@ import type {
   UpdateClientSchema,
 } from '@stocket/types/clients';
 import { toPaginatedResponse, type PaginationMeta } from '@stocket/types/common';
-import { fromNullOr } from '../../platform/from-null-or';
+import { fromNullOr } from '../../platform/effect/from-null-or';
 import { makeReferenceEntityOperations } from '../../platform/reference-data-service';
-import { makeServiceTracer } from '../../platform/service-tracer';
+import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { toClientResponseDto } from './clients.utils';
 import {
   ClientEmailAlreadyExists,
   ClientNotFound,
   type ClientsInfrastructureError,
 } from './clients.errors';
-import type { TenantNotResolved } from '../../platform/tenant-context';
+import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { ClientsRepository } from './repository';
 
 type CreateClientDto = Schema.Schema.Type<typeof CreateClientSchema>;

@@ -1,9 +1,9 @@
 import { type Context, Effect, Layer } from 'effect';
 import { HttpApp, HttpRouter } from '@effect/platform';
 import { Permission, Resource } from '@stocket/types/auth';
-import { respondCause } from '../../platform/errors';
-import { PermissionProvider } from '../../platform/permission-provider';
-import { AuditLogWriter } from '../../platform/audit';
+import { respondCause } from '../../platform/http/errors';
+import { PermissionProvider } from '../../platform/auth/permission-provider';
+import { AuditLogWriter } from '../../platform/audit/index';
 import { makeBetterAuthTestLayer } from '../../testing/better-auth-test';
 import { areasRouter } from './router';
 import {

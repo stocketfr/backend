@@ -19,10 +19,10 @@ import {
   toRepositoryPaginatedResult,
 } from '@stocket/types/common';
 import type { ProductQuerySchema } from '@stocket/types/products';
-import { buildOrderBy } from '../../platform/drizzle-sort.utils';
-import { makeTryAsync } from '../../platform/try-async';
-import { TenantQuery } from '../../platform/tenant-query';
-import { DrizzleDatabase, type DrizzleDb } from '../../platform/drizzle';
+import { buildOrderBy } from '../../platform/db/drizzle-sort.utils';
+import { makeTryAsync } from '../../platform/effect/try-async';
+import { TenantQuery } from '../../platform/tenancy/tenant-query';
+import { DrizzleDatabase, type DrizzleDb } from '../../platform/db/drizzle';
 import { products, categories, suppliers } from '../../platform/db/schema';
 import { ProductsInfrastructureError } from './products.errors';
 

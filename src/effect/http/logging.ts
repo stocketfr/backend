@@ -1,11 +1,11 @@
 import { Effect } from 'effect';
 import type { HttpApp } from '@effect/platform';
 import * as HttpServerRequest from '@effect/platform/HttpServerRequest';
-import type { LogPayload } from '../platform/messages';
+import type { LogPayload } from '../platform/observability/messages';
 import {
   CurrentRequestContext,
   makeRequestContext,
-} from '../platform/request-context';
+} from '../platform/http/request-context';
 
 export const requestLoggingMiddleware = <E, R>(
   httpApp: HttpApp.Default<E, R>,

@@ -1,8 +1,8 @@
 import { Effect } from 'effect';
 import { eq, asc, sql, type SQL } from 'drizzle-orm';
-import { makeTenantCrud } from '../../platform/tenant-crud';
+import { makeTenantCrud } from '../../platform/db/tenant-crud';
 import { categories } from '../../platform/db/schema';
-import { TenantQuery } from '../../platform/tenant-query';
+import { TenantQuery } from '../../platform/tenancy/tenant-query';
 import { CategoriesInfrastructureError } from './categories.errors';
 
 export class CategoriesRepository extends Effect.Service<CategoriesRepository>()(

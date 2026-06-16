@@ -12,7 +12,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import type { DrizzleDb } from '../../../platform/drizzle';
+import type { DrizzleDb } from '../../../platform/db/drizzle';
 import { members, organizations, roles } from '../../../platform/db/schema';
 import {
   ensureBetterAuthUserTable as ensureSharedBetterAuthUserTable,
@@ -22,7 +22,7 @@ import {
   DEFAULT_TENANT_ID,
   DEFAULT_TENANT_NAME,
   DEFAULT_TENANT_SLUG,
-} from '../../../platform/tenant-constants';
+} from '../../../platform/tenancy/tenant-constants';
 
 /**
  * Create stand-ins for Better Auth tables if the schema push did not provision

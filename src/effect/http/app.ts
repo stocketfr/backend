@@ -11,13 +11,13 @@ import { auth } from '../../auth';
 import { apiRouter } from '../modules';
 import { HealthService } from '../modules/health/service';
 import { HealthApiLive } from '../modules/health/router';
-import { respondCause } from '../platform/errors';
+import { respondCause } from '../platform/http/errors';
 import {
   resolveLocale,
   translateMessage,
   type AnyMessageKey,
   type MessageArgs,
-} from '../platform/messages';
+} from '../platform/observability/messages';
 import { corsMiddleware } from './cors';
 import { securityHeadersMiddleware } from './security-headers';
 import { requestLoggingMiddleware } from './logging';

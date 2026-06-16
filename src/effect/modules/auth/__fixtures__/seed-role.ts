@@ -15,13 +15,13 @@ import {
   rolePermissions,
   userRoles,
 } from '../../../platform/db/schema';
-import type { DrizzleDb } from '../../../platform/drizzle';
+import type { DrizzleDb } from '../../../platform/db/drizzle';
 import { seedBetterAuthUser } from '../../../test/seed';
 import {
   DEFAULT_TENANT_ID,
   DEFAULT_TENANT_NAME,
   DEFAULT_TENANT_SLUG,
-} from '../../../platform/tenant-constants';
+} from '../../../platform/tenancy/tenant-constants';
 
 export interface SeedRoleInput {
   readonly name: string;

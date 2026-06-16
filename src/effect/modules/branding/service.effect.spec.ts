@@ -28,9 +28,9 @@ import {
   POWERED_BY,
 } from './branding.constants';
 import { BrandingService } from './service';
-import { DrizzleDatabase, type DrizzleDb } from '../../platform/drizzle';
+import { DrizzleDatabase, type DrizzleDb } from '../../platform/db/drizzle';
 import type { brandingSettings } from '../../platform/db/schema';
-import { CurrentRequestContext } from '../../platform/request-context';
+import { CurrentRequestContext } from '../../platform/http/request-context';
 import { createChainableMock } from '../../testing/test-harness';
 
 const tenantRequestContext = {

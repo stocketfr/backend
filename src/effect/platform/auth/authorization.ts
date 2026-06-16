@@ -2,17 +2,17 @@ import * as HttpServerRequest from '@effect/platform/HttpServerRequest';
 import { Effect } from 'effect';
 import { eq } from 'drizzle-orm';
 import type { Permission, Resource } from '@stocket/types/auth';
-import { DrizzleDatabase } from '../drizzle';
+import { DrizzleDatabase } from '../db/drizzle';
 import { superAdmins } from '../db/schema';
 import { PermissionProvider } from './permission-provider';
 import {
   ForbiddenError,
   InternalError,
   NotFoundError,
-} from '../domain-errors';
-import { isPlatformHost, resolveRequestHost } from '../host';
-import { requireSession } from '../session';
-import { getRequestTenantId, resolveTenantForSession } from '../tenant-context';
+} from '../effect/domain-errors';
+import { isPlatformHost, resolveRequestHost } from '../tenancy/host';
+import { requireSession } from '../http/session';
+import { getRequestTenantId, resolveTenantForSession } from '../tenancy/tenant-context';
 
 export class PermissionDenied extends ForbiddenError('PermissionDenied') {}
 export class PlatformHostRequired extends NotFoundError(

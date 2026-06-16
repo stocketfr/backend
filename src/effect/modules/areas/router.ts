@@ -8,10 +8,10 @@ import {
   CreateAreaSchema,
   UpdateAreaSchema,
 } from '@stocket/types/areas';
-import { requirePermission } from '../../platform/authorization';
-import { respondJson } from '../../platform/errors';
+import { requirePermission } from '../../platform/auth/authorization';
+import { respondJson } from '../../platform/http/errors';
 import { respondAuditedMutation } from '../../platform/audited-mutation';
-import { makeMessageResponse } from '../../platform/messages';
+import { makeMessageResponse } from '../../platform/observability/messages';
 import { AreasService } from './service';
 
 const AreaPathParams = Schema.Struct({ id: AreaIdSchema });

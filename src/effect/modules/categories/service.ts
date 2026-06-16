@@ -4,8 +4,8 @@ import type {
   CreateCategoryDto,
   UpdateCategoryDto,
 } from '@stocket/types/categories';
-import { fromNullOr } from '../../platform/from-null-or';
-import { makeServiceTracer } from '../../platform/service-tracer';
+import { fromNullOr } from '../../platform/effect/from-null-or';
+import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import type { categories } from '../../platform/db/schema';
 import {
   type CategoriesInfrastructureError,
@@ -15,7 +15,7 @@ import {
   CategorySelfParent,
   ParentCategoryNotFound,
 } from './categories.errors';
-import type { TenantNotResolved } from '../../platform/tenant-context';
+import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { CategoriesRepository } from './repository';
 
 type Category = typeof categories.$inferSelect;

@@ -1,4 +1,4 @@
-import { InternalError, NotFoundError } from '../../platform/domain-errors';
+import { InternalError, NotFoundError } from '../../platform/effect/domain-errors';
 
 export class UserNotFound extends NotFoundError('UserNotFound')<{
   readonly id: string;

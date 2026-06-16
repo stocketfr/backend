@@ -1,12 +1,12 @@
 import type { HttpApp } from '@effect/platform';
 import * as HttpServerRequest from '@effect/platform/HttpServerRequest';
 import { Effect } from 'effect';
-import { requireSession } from '../platform/session';
-import { resolveRequestHost } from '../platform/host';
+import { requireSession } from '../platform/http/session';
+import { resolveRequestHost } from '../platform/tenancy/host';
 import {
   resolvePublicTenantForHost,
   resolveTenantForHostAndSession,
-} from '../platform/tenant-context';
+} from '../platform/tenancy/tenant-context';
 
 const getPathname = (url: string) => {
   try {

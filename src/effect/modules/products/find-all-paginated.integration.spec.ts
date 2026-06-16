@@ -1,7 +1,7 @@
 import { Effect, Layer } from 'effect';
 import { ProductSortField } from '@stocket/types/products';
 import { SortOrder } from '@stocket/types/common';
-import type { DrizzleDb } from '../../platform/drizzle';
+import type { DrizzleDb } from '../../platform/db/drizzle';
 import {
   getTestDb,
   makeTestDrizzleLayer,

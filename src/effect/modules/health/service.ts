@@ -1,9 +1,9 @@
 import { Effect } from 'effect';
 import { sql } from 'drizzle-orm';
-import { BetterAuth } from '../../platform/better-auth';
-import { DrizzleDatabase } from '../../platform/drizzle';
-import { type AnyMessageKey, type MessageArgs } from '../../platform/messages';
-import { makeServiceTracer } from '../../platform/service-tracer';
+import { BetterAuth } from '../../platform/auth/better-auth';
+import { DrizzleDatabase } from '../../platform/db/drizzle';
+import { type AnyMessageKey, type MessageArgs } from '../../platform/observability/messages';
+import { makeServiceTracer } from '../../platform/observability/service-tracer';
 
 interface HealthDetails {
   readonly status: 'up' | 'down';

@@ -24,7 +24,7 @@ import {
   truncateAll,
 } from '../../testing/test-harness';
 import { makeBetterAuthTestLayer } from '../../testing/better-auth-test';
-import type { DrizzleDb } from '../../platform/drizzle';
+import type { DrizzleDb } from '../../platform/db/drizzle';
 import { UsersService } from './service';
 import {
   ensureBetterAuthUserTable,

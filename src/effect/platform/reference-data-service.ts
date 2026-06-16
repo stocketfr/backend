@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import { makeGetOrFail } from './from-null-or';
+import { makeGetOrFail } from './effect/from-null-or';
 
 export interface ReferenceEntityOperationsOptions<
   Entity,

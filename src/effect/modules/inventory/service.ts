@@ -7,7 +7,7 @@ import type {
   UpdateInventorySchema,
 } from '@stocket/types/inventory';
 import { toPaginatedResponse } from '@stocket/types/common';
-import { makeGetOrFail } from '../../platform/from-null-or';
+import { makeGetOrFail } from '../../platform/effect/from-null-or';
 import { AreaNotFound, AreasInfrastructureError } from '../areas/areas.errors';
 import { AreasService } from '../areas/service';
 import { LocationsService } from '../locations/service';
@@ -24,7 +24,7 @@ import {
   InventoryProductNotFound,
   InventoryQuantityAdjustmentFailed,
 } from './inventory.errors';
-import type { TenantNotResolved } from '../../platform/tenant-context';
+import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { InventoryRepository } from './repository';
 import { toInventoryResponseDto, type Inventory } from './inventory.utils';
 

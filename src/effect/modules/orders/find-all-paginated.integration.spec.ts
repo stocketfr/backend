@@ -1,6 +1,6 @@
 import { Effect, Layer } from 'effect';
 import { OrderStatus } from '@stocket/types/orders';
-import type { DrizzleDb } from '../../platform/drizzle';
+import type { DrizzleDb } from '../../platform/db/drizzle';
 import {
   getTestDb,
   makeTestDrizzleLayer,

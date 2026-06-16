@@ -2,7 +2,7 @@ import {
   BadRequestError,
   InternalError,
   NotFoundError,
-} from '../../platform/domain-errors';
+} from '../../platform/effect/domain-errors';
 
 export class StockMovementNotFound extends NotFoundError(
   'StockMovementNotFound',

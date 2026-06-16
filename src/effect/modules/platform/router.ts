@@ -1,13 +1,13 @@
 import { HttpRouter, HttpServerRequest } from '@effect/platform';
 import { Effect } from 'effect';
-import { DrizzleDatabase } from '../../platform/drizzle';
+import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { findTenantByHostname } from '../../platform/db/tenant-queries';
-import { respondEmpty } from '../../platform/errors';
-import { isPlatformHost, normalizeHost } from '../../platform/host';
+import { respondEmpty } from '../../platform/http/errors';
+import { isPlatformHost, normalizeHost } from '../../platform/tenancy/host';
 import {
   TenantHostNotFound,
   TenantNotResolved,
-} from '../../platform/tenant-context';
+} from '../../platform/tenancy/tenant-context';
 
 const getSearchParam = (url: string, key: string) => {
   try {

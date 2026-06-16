@@ -7,15 +7,15 @@ import type {
   LocationResponseDto,
   PaginatedLocationsResponseDto,
 } from '@stocket/types/locations';
-import { fromNullOr } from '../../platform/from-null-or';
+import { fromNullOr } from '../../platform/effect/from-null-or';
 import { makeReferenceEntityOperations } from '../../platform/reference-data-service';
-import { makeServiceTracer } from '../../platform/service-tracer';
+import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { toLocationResponseDto } from './locations.utils';
 import {
   LocationNotFound,
   type LocationsInfrastructureError,
 } from './locations.errors';
-import type { TenantNotResolved } from '../../platform/tenant-context';
+import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { LocationsRepository } from './repository';
 
 export class LocationsService extends Effect.Service<LocationsService>()(

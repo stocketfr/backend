@@ -2,13 +2,13 @@ import { Context, Effect, Layer, Option } from 'effect';
 import type { EmailTemplate } from '@stocket/emails';
 import { defaultMailer } from '../../../email/default-mailer';
 import type { Mailer } from '../../../email/mailer';
-import { InternalError } from '../domain-errors';
+import { InternalError } from '../effect/domain-errors';
 import {
   DEFAULT_LOCALE,
   type LogPayload,
   type SupportedLocale,
-} from '../messages';
-import { getOptionalRequestContext } from '../request-context';
+} from '../observability/messages';
+import { getOptionalRequestContext } from '../http/request-context';
 
 export class EmailSendError extends InternalError('EmailSendError')<{
   readonly cause: unknown;

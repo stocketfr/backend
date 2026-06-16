@@ -19,7 +19,7 @@ import { AuthService } from './service';
 // ---------------------------------------------------------------------------
 const mockRequireSession = vi.fn();
 
-vi.mock('../../platform/session', async () => {
+vi.mock('../../platform/http/session', async () => {
   const { Effect } = await vi.importActual<typeof import('effect')>('effect');
 
   return {

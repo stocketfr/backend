@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it } from '@effect/vitest';
 import { Effect, Layer } from 'effect';
 import { vi } from 'vitest';
 import { HealthService } from './service';
-import { DrizzleDatabase, type DrizzleDb } from '../../platform/drizzle';
+import { DrizzleDatabase, type DrizzleDb } from '../../platform/db/drizzle';
 import { makeBetterAuthTestLayer } from '../../testing/better-auth-test';
 
 /**

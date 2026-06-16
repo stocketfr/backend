@@ -6,7 +6,7 @@ import {
   makeTestDrizzleLayer,
 } from '../../test/integration-layer';
 import { seedLocation, seedArea } from '../../test/seed';
-import type { DrizzleDb } from '../../platform/drizzle';
+import type { DrizzleDb } from '../../platform/db/drizzle';
 import { AreasService } from './service';
 
 let db: DrizzleDb;

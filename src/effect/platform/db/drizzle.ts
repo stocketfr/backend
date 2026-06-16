@@ -9,8 +9,8 @@ import {
 } from '../../../config/db-connection.utils';
 import * as schema from './schema';
 import * as relations from './relations';
-import { makeDrizzleLogger } from '../console-logging';
-import { InternalError } from '../domain-errors';
+import { makeDrizzleLogger } from '../observability/console-logging';
+import { InternalError } from '../effect/domain-errors';
 
 export type DrizzleDb = NodePgDatabase<typeof schema & typeof relations>;
 

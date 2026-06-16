@@ -8,10 +8,10 @@ import {
   LocationQuerySchema,
   UpdateLocationSchema,
 } from '@stocket/types/locations';
-import { requirePermission } from '../../platform/authorization';
-import { respondJson } from '../../platform/errors';
+import { requirePermission } from '../../platform/auth/authorization';
+import { respondJson } from '../../platform/http/errors';
 import { respondAuditedMutation } from '../../platform/audited-mutation';
-import { makeMessageResponse } from '../../platform/messages';
+import { makeMessageResponse } from '../../platform/observability/messages';
 import { LocationsService } from './service';
 
 const LocationPathParams = Schema.Struct({ id: LocationIdSchema });

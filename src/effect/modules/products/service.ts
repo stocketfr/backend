@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import type { Schema } from 'effect';
-import { fromNullOr } from '../../platform/from-null-or';
+import { fromNullOr } from '../../platform/effect/from-null-or';
 import {
   createBulkResultBuilder,
   findDuplicates,
@@ -28,7 +28,7 @@ import {
   ProductsInfrastructureError,
   SkuAlreadyExists,
 } from './products.errors';
-import type { TenantNotResolved } from '../../platform/tenant-context';
+import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { ProductsRepository } from './repository';
 
 type ProductQueryDto = Schema.Schema.Type<typeof ProductQuerySchema>;

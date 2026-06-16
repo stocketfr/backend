@@ -16,22 +16,22 @@ import type {
   InventorySummaryDto,
 } from '@stocket/types/inventory';
 import { InventorySortField } from '@stocket/types/inventory';
-import { buildOrderBy } from '../../platform/drizzle-sort.utils';
+import { buildOrderBy } from '../../platform/db/drizzle-sort.utils';
 import {
   resolvePaginationWindow,
   toRepositoryPaginatedResult,
   type RepositoryPaginatedResult,
 } from '@stocket/types/common';
-import { makeTryAsync } from '../../platform/try-async';
-import { TenantQuery } from '../../platform/tenant-query';
-import { DrizzleDatabase, type DrizzleDb } from '../../platform/drizzle';
+import { makeTryAsync } from '../../platform/effect/try-async';
+import { TenantQuery } from '../../platform/tenancy/tenant-query';
+import { DrizzleDatabase, type DrizzleDb } from '../../platform/db/drizzle';
 import {
   inventory,
   products,
   locations,
   areas,
 } from '../../platform/db/schema';
-import type { TenantNotResolved } from '../../platform/tenant-context';
+import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { InventoryInfrastructureError } from './inventory.errors';
 
 type InventoryRow = typeof inventory.$inferSelect;

@@ -3,7 +3,7 @@ import {
   BadRequestError,
   InternalError,
   NotFoundError,
-} from '../../platform/domain-errors';
+} from '../../platform/effect/domain-errors';
 
 export class OrderNotFound extends NotFoundError('OrderNotFound')<{
   readonly id: string;

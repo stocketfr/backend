@@ -4,15 +4,15 @@ import type {
   BrandingResponseDto,
   UpdateBrandingDto,
 } from '@stocket/types/branding';
-import { makeTryAsync } from '../../platform/try-async';
-import { DrizzleDatabase } from '../../platform/drizzle';
+import { makeTryAsync } from '../../platform/effect/try-async';
+import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { brandingSettings } from '../../platform/db/schema';
 import {
   DEFAULT_TENANT_ID,
   getRequestTenantId,
   requireRequestTenantId,
   type TenantNotResolved,
-} from '../../platform/tenant-context';
+} from '../../platform/tenancy/tenant-context';
 import {
   BRANDING_SETTINGS_ID,
   DEFAULT_BRANDING,

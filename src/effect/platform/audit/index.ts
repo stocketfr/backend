@@ -3,12 +3,12 @@ import {
   type AuditAction,
   type AuditEntityType,
 } from '@stocket/types/audit-logs';
-import { DrizzleDatabase } from '../drizzle';
+import { DrizzleDatabase } from '../db/drizzle';
 import { auditLogs } from '../db/schema';
-import type { LogPayload } from '../messages';
-import { getOptionalSession } from '../session';
-import { getRequestContext } from '../request-context';
-import { DEFAULT_TENANT_ID } from '../tenant-constants';
+import type { LogPayload } from '../observability/messages';
+import { getOptionalSession } from '../http/session';
+import { getRequestContext } from '../http/request-context';
+import { DEFAULT_TENANT_ID } from '../tenancy/tenant-constants';
 
 export interface AuditWriteParams {
   readonly action: AuditAction;

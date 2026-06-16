@@ -1,8 +1,8 @@
 import { Effect } from 'effect';
 import { eq, isNull, sql, type SQL } from 'drizzle-orm';
-import { makeTryAsync } from '../../../platform/try-async';
-import { DrizzleDatabase } from '../../../platform/drizzle';
-import { TenantQuery } from '../../../platform/tenant-query';
+import { makeTryAsync } from '../../../platform/effect/try-async';
+import { DrizzleDatabase } from '../../../platform/db/drizzle';
+import { TenantQuery } from '../../../platform/tenancy/tenant-query';
 import {
   categories,
   inventory,

@@ -7,7 +7,7 @@ import {
   orders,
   stockMovements,
 } from '../../platform/db/schema';
-import type { DrizzleDb } from '../../platform/drizzle';
+import type { DrizzleDb } from '../../platform/db/drizzle';
 import {
   getTestDb,
   makeTestDrizzleLayer,

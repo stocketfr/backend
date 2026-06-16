@@ -14,11 +14,11 @@ import {
   BulkDeleteSchema,
   BulkRestoreSchema,
 } from '@stocket/types/products';
-import { requirePermission } from '../../platform/authorization';
-import { respondJson, respondJsonOk } from '../../platform/errors';
-import { AuditLogWriter } from '../../platform/audit';
-import { getOptionalSession, requireSession } from '../../platform/session';
-import { makeMessageResponse } from '../../platform/messages';
+import { requirePermission } from '../../platform/auth/authorization';
+import { respondJson, respondJsonOk } from '../../platform/http/errors';
+import { AuditLogWriter } from '../../platform/audit/index';
+import { getOptionalSession, requireSession } from '../../platform/http/session';
+import { makeMessageResponse } from '../../platform/observability/messages';
 import { ProductImportService } from './import/service';
 import { ProductImportTypes } from './import/types';
 import { ProductsInfrastructureError } from './products.errors';

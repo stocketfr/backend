@@ -1,4 +1,4 @@
-import { InternalError, UnauthorizedError } from '../../platform/domain-errors';
+import { InternalError, UnauthorizedError } from '../../platform/effect/domain-errors';
 
 export class BrandingInfrastructureError extends InternalError('BrandingInfrastructureError')<{
   readonly action: string;

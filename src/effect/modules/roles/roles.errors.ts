@@ -3,7 +3,7 @@ import {
   BadRequestError,
   ConflictError,
   InternalError,
-} from '../../platform/domain-errors';
+} from '../../platform/effect/domain-errors';
 
 export class RoleNotFound extends NotFoundError('RoleNotFound')<{
   readonly id: string;

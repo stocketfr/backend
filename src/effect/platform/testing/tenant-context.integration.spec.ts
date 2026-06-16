@@ -3,13 +3,13 @@ import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { UserSession } from '../auth/user-session';
 import { members, organizations } from '../db/schema';
-import { DrizzleDatabase } from '../drizzle';
-import { CurrentRequestContext, type RequestContext } from '../request-context';
+import { DrizzleDatabase } from '../db/drizzle';
+import { CurrentRequestContext, type RequestContext } from '../http/request-context';
 import {
   resolveTenantForSession,
   TenantMembershipRejected,
   TenantNotResolved,
-} from '../tenant-context';
+} from '../tenancy/tenant-context';
 import {
   getTestDb,
   seedBetterAuthUser,

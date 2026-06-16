@@ -1,9 +1,9 @@
 import { Effect } from 'effect';
 import { eq, ilike, sql, type SQL } from 'drizzle-orm';
 import type { SupplierQueryDto } from '@stocket/types/suppliers';
-import { makeTenantCrud } from '../../platform/tenant-crud';
+import { makeTenantCrud } from '../../platform/db/tenant-crud';
 import { suppliers } from '../../platform/db/schema';
-import { TenantQuery } from '../../platform/tenant-query';
+import { TenantQuery } from '../../platform/tenancy/tenant-query';
 import { SuppliersInfrastructureError } from './suppliers.errors';
 
 function buildSupplierFilters(query: SupplierQueryDto): SQL[] {

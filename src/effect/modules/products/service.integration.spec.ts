@@ -11,7 +11,7 @@ import {
   seedSupplier,
   TEST_USER_ID,
 } from '../../test/seed';
-import type { DrizzleDb } from '../../platform/drizzle';
+import type { DrizzleDb } from '../../platform/db/drizzle';
 import { ProductsService } from './service';
 
 let db: DrizzleDb;

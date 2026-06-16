@@ -9,10 +9,10 @@ import {
   InventoryQuerySchema,
   UpdateInventorySchema,
 } from '@stocket/types/inventory';
-import { requirePermission } from '../../platform/authorization';
-import { AuditLogWriter } from '../../platform/audit';
-import { respondJson, respondJsonOk } from '../../platform/errors';
-import { makeMessageResponse } from '../../platform/messages';
+import { requirePermission } from '../../platform/auth/authorization';
+import { AuditLogWriter } from '../../platform/audit/index';
+import { respondJson, respondJsonOk } from '../../platform/http/errors';
+import { makeMessageResponse } from '../../platform/observability/messages';
 import { InventoryService } from './service';
 
 const InventoryPathParams = Schema.Struct({ id: InventoryIdSchema });

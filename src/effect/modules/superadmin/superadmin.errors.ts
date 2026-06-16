@@ -2,7 +2,7 @@ import {
   BadRequestError,
   ConflictError,
   InternalError,
-} from '../../platform/domain-errors';
+} from '../../platform/effect/domain-errors';
 
 export class InvalidTenantSlug extends BadRequestError('InvalidTenantSlug')<{
   readonly slug: string;

@@ -4,8 +4,8 @@ import type {
   AuditAction,
   AuditEntityType,
 } from '@stocket/types/audit-logs';
-import { AuditLogWriter } from './audit';
-import { respondJson } from './errors';
+import { AuditLogWriter } from './audit/index';
+import { respondJson } from './http/errors';
 
 type EntityIdResolver<A> = string | ((result: A) => string);
 

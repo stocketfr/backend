@@ -1,4 +1,4 @@
-import { InternalError } from '../../platform/domain-errors';
+import { InternalError } from '../../platform/effect/domain-errors';
 
 export class NotificationsInfrastructureError extends InternalError(
   'NotificationsInfrastructureError',

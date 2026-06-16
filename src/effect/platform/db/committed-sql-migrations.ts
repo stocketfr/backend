@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { sql, type SQL } from 'drizzle-orm';
-import type { DrizzleDb } from '../drizzle';
+import type { DrizzleDb } from './drizzle';
 
 export interface CommittedSqlMigration {
   readonly name: string;

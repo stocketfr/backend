@@ -8,10 +8,10 @@ import {
   SupplierQuerySchema,
   UpdateSupplierSchema,
 } from '@stocket/types/suppliers';
-import { requirePermission } from '../../platform/authorization';
-import { respondJson } from '../../platform/errors';
+import { requirePermission } from '../../platform/auth/authorization';
+import { respondJson } from '../../platform/http/errors';
 import { respondAuditedMutation } from '../../platform/audited-mutation';
-import { makeMessageResponse } from '../../platform/messages';
+import { makeMessageResponse } from '../../platform/observability/messages';
 import { SuppliersService } from './service';
 
 const SupplierPathParams = Schema.Struct({ id: SupplierIdSchema });

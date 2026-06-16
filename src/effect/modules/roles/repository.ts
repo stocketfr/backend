@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { eq, asc, and, inArray } from 'drizzle-orm';
-import { makeTryAsync } from '../../platform/try-async';
-import { DrizzleDatabase } from '../../platform/drizzle';
+import { makeTryAsync } from '../../platform/effect/try-async';
+import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { roles, rolePermissions } from '../../platform/db/schema';
 import { RolesInfrastructureError } from './roles.errors';
 

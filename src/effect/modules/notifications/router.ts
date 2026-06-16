@@ -1,9 +1,9 @@
 import { HttpRouter, HttpServerRequest } from '@effect/platform';
 import { Effect } from 'effect';
 import { UpdateNotificationPreferencesSchema } from '@stocket/types/notifications';
-import { requireSession } from '../../platform/session';
-import { respondJson } from '../../platform/errors';
-import { makeMessageResponse } from '../../platform/messages';
+import { requireSession } from '../../platform/http/session';
+import { respondJson } from '../../platform/http/errors';
+import { makeMessageResponse } from '../../platform/observability/messages';
 import { NotificationsService } from './service';
 
 // Self-service: every handler is scoped to the authenticated user via

@@ -2,15 +2,15 @@ import { Cache, Duration, Effect } from 'effect';
 import { and, eq } from 'drizzle-orm';
 import { type Permission, type Resource } from '@stocket/types/auth';
 import type { CreateRoleDto, UpdateRoleDto } from '@stocket/types/roles';
-import { makeGetOrFail } from '../../platform/from-null-or';
-import { makeTryAsync } from '../../platform/try-async';
-import { DrizzleDatabase } from '../../platform/drizzle';
+import { makeGetOrFail } from '../../platform/effect/from-null-or';
+import { makeTryAsync } from '../../platform/effect/try-async';
+import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { userRoles, roles, rolePermissions } from '../../platform/db/schema';
-import type { UserPermissions } from '../../platform/permission-provider';
+import type { UserPermissions } from '../../platform/auth/permission-provider';
 import {
   DEFAULT_TENANT_ID,
   requireRequestTenantId,
-} from '../../platform/tenant-context';
+} from '../../platform/tenancy/tenant-context';
 import { toRoleResponseDto } from './roles.utils';
 import {
   RoleNameAlreadyExists,

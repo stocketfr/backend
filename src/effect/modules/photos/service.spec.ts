@@ -1,7 +1,7 @@
 import { Effect, Layer } from 'effect';
 import { PhotosService, type UploadedFile } from './service';
 import { PhotosRepository } from './repository';
-import { photos } from '../../platform/db/schema';
+import type { photos } from '../../platform/db/schema';
 import { makeTestLayer } from '../../test/utils';
 import {
   StorageAdapter,

@@ -19,8 +19,8 @@
  * (re-exported below) to build typed mock layers per service.
  */
 import { Effect, Layer } from 'effect';
-import { DrizzleDatabase } from '../platform/drizzle';
-import { BetterAuth, BetterAuthHeaders } from '../platform/better-auth';
+import { DrizzleDatabase } from '../platform/db/drizzle';
+import { BetterAuth, BetterAuthHeaders } from '../platform/auth/better-auth';
 import {
   closeTestDb,
   getTestDb,

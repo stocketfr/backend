@@ -8,8 +8,8 @@ import {
 import type { EmailTemplate } from '@stocket/emails';
 import { defaultMailer } from '../../../email/default-mailer';
 import { defaultTexter } from '../../../sms/default-texter';
-import { makeServiceTracer } from '../../platform/service-tracer';
-import { DEFAULT_LOCALE, type SupportedLocale } from '../../platform/messages';
+import { makeServiceTracer } from '../../platform/observability/service-tracer';
+import { DEFAULT_LOCALE, type SupportedLocale } from '../../platform/observability/messages';
 import {
   CurrentRequestContext,
   type RequestContext,

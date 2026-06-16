@@ -1,7 +1,7 @@
 import type { Logger as DrizzleLogger } from 'drizzle-orm/logger';
 import { HashMap, Layer, Logger, LogLevel, Cause } from 'effect';
 
-import type { MessageArgs } from '../messages';
+import type { MessageArgs } from './messages';
 
 const MAX_FIELD_LENGTH = 120;
 const MAX_SQL_LENGTH = 220;

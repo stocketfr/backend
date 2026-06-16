@@ -7,8 +7,8 @@ import {
   makeTestRequestContext,
 } from '../../test/integration-layer';
 import { seedCategory } from '../../test/seed';
-import { DrizzleDatabase, type DrizzleDb } from '../../platform/drizzle';
-import { CurrentRequestContext } from '../../platform/request-context';
+import { DrizzleDatabase, type DrizzleDb } from '../../platform/db/drizzle';
+import { CurrentRequestContext } from '../../platform/http/request-context';
 import { CategoriesService } from './service';
 
 let db: DrizzleDb;

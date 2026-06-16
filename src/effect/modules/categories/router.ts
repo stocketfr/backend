@@ -2,10 +2,10 @@ import { HttpRouter, HttpServerRequest } from '@effect/platform';
 import { Effect, Schema } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
-import { requirePermission } from '../../platform/authorization';
-import { respondJson } from '../../platform/errors';
+import { requirePermission } from '../../platform/auth/authorization';
+import { respondJson } from '../../platform/http/errors';
 import { respondAuditedMutation } from '../../platform/audited-mutation';
-import { makeMessageResponse } from '../../platform/messages';
+import { makeMessageResponse } from '../../platform/observability/messages';
 import {
   CategoryIdSchema,
   CreateCategorySchema,

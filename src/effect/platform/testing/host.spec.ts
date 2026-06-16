@@ -8,7 +8,7 @@ import {
   isTenantSubdomain,
   normalizeHost,
   resolveRequestHost,
-} from '../host';
+} from '../tenancy/host';
 
 const withEnv = <A>(
   values: Record<string, string | undefined>,

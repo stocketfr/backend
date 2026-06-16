@@ -13,7 +13,7 @@ import {
   seedArea,
   seedInventory,
 } from '../../test/seed';
-import type { DrizzleDb } from '../../platform/drizzle';
+import type { DrizzleDb } from '../../platform/db/drizzle';
 import { InventoryService } from './service';
 
 let db: DrizzleDb;

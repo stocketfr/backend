@@ -3,10 +3,10 @@ import { eq, ilike, sql, type SQL } from 'drizzle-orm';
 import type { LocationQueryDto } from '@stocket/types/locations';
 import { LocationSortField } from '@stocket/types/locations';
 import type { SortOrder } from '@stocket/types/common';
-import { buildOrderBy } from '../../platform/drizzle-sort.utils';
-import { makeTenantCrud } from '../../platform/tenant-crud';
+import { buildOrderBy } from '../../platform/db/drizzle-sort.utils';
+import { makeTenantCrud } from '../../platform/db/tenant-crud';
 import { locations } from '../../platform/db/schema';
-import { TenantQuery } from '../../platform/tenant-query';
+import { TenantQuery } from '../../platform/tenancy/tenant-query';
 import { LocationsInfrastructureError } from './locations.errors';
 
 function buildLocationFilters(query: LocationQueryDto): SQL[] {

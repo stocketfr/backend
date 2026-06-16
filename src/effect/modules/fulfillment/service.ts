@@ -4,11 +4,11 @@ import type {
   PackInput,
   PickInput,
 } from '@stocket/types/fulfillment';
-import { fromNullOr } from '../../platform/from-null-or';
+import { fromNullOr } from '../../platform/effect/from-null-or';
 import { OrderStatus } from '@stocket/types/orders';
 import { StockMovementReason } from '@stocket/types/stock-movements';
-import { DrizzleDatabase, type DrizzleDb } from '../../platform/drizzle';
-import { CurrentRequestContext } from '../../platform/request-context';
+import { DrizzleDatabase, type DrizzleDb } from '../../platform/db/drizzle';
+import { CurrentRequestContext } from '../../platform/http/request-context';
 import { InventoryRepository } from '../inventory/repository';
 import { OrderItemsRepository, OrdersRepository } from '../orders/repository';
 import type { Order } from '../orders/orders.utils';

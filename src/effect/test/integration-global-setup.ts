@@ -2,7 +2,7 @@ import path from 'node:path';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { applyCommittedSqlMigrations } from '../platform/db/committed-sql-migrations';
-import type { DrizzleDb } from '../platform/drizzle';
+import type { DrizzleDb } from '../platform/db/drizzle';
 import * as relations from '../platform/db/relations';
 import * as schema from '../platform/db/schema';
 

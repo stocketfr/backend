@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { and, asc, eq, sql } from 'drizzle-orm';
-import { DrizzleDatabase } from '../../platform/drizzle';
+import { DrizzleDatabase } from '../../platform/db/drizzle';
 import {
   betterAuthUsers,
   members,
@@ -12,7 +12,7 @@ import {
   tenantDomains,
   userRoles,
 } from '../../platform/db/schema';
-import { makeTryAsync } from '../../platform/try-async';
+import { makeTryAsync } from '../../platform/effect/try-async';
 import { defaultRoleSeedDefinitions } from '../../platform/seed/default-roles';
 import { SuperAdminRepositoryError } from './superadmin.errors';
 

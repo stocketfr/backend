@@ -5,14 +5,14 @@ import {
   type AuditEntityType,
 } from '@stocket/types/audit-logs';
 import { toPaginatedResponse } from '@stocket/types/common';
-import { makeGetOrFail } from '../../platform/from-null-or';
+import { makeGetOrFail } from '../../platform/effect/from-null-or';
 import type { auditLogs } from '../../platform/db/schema';
 import type { AuditLogQueryOptions, AuditLogRowWithUser } from './repository';
 import {
   AuditLogNotFound,
   type AuditLogsInfrastructureError,
 } from './audit-logs.errors';
-import type { TenantNotResolved } from '../../platform/tenant-context';
+import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { AuditLogsRepository } from './repository';
 
 type AuditLog = typeof auditLogs.$inferSelect | AuditLogRowWithUser;

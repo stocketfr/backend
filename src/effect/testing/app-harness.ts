@@ -20,9 +20,9 @@ import { StockMovementsService } from '../modules/stock-movements/service';
 import { SuperAdminService } from '../modules/superadmin/service';
 import { SuppliersService } from '../modules/suppliers/service';
 import { UsersService } from '../modules/users/service';
-import { auditLayer } from '../platform/audit';
-import { BetterAuthHeaders } from '../platform/better-auth';
-import { PermissionProvider } from '../platform/permission-provider';
+import { auditLayer } from '../platform/audit/index';
+import { BetterAuthHeaders } from '../platform/auth/better-auth';
+import { PermissionProvider } from '../platform/auth/permission-provider';
 import { makeTestDrizzleLayer } from '../test/integration-layer';
 import {
   makeBetterAuthTestLayer,

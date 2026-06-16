@@ -10,7 +10,7 @@ import {
   getUserIdFromSession,
 } from '../../platform/auth/session';
 import type { UserPermissions } from '../roles/service';
-import type { TenantContext } from '../../platform/tenant-context';
+import type { TenantContext } from '../../platform/tenancy/tenant-context';
 
 export const toCurrentUserResponse = (
   session: UserSession,

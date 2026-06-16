@@ -4,7 +4,7 @@ import {
   translateMessage,
   type AnyMessageKey,
   type MessageArgs,
-} from '../messages';
+} from '../observability/messages';
 
 interface AppErrorInputFields {
   readonly messageKey: AnyMessageKey;

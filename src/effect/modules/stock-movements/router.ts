@@ -7,10 +7,10 @@ import {
   StockMovementIdSchema,
   StockMovementQuerySchema,
 } from '@stocket/types/stock-movements';
-import { requirePermission } from '../../platform/authorization';
-import { AuditLogWriter } from '../../platform/audit';
-import { respondJson, respondJsonOk } from '../../platform/errors';
-import { requireSession } from '../../platform/session';
+import { requirePermission } from '../../platform/auth/authorization';
+import { AuditLogWriter } from '../../platform/audit/index';
+import { respondJson, respondJsonOk } from '../../platform/http/errors';
+import { requireSession } from '../../platform/http/session';
 import { StockMovementsService } from './service';
 
 const StockMovementPathParams = Schema.Struct({ id: StockMovementIdSchema });

@@ -5,7 +5,7 @@ import type {
 import { toPaginatedResponse } from '@stocket/types/common';
 import type { Schema } from 'effect';
 import { Effect } from 'effect';
-import { makeGetOrFail } from '../../platform/from-null-or';
+import { makeGetOrFail } from '../../platform/effect/from-null-or';
 import { LocationsService } from '../locations/service';
 import { ProductsService } from '../products/service';
 import { StockMovementsRepository } from './repository';

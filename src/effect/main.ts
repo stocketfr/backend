@@ -25,26 +25,26 @@ import { ProductsService } from './modules/products/service';
 import type { RolesInfrastructureError } from './modules/roles/roles.errors';
 import { RolesService } from './modules/roles/service';
 import { SuperAdminService } from './modules/superadmin/service';
-import { PermissionProvider } from './platform/permission-provider';
+import { PermissionProvider } from './platform/auth/permission-provider';
 import { StockMovementsService } from './modules/stock-movements/service';
 import { SuppliersService } from './modules/suppliers/service';
 import { UsersService } from './modules/users/service';
-import { auditLayer } from './platform/audit';
-import { BetterAuth, betterAuthLayer } from './platform/better-auth';
-import { runtimeLoggingLayer } from './platform/console-logging';
+import { auditLayer } from './platform/audit/index';
+import { BetterAuth, betterAuthLayer } from './platform/auth/better-auth';
+import { runtimeLoggingLayer } from './platform/observability/console-logging';
 import {
   DrizzleDatabase,
   DrizzleInitializationError,
   drizzleLayer,
-} from './platform/drizzle';
+} from './platform/db/drizzle';
 import { applyCommittedSqlMigrations } from './platform/db/committed-sql-migrations';
 import { normalizeDevelopmentTenantDomains } from './platform/db/dev-tenant-domain-cleanup';
 import { emailLayer } from './platform/email';
 import {
-  StorageConfigurationError,
+  type StorageConfigurationError,
   storageLayer,
 } from './platform/storage';
-import { TracingLive } from './platform/tracing';
+import { TracingLive } from './platform/observability/tracing';
 
 const VALID_NODE_ENVS = ['development', 'staging', 'production'] as const;
 const nodeEnv = process.env.NODE_ENV ?? 'development';

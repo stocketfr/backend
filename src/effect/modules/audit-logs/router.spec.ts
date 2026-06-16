@@ -5,8 +5,8 @@ import {
   AuditAction,
   AuditEntityType,
 } from '@stocket/types/audit-logs';
-import { respondCause } from '../../platform/errors';
-import { PermissionProvider } from '../../platform/permission-provider';
+import { respondCause } from '../../platform/http/errors';
+import { PermissionProvider } from '../../platform/auth/permission-provider';
 import { makeBetterAuthTestLayer } from '../../testing/better-auth-test';
 import { auditLogsRouter } from './router';
 import { AuditLogNotFound } from './audit-logs.errors';

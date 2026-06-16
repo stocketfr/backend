@@ -6,9 +6,9 @@ import type {
   UpdateSupplierSchema,
 } from '@stocket/types/suppliers';
 import { toPaginatedResponse } from '@stocket/types/common';
-import { fromNullOr } from '../../platform/from-null-or';
+import { fromNullOr } from '../../platform/effect/from-null-or';
 import { makeReferenceEntityOperations } from '../../platform/reference-data-service';
-import { makeServiceTracer } from '../../platform/service-tracer';
+import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { toSupplierResponseDto } from './suppliers.utils';
 import { SupplierNotFound } from './suppliers.errors';
 import { SuppliersRepository } from './repository';

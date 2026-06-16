@@ -4,7 +4,7 @@ import {
   WELCOME_FLOW_VALUE,
 } from '@stocket/types/auth';
 import { firstFrontendOrigin, tryParseUrl } from '../config/frontend-url.utils';
-import { resolveLocale } from '../effect/platform/messages';
+import { resolveLocale } from '../effect/platform/observability/messages';
 import type { Mailer } from './mailer';
 
 interface AuthEmailUser {

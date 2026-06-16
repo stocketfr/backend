@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
-import { requireSession } from '../../platform/session';
-import { makeServiceTracer } from '../../platform/service-tracer';
-import { resolveTenantForSession } from '../../platform/tenant-context';
+import { requireSession } from '../../platform/http/session';
+import { makeServiceTracer } from '../../platform/observability/service-tracer';
+import { resolveTenantForSession } from '../../platform/tenancy/tenant-context';
 import { RolesService } from '../roles/service';
 import {
   toCurrentUserResponse,

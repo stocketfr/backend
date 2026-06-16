@@ -1,12 +1,12 @@
 import { Effect, Option } from 'effect';
 import type { UserSession } from '../auth/user-session';
-import { DrizzleDatabase, type DrizzleDb } from '../drizzle';
-import { getTenantSlugFromHost, isTenantSubdomain, normalizeHost } from '../host';
+import { DrizzleDatabase, type DrizzleDb } from '../db/drizzle';
+import { getTenantSlugFromHost, isTenantSubdomain, normalizeHost } from './host';
 import {
   DEFAULT_TENANT_ID,
   DEFAULT_TENANT_NAME,
   DEFAULT_TENANT_SLUG,
-} from '../tenant-constants';
+} from './tenant-constants';
 import {
   findTenantByHostname,
   findSingleTenantMembership,
@@ -18,8 +18,8 @@ import {
   BadRequestError,
   ForbiddenError,
   NotFoundError,
-} from '../domain-errors';
-import { CurrentRequestContext } from '../request-context';
+} from '../effect/domain-errors';
+import { CurrentRequestContext } from '../http/request-context';
 
 export { DEFAULT_TENANT_ID, DEFAULT_TENANT_NAME, DEFAULT_TENANT_SLUG };
 

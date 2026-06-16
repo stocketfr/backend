@@ -1,8 +1,8 @@
 import { HttpServerRequest } from '@effect/platform';
 import { Effect } from 'effect';
 import type { UserSession } from '../auth/user-session';
-import { BetterAuth } from '../better-auth';
-import { InternalError, UnauthorizedError } from '../domain-errors';
+import { BetterAuth } from '../auth/better-auth';
+import { InternalError, UnauthorizedError } from '../effect/domain-errors';
 
 export class SessionUnauthorized extends UnauthorizedError(
   'SessionUnauthorized',

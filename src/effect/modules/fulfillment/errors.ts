@@ -5,7 +5,7 @@ import {
   InternalError,
   NotFoundError,
   NotImplementedError,
-} from '../../platform/domain-errors';
+} from '../../platform/effect/domain-errors';
 
 export class FulfillmentOrderNotFound extends NotFoundError(
   'FulfillmentOrderNotFound',

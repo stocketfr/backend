@@ -33,7 +33,7 @@ const mockGetOptionalSession = vi.fn();
 // `requireSession` / `getOptionalSession` without a real Better Auth layer.
 // We return a fixed session; `requirePermission` then consults our stubbed
 // `PermissionProvider` (wired via the harness) to decide 200 vs 403.
-vi.mock('../../platform/session', async () => {
+vi.mock('../../platform/http/session', async () => {
   const { Effect } = await vi.importActual<typeof import('effect')>('effect');
   return {
     requireSession: Effect.suspend(() => mockRequireSession()),

@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNotNull } from 'drizzle-orm';
-import type { DrizzleDb } from '../drizzle';
+import type { DrizzleDb } from './drizzle';
 import { members, organizations, tenantDomains } from './schema';
 
 export interface TenantRow {

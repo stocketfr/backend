@@ -1,9 +1,9 @@
 import { Effect } from 'effect';
 import { eq, or, ilike, sql, type SQL } from 'drizzle-orm';
 import type { ClientQueryDto } from '@stocket/types/clients';
-import { makeTenantCrud } from '../../platform/tenant-crud';
+import { makeTenantCrud } from '../../platform/db/tenant-crud';
 import { clients } from '../../platform/db/schema';
-import { TenantQuery } from '../../platform/tenant-query';
+import { TenantQuery } from '../../platform/tenancy/tenant-query';
 import { ClientsInfrastructureError } from './clients.errors';
 
 function buildClientFilters(query: ClientQueryDto): SQL[] {

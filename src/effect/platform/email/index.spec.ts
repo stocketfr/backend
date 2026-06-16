@@ -7,8 +7,8 @@ import {
 } from '../../../email/memory-transport';
 import type { EmailTransport } from '../../../email/types';
 import { TEST_EMAIL_FROM } from '../../testing/email-test';
-import { CurrentRequestContext, type RequestContext } from '../request-context';
-import { DEFAULT_TENANT_ID } from '../tenant-constants';
+import { CurrentRequestContext, type RequestContext } from '../http/request-context';
+import { DEFAULT_TENANT_ID } from '../tenancy/tenant-constants';
 import { EmailSendError, makeEmailService, type EmailService } from './index';
 
 const TEMPLATE = {

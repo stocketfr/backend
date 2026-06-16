@@ -5,7 +5,7 @@ import type {
   UpdateAreaDto,
   AreaQueryDto,
 } from '@stocket/types/areas';
-import { makeGetOrFail } from '../../platform/from-null-or';
+import { makeGetOrFail } from '../../platform/effect/from-null-or';
 import { LocationsService } from '../locations/service';
 import type { areas } from '../../platform/db/schema';
 import { toAreaResponseDto } from './areas.utils';
@@ -18,7 +18,7 @@ import {
   AreaSelfParent,
   ParentAreaNotFound,
 } from './areas.errors';
-import type { TenantNotResolved } from '../../platform/tenant-context';
+import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { AreasRepository } from './repository';
 
 type AreaRow = typeof areas.$inferSelect;

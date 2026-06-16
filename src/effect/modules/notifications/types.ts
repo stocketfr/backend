@@ -1,5 +1,5 @@
 import { NotificationCategory } from '@stocket/types/notifications';
-import type { SupportedLocale } from '../../platform/messages';
+import type { SupportedLocale } from '../../platform/observability/messages';
 
 // Channel-agnostic facts the Notifier can deliver. The auth events mirror
 // @stocket/emails' ActionEmail inputs; alert events carry their own identity

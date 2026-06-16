@@ -11,7 +11,7 @@ import {
   getDbConnectionParams,
 } from './config/db-connection.utils';
 import { parseOrigins } from './config/frontend-url.utils';
-import { isPlatformHost, normalizeHost } from './effect/platform/host';
+import { isPlatformHost, normalizeHost } from './effect/platform/tenancy/host';
 
 const normalizeForwardedProto = (proto: string | null | undefined) => {
   const normalizedProto = proto?.split(',')[0]?.trim().toLowerCase() || 'https';
