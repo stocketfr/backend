@@ -5,7 +5,7 @@ import {
   closeTestDb,
   truncateAll,
   makeTestDrizzleLayer,
-} from '../../test/integration-layer';
+} from '../../testing/integration-layer';
 import { photos, categories, products } from '../../platform/db/schema';
 import { randomUUID } from 'node:crypto';
 import type { DrizzleDb } from '../../platform/db/drizzle';

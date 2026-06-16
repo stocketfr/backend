@@ -1,6 +1,6 @@
 import { Effect, Layer } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
-import { makeTestLayer } from '../../../test/utils';
+import { makeTestLayer } from '../../../testing/utils';
 import { ProductImportRepository } from './repository';
 import {
   detectProductImportFormat,

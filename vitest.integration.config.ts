@@ -13,7 +13,7 @@ export default defineConfig({
     environment: 'node',
     testTimeout: 15_000,
     hookTimeout: 30_000,
-    globalSetup: './src/effect/test/integration-global-setup.ts',
+    globalSetup: './src/effect/testing/integration-global-setup.ts',
     setupFiles: ['./test/setup-env.ts'],
     fileParallelism: false,
     sequence: { concurrent: false },

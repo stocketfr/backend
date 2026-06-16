@@ -5,14 +5,14 @@ import {
   closeTestDb,
   truncateAll,
   makeTestDrizzleLayer,
-} from '../../test/integration-layer';
+} from '../../testing/integration-layer';
 import {
   seedCategory,
   seedProduct,
   seedLocation,
   seedArea,
   seedInventory,
-} from '../../test/seed';
+} from '../../testing/seed';
 import type { DrizzleDb } from '../../platform/db/drizzle';
 import { InventoryService } from './service';
 

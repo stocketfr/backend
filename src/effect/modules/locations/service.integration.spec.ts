@@ -5,8 +5,8 @@ import {
   closeTestDb,
   truncateAll,
   makeTestDrizzleLayer,
-} from '../../test/integration-layer';
-import { seedLocation } from '../../test/seed';
+} from '../../testing/integration-layer';
+import { seedLocation } from '../../testing/seed';
 import type { DrizzleDb } from '../../platform/db/drizzle';
 import { LocationsService } from './service';
 

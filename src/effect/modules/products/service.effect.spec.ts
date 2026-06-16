@@ -18,7 +18,7 @@
  */
 import { describe, expect, it } from '@effect/vitest';
 import { Effect, Layer } from 'effect';
-import { makeTestLayer } from '../../test/utils';
+import { makeTestLayer } from '../../testing/utils';
 import { CategoriesService } from '../categories/service';
 import { SuppliersService } from '../suppliers/service';
 import { ProductsRepository } from './repository';

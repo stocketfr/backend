@@ -5,7 +5,7 @@ import {
   NotificationCategory,
   NotificationChannel,
 } from '@stocket/types/notifications';
-import { makeTestLayer } from '../../test/utils';
+import { makeTestLayer } from '../../testing/utils';
 import {
   NotificationsRepository,
   type AudienceCandidate,

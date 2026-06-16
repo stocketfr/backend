@@ -6,7 +6,7 @@ import {
   closeTestDb,
   truncateAll,
   makeTestDrizzleLayer,
-} from '../../test/integration-layer';
+} from '../../testing/integration-layer';
 import {
   seedCategory,
   seedProduct,
@@ -17,7 +17,7 @@ import {
   seedInventory,
   TEST_USER_ID,
   TEST_USER_ID_2,
-} from '../../test/seed';
+} from '../../testing/seed';
 import { stockMovements } from '../../platform/db/schema';
 import type { DrizzleDb } from '../../platform/db/drizzle';
 import { FulfillmentService } from './service';

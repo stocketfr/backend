@@ -23,7 +23,7 @@ import { UsersService } from '../modules/users/service';
 import { auditLayer } from '../platform/audit/index';
 import { BetterAuthHeaders } from '../platform/auth/better-auth';
 import { PermissionProvider } from '../platform/auth/permission-provider';
-import { makeTestDrizzleLayer } from '../test/integration-layer';
+import { makeTestDrizzleLayer } from './integration-layer';
 import {
   makeBetterAuthTestLayer,
   type BetterAuthStubOptions,

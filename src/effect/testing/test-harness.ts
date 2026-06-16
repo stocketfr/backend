@@ -26,18 +26,18 @@ import {
   getTestDb,
   makeTestDrizzleLayer,
   truncateAll,
-} from '../test/integration-layer';
+} from './integration-layer';
 import { makeBetterAuthTestLayer } from './better-auth-test';
 import { makeEmailTestLayer } from './email-test';
 
-export { makeTestLayer, createChainableMock } from '../test/utils';
+export { makeTestLayer, createChainableMock } from './utils';
 export {
   getTestDb,
   closeTestDb,
   truncateAll,
   makeTestDrizzleLayer,
   makeTestRequestContext,
-} from '../test/integration-layer';
+} from './integration-layer';
 export {
   TEST_USER_ID,
   TEST_USER_ID_2,
@@ -54,7 +54,7 @@ export {
   seedProduct,
   seedStockMovement,
   seedSupplier,
-} from '../test/seed';
+} from './seed';
 
 /**
  * Default headers surfaced as `BetterAuthHeaders` when integration tests

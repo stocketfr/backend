@@ -5,8 +5,8 @@ import {
   truncateAll,
   makeTestDrizzleLayer,
   makeTestRequestContext,
-} from '../../test/integration-layer';
-import { seedCategory } from '../../test/seed';
+} from '../../testing/integration-layer';
+import { seedCategory } from '../../testing/seed';
 import { DrizzleDatabase, type DrizzleDb } from '../../platform/db/drizzle';
 import { CurrentRequestContext } from '../../platform/http/request-context';
 import { CategoriesService } from './service';

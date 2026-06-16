@@ -4,8 +4,8 @@ import {
   closeTestDb,
   truncateAll,
   makeTestDrizzleLayer,
-} from '../../test/integration-layer';
-import { seedClient } from '../../test/seed';
+} from '../../testing/integration-layer';
+import { seedClient } from '../../testing/seed';
 import type { DrizzleDb } from '../../platform/db/drizzle';
 import { ClientsService } from './service';
 

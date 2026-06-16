@@ -16,7 +16,7 @@ import {
   userRoles,
 } from '../../../platform/db/schema';
 import type { DrizzleDb } from '../../../platform/db/drizzle';
-import { seedBetterAuthUser } from '../../../test/seed';
+import { seedBetterAuthUser } from '../../../testing/seed';
 import {
   DEFAULT_TENANT_ID,
   DEFAULT_TENANT_NAME,

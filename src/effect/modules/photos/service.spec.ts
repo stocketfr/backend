@@ -2,7 +2,7 @@ import { Effect, Layer } from 'effect';
 import { PhotosService, type UploadedFile } from './service';
 import { PhotosRepository } from './repository';
 import type { photos } from '../../platform/db/schema';
-import { makeTestLayer } from '../../test/utils';
+import { makeTestLayer } from '../../testing/utils';
 import {
   StorageAdapter,
   makeInMemoryStorageAdapter,

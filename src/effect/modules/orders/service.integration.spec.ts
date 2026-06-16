@@ -5,8 +5,8 @@ import {
   closeTestDb,
   truncateAll,
   makeTestDrizzleLayer,
-} from '../../test/integration-layer';
-import { seedCategory, seedProduct, seedClient, TEST_USER_ID } from '../../test/seed';
+} from '../../testing/integration-layer';
+import { seedCategory, seedProduct, seedClient, TEST_USER_ID } from '../../testing/seed';
 import type { DrizzleDb } from '../../platform/db/drizzle';
 import { OrdersService } from './service';
 

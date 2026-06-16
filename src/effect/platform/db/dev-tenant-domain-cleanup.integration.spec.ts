@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { getTestDb, truncateAll } from '../../test/integration-layer';
+import { getTestDb, truncateAll } from '../../testing/integration-layer';
 import { normalizeDevelopmentTenantDomains } from './dev-tenant-domain-cleanup';
 
 const TENANT_ID = '10000000-0000-4000-8000-000000000001';

@@ -17,7 +17,7 @@ import { members, organizations, roles } from '../../../platform/db/schema';
 import {
   ensureBetterAuthUserTable as ensureSharedBetterAuthUserTable,
   seedBetterAuthUser,
-} from '../../../test/seed';
+} from '../../../testing/seed';
 import {
   DEFAULT_TENANT_ID,
   DEFAULT_TENANT_NAME,

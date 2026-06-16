@@ -17,7 +17,7 @@ import {
   closeTestDb,
   truncateAll,
   makeTestDrizzleLayer,
-} from '../../test/integration-layer';
+} from '../../testing/integration-layer';
 import type { DrizzleDb } from '../../platform/db/drizzle';
 import { notifications } from '../../platform/db/schema';
 import {

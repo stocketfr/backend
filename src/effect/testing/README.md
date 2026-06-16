@@ -28,7 +28,7 @@ or reach into the individual modules when you want to compose by hand.
 
 ## DB bootstrap (integration tests)
 
-1. `vitest.integration.config.ts` runs `src/effect/test/integration-global-setup.ts`
+1. `vitest.integration.config.ts` runs `src/effect/testing/integration-global-setup.ts`
    **once per run**. That script:
    - creates `stocket_inventory_test` if absent,
    - applies the committed SQL migrations used by application startup.
@@ -41,7 +41,7 @@ or reach into the individual modules when you want to compose by hand.
 
 ### Test data
 
-Use the `seed*` helpers from `../test/seed` (re-exported from
+Use the `seed*` helpers from `./seed` (re-exported from
 `test-harness`). They insert minimal valid rows with sensible
 defaults and accept overrides. The two well-known fake user UUIDs —
 `TEST_USER_ID` and `TEST_USER_ID_2` — are for `created_by` / `user_id`
@@ -137,16 +137,12 @@ describe('MyService Integration', () => {
 - `test-harness.ts` — entry point; `testPlatformLayer`, `runTest`,
   `runTestFailure`, `withTestDb`, plus re-exports of seeds and
   `makeTestLayer`.
+- `integration-layer.ts` — test database pool, Drizzle layer, request context,
+  and truncation helpers.
+- `seed.ts` — shared integration-test row factories.
+- `utils.ts` — generic unit-test helpers such as `makeTestLayer`.
 - `better-auth-test.ts` — `makeBetterAuthStub`,
   `makeBetterAuthTestLayer`, `makeFakeBetterAuthUser`.
 - `storage-adapter-test.ts` — re-exports the platform `StorageAdapter`
   test helpers, including `makeInMemoryStorageAdapter` and
   `makeInMemoryStorageAdapterLayer`.
-
-## Legacy `src/effect/test/`
-
-The older `test/` directory (`integration-layer.ts`, `seed.ts`,
-`utils.ts`) still exists and is the concrete implementation behind
-this harness. New code should import from `testing/test-harness` —
-don't import from `../test/*` in new specs unless you need a piece
-that isn't re-exported yet (please add it instead).

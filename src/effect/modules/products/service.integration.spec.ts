@@ -4,13 +4,13 @@ import {
   closeTestDb,
   truncateAll,
   makeTestDrizzleLayer,
-} from '../../test/integration-layer';
+} from '../../testing/integration-layer';
 import {
   seedCategory,
   seedProduct,
   seedSupplier,
   TEST_USER_ID,
-} from '../../test/seed';
+} from '../../testing/seed';
 import type { DrizzleDb } from '../../platform/db/drizzle';
 import { ProductsService } from './service';
 
