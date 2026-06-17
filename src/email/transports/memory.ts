@@ -10,7 +10,6 @@ export const createMemoryTransport = (): MemoryTransport => {
   return {
     sent,
     transport: {
-      name: 'memory',
       send: (message: EmailMessage): Promise<SentEmail> => {
         sent.push(message);
         return Promise.resolve({ id: `memory-${sent.length}` });

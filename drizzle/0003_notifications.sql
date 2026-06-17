@@ -1,5 +1,5 @@
--- Note: the user.phone / user.locale columns are NOT added here. They are
--- better-auth `additionalFields` (see backend/src/auth.ts) and are created by
+-- Note: the user.locale column is NOT added here. It is a
+-- better-auth `additionalFields` value (see backend/src/auth.ts) created by
 -- better-auth's own migrations, which own the "user" table. Committed SQL must
 -- not assume "user" exists (cf. 0001's guard; the integration harness never
 -- creates it). The Drizzle schema mirror of those columns is only for typing.

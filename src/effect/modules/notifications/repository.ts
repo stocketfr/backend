@@ -25,15 +25,13 @@ import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { NotificationsInfrastructureError } from './notifications.errors';
 import type { NotificationEventKind, NotificationStatus } from './types';
 
-// A tenant user eligible for an alert, plus their stored per-channel preference
+// A tenant user eligible for an alert, plus their stored email preference
 // for the category (null when they've never set one — resolved via effectivePref).
 export interface AudienceCandidate {
   readonly userId: string;
   readonly email: string | null;
-  readonly phone: string | null;
   readonly locale: string | null;
   readonly emailEnabled: boolean | null;
-  readonly smsEnabled: boolean | null;
 }
 
 export interface StoredPreferenceRow {
@@ -211,6 +209,7 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
                 and(
                   eq(notificationPreferences.tenant_id, tenantId),
                   eq(notificationPreferences.user_id, userId),
+                  eq(notificationPreferences.channel, NotificationChannel.EMAIL),
                 ),
               );
           });
@@ -251,10 +250,8 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
         });
 
       // Audience resolver (D10): tenant users who hold inventory:read, joined to
-      // their stored per-channel preference for the category. One aliased left
-      // join per channel keeps the result one row per user (each (tenant, user,
-      // category, channel) pref is unique). The service applies effectivePref to
-      // decide which channels actually fire.
+      // their stored email preference for the category. The service applies
+      // effectivePref to decide whether the email fires.
       const findAudience = (
         category: NotificationCategory,
       ): RepoEffect<AudienceCandidate[]> =>
@@ -262,15 +259,12 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
           const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('resolve notification audience', async () => {
             const emailPref = alias(notificationPreferences, 'email_pref');
-            const smsPref = alias(notificationPreferences, 'sms_pref');
             return db
               .selectDistinct({
                 userId: betterAuthUsers.id,
                 email: betterAuthUsers.email,
-                phone: betterAuthUsers.phone,
                 locale: betterAuthUsers.locale,
                 emailEnabled: emailPref.enabled,
-                smsEnabled: smsPref.enabled,
               })
               .from(betterAuthUsers)
               .innerJoin(
@@ -302,15 +296,6 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
                   eq(emailPref.tenant_id, tenantId),
                   eq(emailPref.category, category),
                   eq(emailPref.channel, NotificationChannel.EMAIL),
-                ),
-              )
-              .leftJoin(
-                smsPref,
-                and(
-                  eq(smsPref.user_id, betterAuthUsers.id),
-                  eq(smsPref.tenant_id, tenantId),
-                  eq(smsPref.category, category),
-                  eq(smsPref.channel, NotificationChannel.SMS),
                 ),
               );
           });

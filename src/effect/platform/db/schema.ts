@@ -112,10 +112,8 @@ export const betterAuthUsers = pgTable('user', {
   banned: boolean('banned'),
   ban_reason: text('ban_reason'),
   ban_expires: timestamp('ban_expires', { withTimezone: true }),
-  // Notification fields (better-auth additionalFields). Nullable: existing
-  // users have neither; SMS only fires when phone is present, and locale falls
-  // back to DEFAULT_LOCALE for scheduled sends that have no request to read.
-  phone: text('phone'),
+  // Notification locale (better-auth additionalFields). Nullable: existing
+  // users fall back to DEFAULT_LOCALE for scheduled sends.
   locale: text('locale'),
   created_at: timestamp('created_at', { withTimezone: true }),
   updated_at: timestamp('updated_at', { withTimezone: true }),

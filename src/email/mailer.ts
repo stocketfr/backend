@@ -12,7 +12,6 @@ export interface SendTemplateParams {
 }
 
 export interface Mailer {
-  readonly transportName: string;
   readonly send: (params: SendTemplateParams) => Promise<SentEmail>;
 }
 
@@ -22,7 +21,6 @@ export interface CreateMailerOptions {
 }
 
 export const createMailer = (options: CreateMailerOptions): Mailer => ({
-  transportName: options.transport.name,
   send: async ({ to, template, locale }: SendTemplateParams) => {
     const rendered = await renderEmail(template, locale);
     return options.transport.send({

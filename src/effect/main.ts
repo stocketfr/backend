@@ -39,7 +39,6 @@ import {
 } from './platform/db/drizzle';
 import { applyCommittedSqlMigrations } from './platform/db/committed-sql-migrations';
 import { normalizeDevelopmentTenantDomains } from './platform/db/dev-tenant-domain-cleanup';
-import { emailLayer } from './platform/email';
 import {
   type StorageConfigurationError,
   storageLayer,
@@ -62,7 +61,6 @@ const port = Number(process.env.PORT ?? 8080);
 const platformLayer = Layer.mergeAll(
   drizzleLayer,
   betterAuthLayer,
-  emailLayer,
   storageLayer,
 );
 const withPlatform = <A, E, R>(layer: Layer.Layer<A, E, R>) =>

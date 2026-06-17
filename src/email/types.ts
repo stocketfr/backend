@@ -11,6 +11,5 @@ export interface SentEmail {
 }
 
 export interface EmailTransport {
-  readonly name: string;
   readonly send: (message: EmailMessage) => Promise<SentEmail>;
 }

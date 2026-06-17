@@ -20,7 +20,6 @@ export interface ResendTransportOptions {
 export const createResendTransport = (
   options: ResendTransportOptions,
 ): EmailTransport => ({
-  name: 'resend',
   send: async (message: EmailMessage): Promise<SentEmail> => {
     const fetchFn = options.fetchFn ?? globalThis.fetch;
     const response = await fetchFn(RESEND_ENDPOINT, {

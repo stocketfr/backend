@@ -130,11 +130,8 @@ const coreAuthSchema = {
       createdAt: 'created_at',
       updatedAt: 'updated_at',
     },
-    // Notification contact fields (columns added in the Drizzle `user` table).
-    // input: true lets users set them via the self-service update endpoint;
-    // both are optional so existing accounts remain valid.
+    // Notification locale is optional so existing accounts remain valid.
     additionalFields: {
-      phone: { type: 'string', required: false, input: true },
       locale: { type: 'string', required: false, input: true },
     },
   },

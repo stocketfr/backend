@@ -15,29 +15,20 @@ import {
 import { NotificationsService } from './service';
 import type { NotificationEvent, Recipient } from './types';
 
-// defaultMailer / defaultTexter are module singletons; mock them so we control
-// send outcomes and can assert delivery without hitting a real transport.
-const { mockSend, mockTexterSend } = vi.hoisted(() => ({
+// defaultMailer is a module singleton; mock it so we control send outcomes and
+// can assert delivery without hitting a real transport.
+const { mockSend } = vi.hoisted(() => ({
   mockSend: vi.fn(),
-  mockTexterSend: vi.fn(),
 }));
 vi.mock('../../../email/default-mailer', () => ({
-  defaultMailer: { transportName: 'mock', send: mockSend },
+  defaultMailer: { send: mockSend },
 }));
-vi.mock('../../../sms/default-texter', () => ({
-  defaultTexter: { transportName: 'mock-sms', send: mockTexterSend },
-}));
-
-const { EMAIL, SMS } = NotificationChannel;
 
 const recipient: Recipient = {
   userId: 'u1',
   email: 'u1@test',
-  phone: null,
   locale: 'en',
 };
-
-const smsRecipient: Recipient = { ...recipient, phone: '+15551234567' };
 
 const lowStockEvent: NotificationEvent = {
   kind: 'low-stock',
@@ -63,10 +54,8 @@ const lowStockItem: LowStockItem = {
 const candidate = (over: Partial<AudienceCandidate>): AudienceCandidate => ({
   userId: 'u1',
   email: 'u1@test',
-  phone: null,
   locale: 'en',
   emailEnabled: null,
-  smsEnabled: null,
   ...over,
 });
 
@@ -109,7 +98,6 @@ describe('NotificationsService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSend.mockReset();
-    mockTexterSend.mockReset();
   });
 
   describe('notify', () => {
@@ -118,7 +106,7 @@ describe('NotificationsService', () => {
       const repo = makeRepo();
       return run(repo.layer, (svc) =>
         Effect.gen(function* () {
-          yield* svc.notify(recipient, lowStockEvent, [EMAIL]);
+          yield* svc.notify(recipient, lowStockEvent);
           expect(repo.mocks.recordPending).toHaveBeenCalledTimes(1);
           expect(mockSend).toHaveBeenCalledTimes(1);
           expect(repo.mocks.markSent).toHaveBeenCalledWith(
@@ -138,58 +126,10 @@ describe('NotificationsService', () => {
       });
       return run(repo.layer, (svc) =>
         Effect.gen(function* () {
-          yield* svc.notify(recipient, lowStockEvent, [EMAIL]);
+          yield* svc.notify(recipient, lowStockEvent);
           expect(repo.mocks.recordPending).toHaveBeenCalledTimes(1);
           expect(mockSend).not.toHaveBeenCalled();
           expect(repo.mocks.markSent).not.toHaveBeenCalled();
-        }),
-      );
-    });
-
-    it.effect('skips the sms channel when the recipient has no phone', () => {
-      const repo = makeRepo();
-      return run(repo.layer, (svc) =>
-        Effect.gen(function* () {
-          // recipient.phone is null — nothing to dial, so no ledger row either.
-          yield* svc.notify(recipient, lowStockEvent, [SMS]);
-          expect(repo.mocks.recordPending).not.toHaveBeenCalled();
-          expect(mockTexterSend).not.toHaveBeenCalled();
-        }),
-      );
-    });
-
-    it.effect(
-      'records the sms channel and marks it failed through the stub transport',
-      () => {
-        // The Phase-2 stub rejects every send; the row must land as failed,
-        // never sent, and the email transport must stay untouched.
-        mockTexterSend.mockRejectedValue(new Error('sms not implemented'));
-        const repo = makeRepo();
-        return run(repo.layer, (svc) =>
-          Effect.gen(function* () {
-            yield* svc.notify(smsRecipient, lowStockEvent, [SMS]);
-            expect(repo.mocks.recordPending).toHaveBeenCalledTimes(1);
-            expect(repo.mocks.recordPending.mock.calls[0]![0].channel).toBe(SMS);
-            expect(mockTexterSend).toHaveBeenCalledTimes(1);
-            expect(repo.mocks.markFailed).toHaveBeenCalledTimes(1);
-            expect(repo.mocks.markSent).not.toHaveBeenCalled();
-            expect(mockSend).not.toHaveBeenCalled();
-          }),
-        );
-      },
-    );
-
-    it.effect('marks the sms ledger row sent when the transport succeeds', () => {
-      // Proves the seam is drop-in: a transport that resolves drives the same
-      // success reconciliation as email, no service change required.
-      mockTexterSend.mockResolvedValue({ id: 'sms-1' });
-      const repo = makeRepo();
-      return run(repo.layer, (svc) =>
-        Effect.gen(function* () {
-          yield* svc.notify(smsRecipient, lowStockEvent, [SMS]);
-          expect(mockTexterSend).toHaveBeenCalledTimes(1);
-          expect(repo.mocks.markSent).toHaveBeenCalledWith('notif-1', 'sms-1');
-          expect(repo.mocks.markFailed).not.toHaveBeenCalled();
         }),
       );
     });
@@ -201,7 +141,7 @@ describe('NotificationsService', () => {
       const repo = makeRepo();
       return run(repo.layer, (svc) =>
         Effect.gen(function* () {
-          yield* svc.notify(recipient, lowStockEvent, [EMAIL]);
+          yield* svc.notify(recipient, lowStockEvent);
           // 1 initial attempt + 3 bounded retries
           expect(mockSend).toHaveBeenCalledTimes(4);
           expect(repo.mocks.markFailed).toHaveBeenCalledTimes(1);
@@ -231,6 +171,7 @@ describe('NotificationsService', () => {
           const arg = repo.mocks.recordPending.mock.calls[0]![0];
           expect(arg.userId).toBe('in');
           expect(arg.category).toBe(NotificationCategory.INVENTORY_ALERTS);
+          expect(arg.channel).toBe(NotificationChannel.EMAIL);
         }),
       );
     });

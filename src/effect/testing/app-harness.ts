@@ -28,14 +28,12 @@ import {
   makeBetterAuthTestLayer,
   type BetterAuthStubOptions,
 } from './better-auth-test';
-import { makeEmailTestLayer, type EmailTestHarness } from './email-test';
 import { makeInMemoryStorageAdapterLayer } from '../platform/storage';
 import { TEST_BETTER_AUTH_HEADERS } from './test-harness';
 
 interface TestHttpAppOptions {
   readonly session?: unknown;
   readonly betterAuthOverrides?: BetterAuthStubOptions['overrides'];
-  readonly email?: EmailTestHarness;
 }
 
 export const makeTestApplicationLayer = (options: TestHttpAppOptions = {}) => {
@@ -49,7 +47,6 @@ export const makeTestApplicationLayer = (options: TestHttpAppOptions = {}) => {
       } as BetterAuthStubOptions['overrides'],
     }),
     Layer.succeed(BetterAuthHeaders, TEST_BETTER_AUTH_HEADERS),
-    (options.email ?? makeEmailTestLayer()).layer,
     storage.layer,
   );
 

@@ -7,7 +7,6 @@ import {
 } from '@stocket/types/notifications';
 import type { EmailTemplate } from '@stocket/emails';
 import { defaultMailer } from '../../../email/default-mailer';
-import { defaultTexter } from '../../../sms/default-texter';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { DEFAULT_LOCALE, type SupportedLocale } from '../../platform/observability/messages';
 import {
@@ -44,39 +43,14 @@ const toSupportedLocale = (value: string | null): SupportedLocale =>
 const describeError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-// Map the channel-agnostic event to the email package's template input.
-const toEmailTemplate = (event: NotificationEvent): EmailTemplate => {
-  switch (event.kind) {
-    case 'low-stock':
-      return {
-        kind: 'low-stock',
-        sku: event.sku,
-        productName: event.productName,
-        locationName: event.locationName,
-        quantity: event.quantity,
-        reorderPoint: event.reorderPoint,
-      };
-    default:
-      return {
-        kind: event.kind,
-        userName: event.userName,
-        actionUrl: event.actionUrl,
-      };
-  }
-};
-
-// Plaintext SMS body for an event. The auth events carry their action URL; the
-// alert events carry a one-line summary. Localized rendering (the SMS analogue
-// of renderEmail) is Phase 2 — the stub transport never transmits this, but
-// building it keeps the seam drop-in for a real provider.
-const toSmsBody = (event: NotificationEvent): string => {
-  switch (event.kind) {
-    case 'low-stock':
-      return `Low stock: ${event.productName} (${event.sku}) at ${event.locationName} is at ${event.quantity}/${event.reorderPoint}.`;
-    default:
-      return `${event.userName}: ${event.actionUrl}`;
-  }
-};
+const toEmailTemplate = (event: NotificationEvent): EmailTemplate => ({
+  kind: 'low-stock',
+  sku: event.sku,
+  productName: event.productName,
+  locationName: event.locationName,
+  quantity: event.quantity,
+  reorderPoint: event.reorderPoint,
+});
 
 // Synthetic request context so tenant-scoped repository calls resolve a tenant
 // id during a scheduled scan that has no real HTTP request.
@@ -89,34 +63,11 @@ const makeScanContext = (tenantId: string): RequestContext => ({
   tenantId,
 });
 
-// Which channels a candidate should receive, applying the D6 default policy to
-// their stored preference for each channel. SMS resolves here too (default off,
-// opt-in); delivery routes through the Phase-2 stub transport.
-const resolveChannels = (
+const shouldSendEmail = (
   category: NotificationCategory,
   candidate: AudienceCandidate,
-): NotificationChannel[] => {
-  const channels: NotificationChannel[] = [];
-  if (
-    effectivePref(
-      category,
-      NotificationChannel.EMAIL,
-      candidate.emailEnabled ?? undefined,
-    )
-  ) {
-    channels.push(NotificationChannel.EMAIL);
-  }
-  if (
-    effectivePref(
-      category,
-      NotificationChannel.SMS,
-      candidate.smsEnabled ?? undefined,
-    )
-  ) {
-    channels.push(NotificationChannel.SMS);
-  }
-  return channels;
-};
+): boolean =>
+  effectivePref(category, candidate.emailEnabled ?? undefined);
 
 export class NotificationsService extends Effect.Service<NotificationsService>()(
   '@stocket/effect/notifications/NotificationsService',
@@ -162,80 +113,29 @@ export class NotificationsService extends Effect.Service<NotificationsService>()
           }),
         );
 
-      // SMS counterpart of deliverEmail. No retry: the Phase-2 stub transport
-      // fails deterministically (no provider wired), so a row that reaches here
-      // is marked failed with that reason rather than retried. Swapping in a
-      // real transport (default-texter.ts) makes this the live SMS path.
-      const deliverSms = (
-        phone: string,
-        event: NotificationEvent,
-        notificationId: string,
-      ) =>
-        Effect.tryPromise({
-          try: () => defaultTexter.send({ to: phone, body: toSmsBody(event) }),
-          catch: (cause) =>
-            new NotificationSendError({
-              channel: 'sms',
-              cause,
-              messageKey: 'notifications.sendFailed',
-            }),
-        }).pipe(
-          Effect.matchEffect({
-            onFailure: (error) =>
-              repository
-                .markFailed(notificationId, describeError(error.cause))
-                .pipe(Effect.ignore),
-            onSuccess: (sent) =>
-              repository.markSent(notificationId, sent.id).pipe(Effect.ignore),
-          }),
-        );
-
-      // Deliver an event to one recipient over the resolved channels. Records a
+      // Deliver an event to one recipient over email. Records a
       // pending ledger row first; a null id means the dedupe key was already
       // claimed (prior tick or concurrent instance), so we skip delivery.
-      const notify = (
-        recipient: Recipient,
-        event: NotificationEvent,
-        channels: readonly NotificationChannel[],
-      ) =>
-        Effect.forEach(
-          channels,
-          (channel) =>
-            Effect.gen(function* () {
-              const phone = recipient.phone;
-              // SMS needs a phone number; skip before claiming a ledger row so a
-              // recipient without one leaves no failed-row noise.
-              if (channel === NotificationChannel.SMS && phone === null) return;
+      const notify = (recipient: Recipient, event: NotificationEvent) =>
+        Effect.gen(function* () {
+          const notificationId = yield* repository.recordPending({
+            userId: recipient.userId,
+            eventKind: event.kind,
+            category: eventCategory(event.kind),
+            channel: NotificationChannel.EMAIL,
+            dedupeKey: buildDedupeKey(event, recipient.userId, currentDay()),
+          });
+          if (notificationId === null) return;
 
-              const notificationId = yield* repository.recordPending({
-                userId: recipient.userId,
-                eventKind: event.kind,
-                category: eventCategory(event.kind),
-                channel,
-                dedupeKey: buildDedupeKey(
-                  event,
-                  recipient.userId,
-                  channel,
-                  currentDay(),
-                ),
-              });
-              if (notificationId === null) return;
-
-              if (channel === NotificationChannel.EMAIL) {
-                yield* deliverEmail(recipient, event, notificationId);
-              } else if (phone !== null) {
-                yield* deliverSms(phone, event, notificationId);
-              }
-            }).pipe(
-              // The only failure reaching here is recordPending (deliverEmail /
-              // deliverSms self-reconcile). Log it — a swallowed failure here
-              // means we never attempted delivery, which must stay observable.
-              Effect.catchAll((cause) =>
-                Effect.logError({ messageKey: 'notifications.sendFailed', cause }),
-              ),
-            ),
-          { discard: true },
-        ).pipe(trace.span('notify'));
+          yield* deliverEmail(recipient, event, notificationId);
+        }).pipe(
+          // The only failure reaching here is recordPending; deliverEmail
+          // self-reconciles. Log it so a skipped send attempt stays observable.
+          Effect.catchAll((cause) =>
+            Effect.logError({ messageKey: 'notifications.sendFailed', cause }),
+          ),
+          trace.span('notify'),
+        );
 
       // One tenant's scan: find low-stock items, resolve the opted-in audience,
       // and notify each (item × recipient). Runs inside a per-tenant context.
@@ -254,15 +154,17 @@ export class NotificationsService extends Effect.Service<NotificationsService>()
               candidates,
               (candidate) => {
                 if (candidate.email === null) return Effect.void;
-                const channels = resolveChannels(
-                  NotificationCategory.INVENTORY_ALERTS,
-                  candidate,
-                );
-                if (channels.length === 0) return Effect.void;
+                if (
+                  !shouldSendEmail(
+                    NotificationCategory.INVENTORY_ALERTS,
+                    candidate,
+                  )
+                ) {
+                  return Effect.void;
+                }
                 const recipient: Recipient = {
                   userId: candidate.userId,
                   email: candidate.email,
-                  phone: candidate.phone,
                   locale: toSupportedLocale(candidate.locale),
                 };
                 const event: NotificationEvent = {
@@ -275,7 +177,7 @@ export class NotificationsService extends Effect.Service<NotificationsService>()
                   quantity: item.quantity,
                   reorderPoint: item.reorderPoint,
                 };
-                return notify(recipient, event, channels);
+                return notify(recipient, event);
               },
               { discard: true },
             ),
