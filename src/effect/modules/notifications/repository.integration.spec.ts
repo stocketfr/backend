@@ -1,17 +1,15 @@
 // Integration tests for the SQL-level behaviours of NotificationsRepository:
 // the ON CONFLICT DO NOTHING dedupe against the partial unique index, the
-// preference upsert, and ledger status transitions. Requires Postgres on :5432
-// (`pnpm test:integration`); runs under DEFAULT_TENANT_ID in test mode.
-//
-// NOTE: the permission-filtered audience join (findAudience) is intentionally
-// not covered here yet — it needs user/role/role_permission/user_role +
-// inventory seeding helpers. Tracked as a follow-up (see plan "Verification").
+// preference upsert, audience resolution, and ledger status transitions.
+// Requires Postgres on :5432 (`pnpm test:integration`); runs under
+// DEFAULT_TENANT_ID in test mode.
 import { Effect, Layer } from 'effect';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import {
   NotificationCategory,
   NotificationChannel,
 } from '@stocket/types/notifications';
+import { Permission, Resource } from '@stocket/types/auth';
 import {
   getTestDb,
   closeTestDb,
@@ -19,7 +17,17 @@ import {
   makeTestDrizzleLayer,
 } from '../../testing/integration-layer';
 import type { DrizzleDb } from '../../platform/db/drizzle';
-import { notifications } from '../../platform/db/schema';
+import {
+  notificationPreferences,
+  notifications,
+  rolePermissions,
+  userRoles,
+} from '../../platform/db/schema';
+import {
+  ensureBetterAuthUserTable,
+  seedBetterAuthUserRow,
+  seedRole,
+} from '../users/__fixtures__/seed-users';
 import {
   NotificationsRepository,
   type RecordPendingParams,
@@ -28,15 +36,20 @@ import {
 let db: DrizzleDb;
 let TestLayer: Layer.Layer<NotificationsRepository>;
 
-beforeAll(() => {
+beforeAll(async () => {
   db = getTestDb();
+  await ensureBetterAuthUserTable(db);
   TestLayer = NotificationsRepository.Default.pipe(
     Layer.provide(makeTestDrizzleLayer()),
   );
 });
 
 afterAll(() => closeTestDb());
-beforeEach(() => truncateAll());
+beforeEach(async () => {
+  await truncateAll();
+  await ensureBetterAuthUserTable(db);
+  await db.execute(sql`TRUNCATE TABLE "user" CASCADE`);
+});
 
 const run = <A, E>(
   effect: Effect.Effect<A, E, NotificationsRepository>,
@@ -166,6 +179,46 @@ describe('NotificationsRepository Integration', () => {
 
       const other = await withRepo((repo) => repo.findPreferences('user-2'));
       expect(other).toHaveLength(0);
+    });
+  });
+
+  describe('findAudience', () => {
+    it('returns tenant users with inventory read permission and their email preference', async () => {
+      const userId = '00000000-0000-4000-a000-000000000011';
+      await seedBetterAuthUserRow(db, {
+        id: userId,
+        name: 'Inventory Reader',
+        email: 'reader@example.com',
+      });
+      const role = await seedRole(db, { name: 'Inventory Reader' });
+      await db.insert(rolePermissions).values({
+        role_id: role.id,
+        resource: Resource.INVENTORY,
+        permission: Permission.READ,
+      });
+      await db.insert(userRoles).values({
+        user_id: userId,
+        role_id: role.id,
+      });
+      await db.insert(notificationPreferences).values({
+        user_id: userId,
+        category: NotificationCategory.INVENTORY_ALERTS,
+        channel: NotificationChannel.EMAIL,
+        enabled: false,
+      });
+
+      const audience = await withRepo((repo) =>
+        repo.findAudience(NotificationCategory.INVENTORY_ALERTS),
+      );
+
+      expect(audience).toEqual([
+        {
+          userId,
+          email: 'reader@example.com',
+          locale: null,
+          emailEnabled: false,
+        },
+      ]);
     });
   });
 });

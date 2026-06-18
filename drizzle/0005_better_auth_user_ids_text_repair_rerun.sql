@@ -1,18 +1,12 @@
--- 0004: Repair better-auth id columns that 0001 left as uuid.
+-- 0005: Re-run the Better Auth user id text repair.
 --
--- 0001 converts "user".id (and the session/account/invitation columns that
--- reference it) from uuid to text. But 0001 opens with an `IF user table IS NULL
--- THEN RETURN` guard, and the committed-migration runner records a migration as
--- applied whenever its SQL executes without error -- including a DO block that
--- hits that guard and no-ops. On long-lived dev databases where the better-auth
--- "user" table did not exist yet when 0001 first ran, 0001 was marked applied
--- without converting anything and never self-heals. Those databases are left
--- with "user".id = uuid while app-owned columns like user_roles.user_id are
--- text, so any query that JOINs user_roles back to "user" fails with
--- `operator does not exist: text = uuid` (notifications audience resolution).
+-- 0004 documented this repair but was recorded as applied while its conversion
+-- block was still a TODO. Databases in that state keep Better Auth columns as
+-- uuid while app-owned joins such as user_roles.user_id are text, which makes
+-- notification audience resolution fail with `operator does not exist: text = uuid`.
 --
--- This migration re-applies the conversion idempotently: it only rewrites columns
--- that are still uuid, so it is a no-op on databases already on text ids.
+-- This migration is intentionally idempotent: it rewrites only columns that are
+-- still not text, then restores the Better Auth foreign keys when absent.
 
 DO $$
 DECLARE

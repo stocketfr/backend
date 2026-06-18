@@ -8,6 +8,10 @@ export interface CommittedSqlMigration {
   readonly sql: string;
 }
 
+export interface ApplyCommittedSqlMigrationsResult {
+  readonly freshSchemaCreated: boolean;
+}
+
 type SqlExecutor = {
   readonly execute: (query: SQL) => Promise<unknown>;
 };
@@ -17,7 +21,17 @@ type SqlResult = {
 };
 
 const MIGRATIONS_TABLE_NAME = 'stocket_committed_migrations';
-const BASELINE_ONLY_MIGRATIONS = new Set(['0000_initial_schema.sql']);
+const BASELINE_SCHEMA_MIGRATION = '0000_initial_schema.sql';
+const EXISTING_SCHEMA_BASELINE_MIGRATIONS = new Set([
+  BASELINE_SCHEMA_MIGRATION,
+]);
+const MIGRATIONS_INCLUDED_IN_FRESH_BASELINE = new Set([
+  '0001_better_auth_user_ids_text.sql',
+  '0002_reference_table_tenant_indexes.sql',
+  '0003_notifications.sql',
+  '0004_better_auth_user_ids_text_repair.sql',
+  '0005_better_auth_user_ids_text_repair_rerun.sql',
+]);
 
 export const getCommittedSqlMigrations = (
   migrationsDir = path.resolve(process.cwd(), 'drizzle'),
@@ -98,22 +112,24 @@ async function markMigrationApplied(
 export async function applyCommittedSqlMigrations(
   db: DrizzleDb,
   migrationsDir?: string,
-): Promise<void> {
+): Promise<ApplyCommittedSqlMigrationsResult> {
   const migrations = getCommittedSqlMigrations(migrationsDir);
 
   await ensureMigrationsTable(db);
 
   // Existing deployments had schema created before migration bookkeeping existed.
   // Treat the generated baseline as already applied, then run later idempotent SQL.
-  if (await tableExists(db, 'roles')) {
+  const schemaAlreadyExists = await tableExists(db, 'roles');
+  if (schemaAlreadyExists) {
     for (const migration of migrations) {
-      if (BASELINE_ONLY_MIGRATIONS.has(migration.name)) {
+      if (EXISTING_SCHEMA_BASELINE_MIGRATIONS.has(migration.name)) {
         await markMigrationApplied(db, migration.name);
       }
     }
   }
 
-  const appliedMigrationNames = await getAppliedMigrationNames(db);
+  const appliedMigrationNames = new Set(await getAppliedMigrationNames(db));
+  let freshBaselineApplied = false;
 
   for (const migration of migrations) {
     if (appliedMigrationNames.has(migration.name)) {
@@ -123,6 +139,27 @@ export async function applyCommittedSqlMigrations(
     await db.transaction(async (tx) => {
       await executeSql(tx, migration.sql);
       await markMigrationApplied(tx, migration.name);
+
+      if (
+        !schemaAlreadyExists &&
+        migration.name === BASELINE_SCHEMA_MIGRATION
+      ) {
+        freshBaselineApplied = true;
+        for (const includedMigration of migrations) {
+          if (
+            MIGRATIONS_INCLUDED_IN_FRESH_BASELINE.has(includedMigration.name)
+          ) {
+            await markMigrationApplied(tx, includedMigration.name);
+            appliedMigrationNames.add(includedMigration.name);
+          }
+        }
+      }
     });
+
+    appliedMigrationNames.add(migration.name);
   }
+
+  return {
+    freshSchemaCreated: freshBaselineApplied,
+  };
 }

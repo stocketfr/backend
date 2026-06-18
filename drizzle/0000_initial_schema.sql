@@ -153,6 +153,72 @@ CREATE TABLE "organization" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 
+CREATE TABLE "user" (
+	"id" text PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"name" text NOT NULL,
+	"email" text NOT NULL,
+	"email_verified" boolean DEFAULT false NOT NULL,
+	"image" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"role" text,
+	"banned" boolean,
+	"ban_reason" text,
+	"ban_expires" timestamp with time zone,
+	"locale" text,
+	CONSTRAINT "user_email_key" UNIQUE("email")
+);
+
+CREATE TABLE "account" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"account_id" text NOT NULL,
+	"provider_id" text NOT NULL,
+	"user_id" text NOT NULL,
+	"access_token" text,
+	"refresh_token" text,
+	"id_token" text,
+	"access_token_expires_at" timestamp with time zone,
+	"refresh_token_expires_at" timestamp with time zone,
+	"scope" text,
+	"password" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone NOT NULL
+);
+
+CREATE TABLE "session" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"token" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone NOT NULL,
+	"ip_address" text,
+	"user_agent" text,
+	"user_id" text NOT NULL,
+	"impersonated_by" text,
+	"active_organization_id" text,
+	CONSTRAINT "session_token_key" UNIQUE("token")
+);
+
+CREATE TABLE "verification" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"identifier" text NOT NULL,
+	"value" text NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+
+CREATE TABLE "invitation" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"organization_id" uuid NOT NULL,
+	"email" text NOT NULL,
+	"role" text,
+	"status" text NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"inviter_id" text NOT NULL
+);
+
 CREATE TABLE "tenant_domains" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
@@ -179,6 +245,32 @@ CREATE TABLE "platform_audit_events" (
 	"ip_address" text,
 	"user_agent" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+
+CREATE TABLE "notification_preferences" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"tenant_id" uuid DEFAULT '00000000-0000-4000-8000-000000000001' NOT NULL,
+	"user_id" text NOT NULL,
+	"category" varchar(50) NOT NULL,
+	"channel" varchar(20) NOT NULL,
+	"enabled" boolean NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+
+CREATE TABLE "notifications" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"tenant_id" uuid DEFAULT '00000000-0000-4000-8000-000000000001' NOT NULL,
+	"user_id" text NOT NULL,
+	"event_kind" varchar(50) NOT NULL,
+	"category" varchar(50) NOT NULL,
+	"channel" varchar(20) NOT NULL,
+	"dedupe_key" text,
+	"status" varchar(20) NOT NULL,
+	"provider_message_id" text,
+	"error" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"sent_at" timestamp with time zone
 );
 
 CREATE TABLE "photos" (
@@ -293,6 +385,10 @@ CREATE TABLE "user_roles" (
 );
 
 ALTER TABLE "areas" ADD CONSTRAINT "areas_location_id_locations_id_fk" FOREIGN KEY ("location_id") REFERENCES "public"."locations"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "account" ADD CONSTRAINT "account_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "session" ADD CONSTRAINT "session_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "invitation" ADD CONSTRAINT "invitation_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "invitation" ADD CONSTRAINT "invitation_inviter_id_fkey" FOREIGN KEY ("inviter_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "inventory" ADD CONSTRAINT "inventory_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE no action ON UPDATE no action;
 ALTER TABLE "inventory" ADD CONSTRAINT "inventory_location_id_locations_id_fk" FOREIGN KEY ("location_id") REFERENCES "public"."locations"("id") ON DELETE no action ON UPDATE no action;
 ALTER TABLE "inventory" ADD CONSTRAINT "inventory_area_id_areas_id_fk" FOREIGN KEY ("area_id") REFERENCES "public"."areas"("id") ON DELETE set null ON UPDATE no action;
@@ -311,6 +407,12 @@ ALTER TABLE "stock_movements" ADD CONSTRAINT "stock_movements_to_location_id_loc
 ALTER TABLE "stock_movements" ADD CONSTRAINT "stock_movements_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE no action ON UPDATE no action;
 ALTER TABLE "supplier_products" ADD CONSTRAINT "supplier_products_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE no action ON UPDATE no action;
 ALTER TABLE "user_roles" ADD CONSTRAINT "user_roles_role_id_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "public"."roles"("id") ON DELETE cascade ON UPDATE no action;
+CREATE INDEX "account_user_id_idx" ON "account" USING btree ("user_id");
+CREATE INDEX "session_user_id_idx" ON "session" USING btree ("user_id");
+CREATE INDEX "verification_identifier_idx" ON "verification" USING btree ("identifier");
+CREATE INDEX "invitation_email_idx" ON "invitation" USING btree ("email");
+CREATE INDEX "invitation_organization_id_idx" ON "invitation" USING btree ("organization_id");
+CREATE INDEX "areas_tenant_id_idx" ON "areas" USING btree ("tenant_id");
 CREATE INDEX "areas_location_id_idx" ON "areas" USING btree ("location_id");
 CREATE INDEX "areas_parent_id_idx" ON "areas" USING btree ("parent_id");
 CREATE INDEX "areas_location_parent_idx" ON "areas" USING btree ("location_id","parent_id");
@@ -318,6 +420,7 @@ CREATE INDEX "audit_logs_tenant_id_idx" ON "audit_logs" USING btree ("tenant_id"
 CREATE INDEX "audit_logs_entity_type_entity_id_idx" ON "audit_logs" USING btree ("entity_type","entity_id");
 CREATE INDEX "audit_logs_user_id_idx" ON "audit_logs" USING btree ("user_id");
 CREATE INDEX "audit_logs_created_at_idx" ON "audit_logs" USING btree ("created_at");
+CREATE INDEX "categories_tenant_id_idx" ON "categories" USING btree ("tenant_id");
 CREATE INDEX "clients_tenant_id_idx" ON "clients" USING btree ("tenant_id");
 CREATE INDEX "clients_email_idx" ON "clients" USING btree ("email");
 CREATE INDEX "clients_account_status_idx" ON "clients" USING btree ("account_status");
@@ -327,9 +430,16 @@ CREATE INDEX "inventory_location_id_idx" ON "inventory" USING btree ("location_i
 CREATE INDEX "inventory_area_id_idx" ON "inventory" USING btree ("area_id");
 CREATE INDEX "inventory_product_location_idx" ON "inventory" USING btree ("product_id","location_id");
 CREATE INDEX "inventory_product_location_area_idx" ON "inventory" USING btree ("product_id","location_id","area_id");
+CREATE INDEX "locations_tenant_id_idx" ON "locations" USING btree ("tenant_id");
 CREATE UNIQUE INDEX "member_user_organization_unique" ON "member" USING btree ("user_id","organization_id");
 CREATE INDEX "member_user_id_idx" ON "member" USING btree ("user_id");
 CREATE INDEX "member_organization_id_idx" ON "member" USING btree ("organization_id");
+CREATE UNIQUE INDEX "notification_preferences_unique" ON "notification_preferences" USING btree ("tenant_id","user_id","category","channel");
+CREATE INDEX "notification_preferences_tenant_user_idx" ON "notification_preferences" USING btree ("tenant_id","user_id");
+CREATE INDEX "notification_preferences_audience_idx" ON "notification_preferences" USING btree ("tenant_id","category","channel");
+CREATE INDEX "notifications_tenant_user_idx" ON "notifications" USING btree ("tenant_id","user_id");
+CREATE INDEX "notifications_status_idx" ON "notifications" USING btree ("status");
+CREATE UNIQUE INDEX "notifications_dedupe_key_unique" ON "notifications" USING btree ("dedupe_key") WHERE dedupe_key is not null;
 CREATE INDEX "order_items_order_id_idx" ON "order_items" USING btree ("order_id");
 CREATE INDEX "order_items_product_id_idx" ON "order_items" USING btree ("product_id");
 CREATE UNIQUE INDEX "orders_tenant_order_number_unique" ON "orders" USING btree ("tenant_id","order_number");
@@ -348,6 +458,7 @@ CREATE INDEX "products_active_deleted_idx" ON "products" USING btree ("is_active
 CREATE INDEX "products_category_deleted_idx" ON "products" USING btree ("category_id","deleted_at");
 CREATE UNIQUE INDEX "role_permissions_role_resource_permission_unique" ON "role_permissions" USING btree ("role_id","resource","permission");
 CREATE UNIQUE INDEX "roles_tenant_name_unique" ON "roles" USING btree ("tenant_id","name");
+CREATE INDEX "suppliers_tenant_id_idx" ON "suppliers" USING btree ("tenant_id");
 CREATE INDEX "stock_movements_tenant_id_idx" ON "stock_movements" USING btree ("tenant_id");
 CREATE INDEX "stock_movements_product_id_idx" ON "stock_movements" USING btree ("product_id");
 CREATE INDEX "stock_movements_from_location_id_idx" ON "stock_movements" USING btree ("from_location_id");

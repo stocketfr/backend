@@ -102,22 +102,125 @@ export const organizations = pgTable(
   (table) => [uniqueIndex('organization_slug_unique').on(table.slug)],
 );
 
-export const betterAuthUsers = pgTable('user', {
-  id: text('id').primaryKey(),
-  name: text('name'),
-  email: text('email'),
-  email_verified: boolean('email_verified'),
-  image: text('image'),
-  role: text('role'),
-  banned: boolean('banned'),
-  ban_reason: text('ban_reason'),
-  ban_expires: timestamp('ban_expires', { withTimezone: true }),
-  // Notification locale (better-auth additionalFields). Nullable: existing
-  // users fall back to DEFAULT_LOCALE for scheduled sends.
-  locale: text('locale'),
-  created_at: timestamp('created_at', { withTimezone: true }),
-  updated_at: timestamp('updated_at', { withTimezone: true }),
-});
+export const betterAuthUsers = pgTable(
+  'user',
+  {
+    // Better Auth still generates UUID values, but the app stores user ids as
+    // text because local RBAC tables and audit logs use opaque auth ids.
+    id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+    name: text('name').notNull(),
+    email: text('email').notNull(),
+    email_verified: boolean('email_verified').notNull().default(false),
+    image: text('image'),
+    role: text('role'),
+    banned: boolean('banned'),
+    ban_reason: text('ban_reason'),
+    ban_expires: timestamp('ban_expires', { withTimezone: true }),
+    // Notification locale (better-auth additionalFields). Nullable: existing
+    // users fall back to DEFAULT_LOCALE for scheduled sends.
+    locale: text('locale'),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [uniqueIndex('user_email_key').on(table.email)],
+);
+
+export const betterAuthAccounts = pgTable(
+  'account',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    account_id: text('account_id').notNull(),
+    provider_id: text('provider_id').notNull(),
+    user_id: text('user_id')
+      .notNull()
+      .references(() => betterAuthUsers.id, { onDelete: 'cascade' }),
+    access_token: text('access_token'),
+    refresh_token: text('refresh_token'),
+    id_token: text('id_token'),
+    access_token_expires_at: timestamp('access_token_expires_at', {
+      withTimezone: true,
+    }),
+    refresh_token_expires_at: timestamp('refresh_token_expires_at', {
+      withTimezone: true,
+    }),
+    scope: text('scope'),
+    password: text('password'),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [index('account_user_id_idx').on(table.user_id)],
+);
+
+export const betterAuthSessions = pgTable(
+  'session',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    expires_at: timestamp('expires_at', { withTimezone: true }).notNull(),
+    token: text('token').notNull(),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true }).notNull(),
+    ip_address: text('ip_address'),
+    user_agent: text('user_agent'),
+    user_id: text('user_id')
+      .notNull()
+      .references(() => betterAuthUsers.id, { onDelete: 'cascade' }),
+    impersonated_by: text('impersonated_by'),
+    active_organization_id: text('active_organization_id'),
+  },
+  (table) => [
+    uniqueIndex('session_token_key').on(table.token),
+    index('session_user_id_idx').on(table.user_id),
+  ],
+);
+
+export const betterAuthVerifications = pgTable(
+  'verification',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    identifier: text('identifier').notNull(),
+    value: text('value').notNull(),
+    expires_at: timestamp('expires_at', { withTimezone: true }).notNull(),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index('verification_identifier_idx').on(table.identifier)],
+);
+
+export const betterAuthInvitations = pgTable(
+  'invitation',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organization_id: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    role: text('role'),
+    status: text('status').notNull(),
+    expires_at: timestamp('expires_at', { withTimezone: true }).notNull(),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    inviter_id: text('inviter_id')
+      .notNull()
+      .references(() => betterAuthUsers.id, { onDelete: 'cascade' }),
+  },
+  (table) => [
+    index('invitation_email_idx').on(table.email),
+    index('invitation_organization_id_idx').on(table.organization_id),
+  ],
+);
 
 export const tenantDomains = pgTable(
   'tenant_domains',

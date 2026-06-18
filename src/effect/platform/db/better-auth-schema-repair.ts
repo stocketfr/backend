@@ -1,19 +1,10 @@
--- 0004: Repair better-auth id columns that 0001 left as uuid.
---
--- 0001 converts "user".id (and the session/account/invitation columns that
--- reference it) from uuid to text. But 0001 opens with an `IF user table IS NULL
--- THEN RETURN` guard, and the committed-migration runner records a migration as
--- applied whenever its SQL executes without error -- including a DO block that
--- hits that guard and no-ops. On long-lived dev databases where the better-auth
--- "user" table did not exist yet when 0001 first ran, 0001 was marked applied
--- without converting anything and never self-heals. Those databases are left
--- with "user".id = uuid while app-owned columns like user_roles.user_id are
--- text, so any query that JOINs user_roles back to "user" fails with
--- `operator does not exist: text = uuid` (notifications audience resolution).
---
--- This migration re-applies the conversion idempotently: it only rewrites columns
--- that are still uuid, so it is a no-op on databases already on text ids.
+import { sql, type SQL } from 'drizzle-orm';
 
+type SqlExecutor = {
+  readonly execute: (query: SQL) => Promise<unknown>;
+};
+
+export const betterAuthSchemaRepairSql = `
 DO $$
 DECLARE
   needs_column_type_repair boolean;
@@ -126,3 +117,10 @@ BEGIN
       FOREIGN KEY (inviter_id) REFERENCES "user"(id) ON DELETE CASCADE;
   END IF;
 END $$;
+`;
+
+export async function repairBetterAuthSchema(
+  executor: SqlExecutor,
+): Promise<void> {
+  await executor.execute(sql.raw(betterAuthSchemaRepairSql));
+}

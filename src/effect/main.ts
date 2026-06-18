@@ -37,6 +37,7 @@ import {
   DrizzleInitializationError,
   drizzleLayer,
 } from './platform/db/drizzle';
+import { repairBetterAuthSchema } from './platform/db/better-auth-schema-repair';
 import { applyCommittedSqlMigrations } from './platform/db/committed-sql-migrations';
 import { normalizeDevelopmentTenantDomains } from './platform/db/dev-tenant-domain-cleanup';
 import {
@@ -102,10 +103,12 @@ const runCommittedSqlMigrations = Effect.gen(function* () {
 
 const runBetterAuthMigrations = Effect.gen(function* () {
   const betterAuth = yield* BetterAuth;
+  const db = yield* DrizzleDatabase;
   yield* Effect.tryPromise({
     try: async () => {
       const ctx = await betterAuth.auth.$context;
       await ctx.runMigrations();
+      await repairBetterAuthSchema(db);
     },
     catch: (cause) =>
       new DrizzleInitializationError({

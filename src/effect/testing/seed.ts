@@ -22,6 +22,7 @@ export async function ensureBetterAuthUserTable(db: DrizzleDb): Promise<void> {
       email_verified BOOLEAN DEFAULT FALSE,
       image TEXT,
       role TEXT,
+      locale TEXT,
       banned BOOLEAN DEFAULT FALSE,
       ban_reason TEXT,
       ban_expires TIMESTAMPTZ,
