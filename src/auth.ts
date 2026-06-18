@@ -11,7 +11,11 @@ import {
   getDbConnectionParams,
 } from './config/db-connection.utils';
 import { parseOrigins } from './config/frontend-url.utils';
-import { isPlatformHost, normalizeHost } from './effect/platform/tenancy/host';
+import {
+  getTenantBaseDomain,
+  isPlatformHost,
+  normalizeHost,
+} from './effect/platform/tenancy/host';
 
 const normalizeForwardedProto = (proto: string | null | undefined) => {
   const normalizedProto = proto?.split(',')[0]?.trim().toLowerCase() || 'https';
@@ -27,6 +31,16 @@ const localTenantHostCandidates = (hostname: string) => {
 
   return [hostname, `${hostname}:3000`];
 };
+
+const isLocalRuntime = () =>
+  process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'staging';
+
+const tenantTrustedOriginPatterns = () => [
+  `https://*.${getTenantBaseDomain()}`,
+  ...(isLocalRuntime()
+    ? ['http://*.localhost:3000', 'https://*.localhost:3000']
+    : []),
+];
 
 async function isTrustedAuthHost(host: string | null | undefined) {
   const normalizedHost = normalizeHost(host);
@@ -101,10 +115,14 @@ const pool =
         idleTimeoutMillis: IDLE_TIMEOUT_MS,
       });
 
-const configuredTrustedOrigins = parseOrigins(process.env.FRONTEND_URL);
+const configuredFrontendOrigins = parseOrigins(process.env.FRONTEND_URL);
+const configuredTrustedOrigins = [
+  ...configuredFrontendOrigins,
+  ...tenantTrustedOriginPatterns(),
+];
 const crossSubDomainCookies = getCrossSubDomainCookieConfig({
   authBaseUrl: process.env.BETTER_AUTH_URL,
-  frontendOrigins: configuredTrustedOrigins,
+  frontendOrigins: configuredFrontendOrigins,
   cookieDomain: process.env.BETTER_AUTH_COOKIE_DOMAIN,
 });
 const trustedOrigins = async (request?: Request): Promise<string[]> => {

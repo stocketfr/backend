@@ -8,6 +8,12 @@ import {
   tryParseUrl,
 } from '../../../config/frontend-url.utils';
 
+const protocolFromOrigin = (origin: string | null): string => {
+  const parsedOrigin = origin ? tryParseUrl(origin) : null;
+  const parsedFallback = tryParseUrl(firstFrontendOrigin());
+  return parsedOrigin?.protocol ?? parsedFallback?.protocol ?? 'https:';
+};
+
 /**
  * Destination for the set-password link in the welcome email. The `flow`
  * marker is what `sendResetPassword` uses to pick the welcome template over
@@ -21,3 +27,8 @@ export const welcomeRedirectUrl = (requestOrigin: string | null): string => {
   base.searchParams.set(WELCOME_FLOW_PARAM, WELCOME_FLOW_VALUE);
   return base.toString();
 };
+
+export const tenantWelcomeOrigin = (
+  hostname: string,
+  requestOrigin: string | null,
+): string => `${protocolFromOrigin(requestOrigin)}//${hostname}`;

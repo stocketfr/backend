@@ -13,8 +13,13 @@ import {
 import type { UserSession } from '../../platform/auth/user-session';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { makeTryAsync } from '../../platform/effect/try-async';
-import { BetterAuth } from '../../platform/auth/better-auth';
+import { BetterAuth, BetterAuthHeaders } from '../../platform/auth/better-auth';
+import { type LogPayload } from '../../platform/observability/messages';
 import { UsersRepository } from '../users/repository';
+import {
+  tenantWelcomeOrigin,
+  welcomeRedirectUrl,
+} from '../users/users.utils';
 import {
   InvalidTenantSlug,
   ReservedTenantSlug,
@@ -26,6 +31,13 @@ import { SuperAdminRepository } from './repository';
 
 interface BetterAuthCreateUserResponse {
   readonly user: { readonly id: string };
+}
+
+interface BetterAuthCreateUserBody {
+  readonly email: string;
+  readonly name: string;
+  readonly password: string;
+  readonly data?: { readonly emailVerified: boolean };
 }
 
 const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
@@ -89,6 +101,36 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
         layer: 'service',
         entityType: 'tenant',
       });
+      const requestTenantAdminWelcomeEmail = (
+        email: string,
+        hostname: string,
+      ) =>
+        Effect.gen(function* () {
+          const requestHeaders = yield* BetterAuthHeaders;
+          const tenantOrigin = tenantWelcomeOrigin(
+            hostname,
+            requestHeaders.get('origin'),
+          );
+          const redirectTo = welcomeRedirectUrl(tenantOrigin);
+          const headers = new Headers(requestHeaders);
+          headers.set('origin', tenantOrigin);
+
+          yield* Effect.tryPromise(() =>
+            betterAuth.api.requestPasswordReset({
+              body: { email, redirectTo },
+              headers,
+              request: new Request(redirectTo, { headers }),
+            }),
+          );
+        }).pipe(
+          Effect.catchAll((cause) =>
+            Effect.logError({
+              messageKey: 'email.welcomeRequestFailed',
+              to: email,
+              cause,
+            } satisfies LogPayload),
+          ),
+        );
 
       const me = trace.traced('me', (session: UserSession) =>
         Effect.succeed({
@@ -168,7 +210,9 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
             const adminName = input.admin.name.trim();
 
             const existing =
-              yield* repository.findBetterAuthUserByLoweredEmail(normalizedEmail);
+              yield* repository.findBetterAuthUserByLoweredEmail(
+                normalizedEmail,
+              );
 
             let adminUserId: string;
             let adminCreatedHere: boolean;
@@ -184,7 +228,8 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
                       email: normalizedEmail,
                       name: adminName,
                       password: input.admin.password,
-                    },
+                      data: { emailVerified: true },
+                    } satisfies BetterAuthCreateUserBody,
                   }) as Promise<BetterAuthCreateUserResponse>,
               );
               adminUserId = created.user.id;
@@ -210,6 +255,15 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
                     : Effect.void,
                 ),
               );
+
+            if (adminCreatedHere) {
+              yield* Effect.forkDaemon(
+                requestTenantAdminWelcomeEmail(
+                  normalizedEmail,
+                  created.tenant.hostname,
+                ),
+              );
+            }
 
             yield* Effect.forkDaemon(
               repository
