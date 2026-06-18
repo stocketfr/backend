@@ -41,6 +41,10 @@ import { repairBetterAuthSchema } from './platform/db/better-auth-schema-repair'
 import { applyCommittedSqlMigrations } from './platform/db/committed-sql-migrations';
 import { normalizeDevelopmentTenantDomains } from './platform/db/dev-tenant-domain-cleanup';
 import {
+  prepareFreshDatabaseDataMigrations,
+  runFreshDatabaseDataMigrations,
+} from './platform/db/fresh-database-data-migrations';
+import {
   type StorageConfigurationError,
   storageLayer,
 } from './platform/storage';
@@ -89,10 +93,8 @@ const shouldRunStartupMigrations = () =>
 
 const runCommittedSqlMigrations = Effect.gen(function* () {
   const db = yield* DrizzleDatabase;
-  yield* Effect.tryPromise({
-    try: async () => {
-      await applyCommittedSqlMigrations(db);
-    },
+  return yield* Effect.tryPromise({
+    try: async () => applyCommittedSqlMigrations(db),
     catch: (cause) =>
       new DrizzleInitializationError({
         messageKey: 'drizzle.migrationsFailed',
@@ -100,6 +102,34 @@ const runCommittedSqlMigrations = Effect.gen(function* () {
       }),
   });
 });
+
+const runFreshDatabaseDataMigrationsEffect = (freshSchemaCreated: boolean) =>
+  Effect.gen(function* () {
+    const db = yield* DrizzleDatabase;
+    yield* Effect.tryPromise({
+      try: async () =>
+        runFreshDatabaseDataMigrations(db, { freshSchemaCreated }),
+      catch: (cause) =>
+        new DrizzleInitializationError({
+          messageKey: 'drizzle.migrationsFailed',
+          cause,
+        }),
+    });
+  });
+
+const prepareFreshDatabaseDataMigrationsEffect = (freshSchemaCreated: boolean) =>
+  Effect.gen(function* () {
+    const db = yield* DrizzleDatabase;
+    yield* Effect.tryPromise({
+      try: async () =>
+        prepareFreshDatabaseDataMigrations(db, { freshSchemaCreated }),
+      catch: (cause) =>
+        new DrizzleInitializationError({
+          messageKey: 'drizzle.migrationsFailed',
+          cause,
+        }),
+    });
+  });
 
 const runBetterAuthMigrations = Effect.gen(function* () {
   const betterAuth = yield* BetterAuth;
@@ -141,9 +171,11 @@ const startupMigrations = Effect.gen(function* () {
     return;
   }
 
-  yield* runCommittedSqlMigrations;
+  const { freshSchemaCreated } = yield* runCommittedSqlMigrations;
+  yield* prepareFreshDatabaseDataMigrationsEffect(freshSchemaCreated);
   yield* runBetterAuthMigrations;
   yield* runDevelopmentTenantDomainCleanup;
+  yield* runFreshDatabaseDataMigrationsEffect(freshSchemaCreated);
 });
 
 const notificationsApplicationLayer = withPlatform(NotificationsService.Default);

@@ -61,6 +61,7 @@ pnpm test                # Unit tests (Vitest)
 pnpm test:integration    # Integration tests
 pnpm lint                # Oxlint
 pnpm type-check          # TypeScript check
+SUPERADMIN_PASSWORD=<password> pnpm start:workspace # Fresh DBs get admin@stocket.fr
 pnpm seed                # Seed default tenant
 pnpm seed -- --tenant-slug <slug>
 pnpm seed -- --tenant-id <uuid>

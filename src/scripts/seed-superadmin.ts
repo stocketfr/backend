@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { hashPassword } from 'better-auth/crypto';
 import pg from 'pg';
 import {
@@ -18,7 +20,7 @@ Usage:
   SUPERADMIN_EMAIL=<email> \\
   SUPERADMIN_NAME='<display name>' \\
   SUPERADMIN_PASSWORD_HASH='<hash from step 1>' \\
-  pnpm --filter @stocket/api superadmin:seed
+  tsx src/scripts/seed-superadmin.ts
 
 Options:
   --hash-password   Read a password from stdin, print its better-auth hash, and exit.
@@ -27,7 +29,8 @@ Options:
 Environment variables (seed mode):
   SUPERADMIN_EMAIL                Required. Login email for the superadmin.
   SUPERADMIN_NAME                 Required. Display name (used only when creating a new user).
-  SUPERADMIN_PASSWORD_HASH        Required. Hash produced by --hash-password.
+  SUPERADMIN_PASSWORD_HASH        Hash produced by --hash-password.
+  SUPERADMIN_PASSWORD             Plaintext password alternative to SUPERADMIN_PASSWORD_HASH.
   SUPERADMIN_ROTATE_PASSWORD      "true" to overwrite the password of an existing credential account.
   SUPERADMIN_ALLOW_TENANT_MEMBER  "true" to promote a user that already belongs to a tenant.
                                   Refused by default: superadmins are platform-only accounts.
@@ -44,10 +47,23 @@ interface BetterAuthUserRow {
   readonly name: string | null;
 }
 
+export interface SuperAdminSeedConfig {
+  readonly email: string;
+  readonly name: string;
+  readonly passwordHash: string;
+  readonly rotatePassword: boolean;
+  readonly allowTenantMember: boolean;
+}
+
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
-function readRequiredEnv(name: string): string {
+function readOptionalEnv(name: string): string | undefined {
   const value = process.env[name]?.trim();
+  return value ? value : undefined;
+}
+
+function readRequiredEnv(name: string): string {
+  const value = readOptionalEnv(name);
   if (!value) {
     throw new Error(`${name} is required. Run with --help for usage.`);
   }
@@ -101,14 +117,45 @@ async function runHashPassword(): Promise<void> {
   process.stdout.write(`${await hashPassword(password)}\n`);
 }
 
-async function seedSuperAdmin(): Promise<void> {
-  const email = normalizeEmail(readRequiredEnv('SUPERADMIN_EMAIL'));
-  const name = readRequiredEnv('SUPERADMIN_NAME');
-  const passwordHash = readRequiredEnv('SUPERADMIN_PASSWORD_HASH');
-  const rotatePassword = readBooleanEnv('SUPERADMIN_ROTATE_PASSWORD');
-  const allowTenantMember = readBooleanEnv('SUPERADMIN_ALLOW_TENANT_MEMBER');
+async function readPasswordHash(): Promise<string> {
+  const passwordHash = readOptionalEnv('SUPERADMIN_PASSWORD_HASH');
+  if (passwordHash) {
+    return passwordHash;
+  }
 
-  const pool = new pg.Pool(buildPoolConfig());
+  const password = readOptionalEnv('SUPERADMIN_PASSWORD');
+  if (password) {
+    return hashPassword(password);
+  }
+
+  throw new Error(
+    'SUPERADMIN_PASSWORD_HASH or SUPERADMIN_PASSWORD is required. Run with --help for usage.',
+  );
+}
+
+async function readSeedConfig(): Promise<SuperAdminSeedConfig> {
+  return {
+    email: normalizeEmail(readRequiredEnv('SUPERADMIN_EMAIL')),
+    name: readRequiredEnv('SUPERADMIN_NAME'),
+    passwordHash: await readPasswordHash(),
+    rotatePassword: readBooleanEnv('SUPERADMIN_ROTATE_PASSWORD'),
+    allowTenantMember: readBooleanEnv('SUPERADMIN_ALLOW_TENANT_MEMBER'),
+  };
+}
+
+export async function seedSuperAdmin(
+  config?: SuperAdminSeedConfig,
+  poolConfig: pg.PoolConfig = buildPoolConfig(),
+): Promise<void> {
+  const {
+    email,
+    name,
+    passwordHash,
+    rotatePassword,
+    allowTenantMember,
+  } = config ?? (await readSeedConfig());
+
+  const pool = new pg.Pool(poolConfig);
   let client: pg.PoolClient | undefined;
 
   try {
@@ -235,7 +282,18 @@ async function main(): Promise<void> {
   await seedSuperAdmin();
 }
 
-void main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+function isMainModule(): boolean {
+  const entryPoint = process.argv[1];
+  if (!entryPoint) {
+    return false;
+  }
+
+  return import.meta.url === pathToFileURL(path.resolve(entryPoint)).href;
+}
+
+if (isMainModule()) {
+  void main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}
