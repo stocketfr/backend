@@ -62,10 +62,7 @@ pnpm test:integration    # Integration tests
 pnpm lint                # Oxlint
 pnpm type-check          # TypeScript check
 SUPERADMIN_PASSWORD=<password> pnpm start:workspace # Fresh DBs get admin@stocket.fr
-pnpm seed                # Seed default tenant
-pnpm seed -- --tenant-slug <slug>
-pnpm seed -- --tenant-id <uuid>
-pnpm seed:workspace -- --tenant-slug <slug> # Seed local workspace DB
+pnpm tenant:seed:workspace # Seed local tenant + tenant-admin@stocket.fr / admin1234
 ```
 
 ## Shared Types

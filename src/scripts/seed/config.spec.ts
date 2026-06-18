@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildSeedPoolConfig, readSeedOptions } from './config';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import {
+  DEFAULT_TENANT_ID,
+  DEFAULT_TENANT_NAME,
+  DEFAULT_TENANT_SLUG,
+} from '../../effect/platform/tenancy/tenant-constants';
+import {
+  buildSeedPoolConfig,
+  readSeedOptions,
+  resolveSeedTenant,
+} from './config';
 
 const savedEnv = new Map<string, string | undefined>();
 const envKeys = [
@@ -60,5 +70,85 @@ describe('buildSeedPoolConfig', () => {
         'postgresql://postgres:postgres@localhost:5432/stocket_inventory',
       max: 20,
     });
+  });
+});
+
+describe('resolveSeedTenant', () => {
+  type TenantRow = {
+    readonly id: string;
+    readonly name: string;
+    readonly slug: string;
+  };
+
+  const makeResolveDb = (
+    selectResults: ReadonlyArray<ReadonlyArray<TenantRow>>,
+  ) => {
+    const pendingResults = [...selectResults];
+    const insertedRows: unknown[] = [];
+    const executedQueries: unknown[] = [];
+    const db = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () => Promise.resolve(pendingResults.shift() ?? []),
+          }),
+        }),
+      }),
+      insert: () => ({
+        values: (row: unknown) => {
+          insertedRows.push(row);
+          return {
+            onConflictDoNothing: () => Promise.resolve(undefined),
+          };
+        },
+      }),
+      execute: (query: unknown) => {
+        executedQueries.push(query);
+        return Promise.resolve({ rows: [] });
+      },
+    };
+
+    return {
+      db: db as unknown as NodePgDatabase,
+      insertedRows,
+      executedQueries,
+    };
+  };
+
+  it('ensures the default tenant and hostname for the implicit seed target', async () => {
+    const { db, insertedRows, executedQueries } = makeResolveDb([
+      [
+        {
+          id: DEFAULT_TENANT_ID,
+          name: DEFAULT_TENANT_NAME,
+          slug: DEFAULT_TENANT_SLUG,
+        },
+      ],
+    ]);
+
+    await expect(resolveSeedTenant(db, { help: false })).resolves.toEqual({
+      id: DEFAULT_TENANT_ID,
+      name: DEFAULT_TENANT_NAME,
+      slug: DEFAULT_TENANT_SLUG,
+    });
+    expect(insertedRows).toEqual([
+      {
+        id: DEFAULT_TENANT_ID,
+        name: DEFAULT_TENANT_NAME,
+        slug: DEFAULT_TENANT_SLUG,
+      },
+    ]);
+    expect(executedQueries).toHaveLength(1);
+  });
+
+  it('does not create explicitly requested tenants', async () => {
+    const { db, insertedRows } = makeResolveDb([[]]);
+
+    await expect(
+      resolveSeedTenant(db, { help: false, tenantSlug: 'missing' }),
+    ).rejects.toThrow(
+      'Seed tenant not found for slug "missing". Create the tenant first, then rerun the seed.',
+    );
+    expect(insertedRows).toEqual([]);
   });
 });

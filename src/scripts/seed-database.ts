@@ -1,22 +1,10 @@
 import {
-  clearDatabase,
   createDatabase,
   readSeedOptions,
   resolveSeedTenant,
   seedUsage,
 } from './seed/config';
-import { registry } from './seed/registry';
-
-// Import seeders — each file self-registers via registry.register()
-import './seed/categories';
-import './seed/suppliers';
-import './seed/products';
-import './seed/locations';
-import './seed/clients';
-import './seed/inventory';
-import './seed/orders';
-import './seed/stock-movements';
-import './seed/audit-logs';
+import { seedTenantData } from './seed/run';
 
 async function main() {
   const options = readSeedOptions();
@@ -34,9 +22,7 @@ async function main() {
     const tenant = await resolveSeedTenant(db, options);
     console.log(`Seeding tenant ${tenant.slug} (${tenant.id})\n`);
 
-    await clearDatabase(db, tenant.id);
-
-    await registry.runAll({
+    await seedTenantData({
       db,
       tenant,
       store: new Map(),

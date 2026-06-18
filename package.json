@@ -23,10 +23,9 @@
     "import:products": "sh ./scripts/import.sh products",
     "prepare:sortly": "nu src/scripts/prepare-sortly-export.nu",
     "import:sortly": "sh ./scripts/import.sh sortly",
-    "seed": "infisical run --env=dev -- tsx src/scripts/seed-database.ts",
-    "seed:workspace": "infisical run --env=dev -- sh -c 'SEED_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/stocket_inventory exec tsx src/scripts/seed-database.ts \"$@\"' --",
     "superadmin:hash-password": "infisical run --env=dev -- tsx src/scripts/seed-superadmin.ts --hash-password",
-    "superadmin:seed": "infisical run --env=dev -- tsx src/scripts/seed-superadmin.ts",
+    "tenant:seed:workspace": "infisical run --env=dev -- sh -c 'DATABASE_URL=postgresql://postgres:postgres@localhost:5432/stocket_inventory TENANT_ADMIN_EMAIL=tenant-admin@stocket.fr TENANT_ADMIN_NAME=\"Tenant Admin\" TENANT_ADMIN_PASSWORD=admin1234 TENANT_ADMIN_ROTATE_PASSWORD=true exec tsx src/scripts/seed-tenant-admin.ts \"$@\"' --",
+    "tenant-admin:seed:workspace": "pnpm tenant:seed:workspace",
     "drizzle": "infisical run --env=dev -- drizzle-kit",
     "type-check": "tsc --noEmit"
   },

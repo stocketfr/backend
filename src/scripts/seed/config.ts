@@ -17,7 +17,12 @@ import {
   categories,
   organizations,
 } from '../../effect/platform/db/schema';
-import { DEFAULT_TENANT_ID } from '../../effect/platform/tenancy/tenant-constants';
+import { hostnameForTenantSlug } from '../../effect/platform/tenancy/host';
+import {
+  DEFAULT_TENANT_ID,
+  DEFAULT_TENANT_NAME,
+  DEFAULT_TENANT_SLUG,
+} from '../../effect/platform/tenancy/tenant-constants';
 import {
   getDbConnectionParams,
   getPoolMax,
@@ -339,12 +344,11 @@ export const readSeedOptions = (
 };
 
 export const seedUsage = `Usage:
-  pnpm seed
-  pnpm seed -- --tenant-slug <slug>
-  pnpm seed -- --tenant-id <uuid>
-  pnpm seed:workspace -- --tenant-slug <slug>
-  SEED_TENANT_SLUG=<slug> pnpm seed
-  SEED_DATABASE_URL=<url> pnpm seed -- --tenant-slug <slug>
+  tsx src/scripts/seed-database.ts
+  tsx src/scripts/seed-database.ts --tenant-slug <slug>
+  tsx src/scripts/seed-database.ts --tenant-id <uuid>
+  SEED_TENANT_SLUG=<slug> tsx src/scripts/seed-database.ts
+  SEED_DATABASE_URL=<url> tsx src/scripts/seed-database.ts --tenant-slug <slug>
 
 Options:
   --tenant <uuid-or-slug>  Resolve the seed target by UUID or slug.
@@ -352,10 +356,13 @@ Options:
   --tenant-slug <slug>    Seed data for an existing tenant slug.
 `;
 
-export async function resolveSeedTenant(
+const isDefaultSeedTarget = (options: SeedOptions): boolean =>
+  options.tenantId === undefined && options.tenantSlug === undefined;
+
+async function findSeedTenant(
   db: NodePgDatabase,
   options: SeedOptions,
-): Promise<SeedTenant> {
+): Promise<SeedTenant | null> {
   const rows = await db
     .select({
       id: organizations.id,
@@ -370,17 +377,80 @@ export async function resolveSeedTenant(
     )
     .limit(1);
 
-  const tenant = rows[0];
+  return rows[0] ?? null;
+}
+
+async function ensureDefaultSeedTenant(
+  db: NodePgDatabase,
+): Promise<SeedTenant> {
+  await db
+    .insert(organizations)
+    .values({
+      id: DEFAULT_TENANT_ID,
+      name: DEFAULT_TENANT_NAME,
+      slug: DEFAULT_TENANT_SLUG,
+    })
+    .onConflictDoNothing();
+
+  await db.execute(sql`
+    WITH updated AS (
+      UPDATE tenant_domains
+      SET hostname = ${hostnameForTenantSlug(DEFAULT_TENANT_SLUG)},
+          kind = 'subdomain',
+          is_primary = true,
+          verified_at = NOW()
+      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+        AND is_primary = true
+      RETURNING id
+    )
+    INSERT INTO tenant_domains (tenant_id, hostname, kind, is_primary, verified_at)
+    SELECT
+      ${DEFAULT_TENANT_ID},
+      ${hostnameForTenantSlug(DEFAULT_TENANT_SLUG)},
+      'subdomain',
+      true,
+      NOW()
+    WHERE NOT EXISTS (SELECT 1 FROM updated)
+    ON CONFLICT (hostname) DO UPDATE
+    SET tenant_id = EXCLUDED.tenant_id,
+        kind = EXCLUDED.kind,
+        is_primary = EXCLUDED.is_primary,
+        verified_at = EXCLUDED.verified_at
+  `);
+
+  const tenant = await findSeedTenant(db, {
+    help: false,
+    tenantId: DEFAULT_TENANT_ID,
+  });
+
   if (!tenant) {
-    const target = options.tenantSlug
-      ? `slug "${options.tenantSlug}"`
-      : `id "${options.tenantId ?? DEFAULT_TENANT_ID}"`;
     throw new Error(
-      `Seed tenant not found for ${target}. Create the tenant first, then rerun the seed.`,
+      `Seed default tenant could not be created for id "${DEFAULT_TENANT_ID}".`,
     );
   }
 
   return tenant;
+}
+
+export async function resolveSeedTenant(
+  db: NodePgDatabase,
+  options: SeedOptions,
+): Promise<SeedTenant> {
+  if (isDefaultSeedTarget(options)) {
+    return ensureDefaultSeedTenant(db);
+  }
+
+  const tenant = await findSeedTenant(db, options);
+  if (tenant) {
+    return tenant;
+  }
+
+  const target = options.tenantSlug
+    ? `slug "${options.tenantSlug}"`
+    : `id "${options.tenantId ?? DEFAULT_TENANT_ID}"`;
+  throw new Error(
+    `Seed tenant not found for ${target}. Create the tenant first, then rerun the seed.`,
+  );
 }
 
 export function withTenant<T extends object>(
