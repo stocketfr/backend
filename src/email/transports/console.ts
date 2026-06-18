@@ -13,7 +13,7 @@ export const createConsoleTransport = (): EmailTransport => ({
     const urls = extractUniqueUrls(message.text);
     console.info(
       [
-        `[email:console] to=${message.to} subject="${message.subject}"`,
+        `[email:console] from="${message.from}" to=${message.to} subject="${message.subject}"`,
         ...urls.map((url) => `[email:console]   link: ${url}`),
       ].join('\n'),
     );

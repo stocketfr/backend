@@ -6,8 +6,11 @@ export class ResendApiError extends Error {
   constructor(
     readonly status: number,
     readonly responseBody: string,
+    readonly from: string,
   ) {
-    super(`Resend API responded with ${status}: ${responseBody}`);
+    super(
+      `Resend API responded with ${status} for from="${from}": ${responseBody}`,
+    );
     this.name = 'ResendApiError';
   }
 }
@@ -22,6 +25,7 @@ export const createResendTransport = (
 ): EmailTransport => ({
   send: async (message: EmailMessage): Promise<SentEmail> => {
     const fetchFn = options.fetchFn ?? globalThis.fetch;
+    console.info(`[email:resend] from="${message.from}"`);
     const response = await fetchFn(RESEND_ENDPOINT, {
       method: 'POST',
       headers: {
@@ -39,7 +43,7 @@ export const createResendTransport = (
 
     if (!response.ok) {
       const responseBody = await response.text().catch(() => '');
-      throw new ResendApiError(response.status, responseBody);
+      throw new ResendApiError(response.status, responseBody, message.from);
     }
 
     const data = (await response.json().catch(() => null)) as {
