@@ -1,7 +1,9 @@
 import {
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  ListObjectsV2Command,
   NoSuchKey,
   PutObjectCommand,
   S3Client,
@@ -49,6 +51,7 @@ export interface StorageAdapter {
     key: string,
   ) => Effect.Effect<StoredObject, StorageError | StorageObjectNotFound>;
   readonly deleteObject: (key: string) => Effect.Effect<void, StorageError>;
+  readonly deletePrefix: (prefix: string) => Effect.Effect<void, StorageError>;
 }
 
 export const StorageAdapter = Context.GenericTag<StorageAdapter>(
@@ -177,8 +180,7 @@ const makeS3StorageAdapter = (
             ContentType: options?.contentType,
           }),
         ),
-      catch: (cause) =>
-        new StorageError({ action: 'putObject', key, cause }),
+      catch: (cause) => new StorageError({ action: 'putObject', key, cause }),
     }).pipe(Effect.asVoid);
 
   const getObject = (key: string) =>
@@ -207,7 +209,54 @@ const makeS3StorageAdapter = (
         new StorageError({ action: 'deleteObject', key, cause }),
     }).pipe(Effect.asVoid);
 
-  return { putObject, getObject, deleteObject };
+  const deletePrefix = (prefix: string) =>
+    Effect.gen(function* () {
+      let continuationToken: string | undefined;
+
+      do {
+        const listed = yield* Effect.tryPromise({
+          try: () =>
+            client.send(
+              new ListObjectsV2Command({
+                Bucket: bucket,
+                Prefix: prefix,
+                ContinuationToken: continuationToken,
+              }),
+            ),
+          catch: (cause) =>
+            new StorageError({ action: 'listObjects', key: prefix, cause }),
+        });
+
+        const objects =
+          listed.Contents?.flatMap((object) =>
+            object.Key ? [{ Key: object.Key }] : [],
+          ) ?? [];
+
+        if (objects.length > 0) {
+          yield* Effect.tryPromise({
+            try: () =>
+              client.send(
+                new DeleteObjectsCommand({
+                  Bucket: bucket,
+                  Delete: { Objects: objects, Quiet: true },
+                }),
+              ),
+            catch: (cause) =>
+              new StorageError({
+                action: 'deleteObjects',
+                key: prefix,
+                cause,
+              }),
+          }).pipe(Effect.asVoid);
+        }
+
+        continuationToken = listed.IsTruncated
+          ? listed.NextContinuationToken
+          : undefined;
+      } while (continuationToken);
+    });
+
+  return { putObject, getObject, deleteObject, deletePrefix };
 };
 
 export const storageLayer = Layer.scoped(
@@ -256,12 +305,22 @@ export const makeInMemoryStorageAdapter = (
       store.delete(key);
     });
 
+  const deletePrefix = (prefix: string) =>
+    Effect.sync(() => {
+      for (const key of store.keys()) {
+        if (key.startsWith(prefix)) {
+          store.delete(key);
+        }
+      }
+    });
+
   return {
     store,
     reset: () => store.clear(),
     putObject,
     getObject,
     deleteObject,
+    deletePrefix,
   };
 };
 

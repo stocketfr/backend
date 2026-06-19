@@ -24,5 +24,35 @@ describe.skipIf(process.env.RUN_MINIO_STORAGE_SMOKE !== 'true')(
         assert.strictEqual(missing._tag, 'StorageObjectNotFound');
       }).pipe(Effect.provide(storageLayer)),
     );
+
+    it.effect('deletes objects by prefix', () =>
+      Effect.gen(function* () {
+        const storage = yield* StorageAdapter;
+        const prefix = `smoke/${randomUUID()}/`;
+        const first = `${prefix}first.txt`;
+        const second = `${prefix}second.txt`;
+        const outside = `smoke/${randomUUID()}.txt`;
+        const bytes = new TextEncoder().encode('storage smoke');
+
+        yield* storage.putObject(first, bytes, { contentType: 'text/plain' });
+        yield* storage.putObject(second, bytes, { contentType: 'text/plain' });
+        yield* storage.putObject(outside, bytes, { contentType: 'text/plain' });
+
+        yield* storage.deletePrefix(prefix);
+
+        const missingFirst = yield* Effect.flip(storage.getObject(first));
+        const missingSecond = yield* Effect.flip(storage.getObject(second));
+        const kept = yield* storage.getObject(outside);
+
+        assert.strictEqual(missingFirst._tag, 'StorageObjectNotFound');
+        assert.strictEqual(missingSecond._tag, 'StorageObjectNotFound');
+        assert.strictEqual(
+          new TextDecoder().decode(kept.bytes),
+          'storage smoke',
+        );
+
+        yield* storage.deleteObject(outside);
+      }).pipe(Effect.provide(storageLayer)),
+    );
   },
 );

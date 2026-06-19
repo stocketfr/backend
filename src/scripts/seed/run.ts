@@ -6,6 +6,7 @@ import type { SeedContext } from './seeder.interface';
 import './categories';
 import './suppliers';
 import './products';
+import './product-photos';
 import './locations';
 import './clients';
 import './inventory';
