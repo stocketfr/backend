@@ -20,8 +20,8 @@ describe('console email transport', () => {
 
     expect(info).toHaveBeenCalledWith(
       [
-        '[email:console] from="Stocket <hello@stocket.test>" to=jeanne@stocket.test subject="Welcome"',
-        '[email:console]   link: https://stocket.test/welcome',
+        '[email:simulated] from="Stocket <hello@stocket.test>" to=jeanne@stocket.test subject="Welcome"',
+        '[email:simulated]   link: https://stocket.test/welcome',
       ].join('\n'),
     );
   });
