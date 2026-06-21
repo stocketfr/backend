@@ -5,19 +5,24 @@ import { Effect } from 'effect';
 import { findTenantByHostname } from '../platform/db/tenant-queries';
 import { DrizzleDatabase } from '../platform/db/drizzle';
 import { isPlatformHost, normalizeHost } from '../platform/tenancy/host';
+import { readRequiredEnv } from '../../config/env.utils';
 
 const CORS_MAX_AGE_SECONDS = 86_400;
 
-const parseCorsOrigins = (value: string | undefined): string[] =>
-  (value ?? '')
+const parseCorsOrigins = (value: string): string[] =>
+  value
     .split(',')
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
 
 const createCorsConfig = () => {
-  const nodeEnv = process.env.NODE_ENV ?? 'development';
+  const nodeEnv = process.env.NODE_ENV;
   const isProduction = nodeEnv === 'production';
-  const origins = parseCorsOrigins(process.env.CORS_ORIGIN);
+  const origins = parseCorsOrigins(readRequiredEnv('CORS_ORIGIN'));
+
+  if (origins.length === 0) {
+    throw new Error('CORS_ORIGIN must contain at least one origin');
+  }
 
   if (isProduction && origins.includes('*')) {
     throw new Error(

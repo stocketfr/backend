@@ -2,7 +2,7 @@ import { Context, Effect, Layer } from 'effect';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import {
-  getDbConnectionParams,
+  getDatabaseUrl,
   getSSLConfig,
   getPoolMax,
   IDLE_TIMEOUT_MS,
@@ -28,25 +28,12 @@ export const DrizzleDatabase = Context.GenericTag<DrizzleDb>(
 );
 
 function buildPoolConfig(): pg.PoolConfig {
-  const connParams = getDbConnectionParams();
+  const connectionString = getDatabaseUrl();
   const ssl = getSSLConfig();
   const max = getPoolMax();
 
-  if ('url' in connParams) {
-    return {
-      connectionString: connParams.url,
-      ssl: ssl || undefined,
-      max,
-      idleTimeoutMillis: IDLE_TIMEOUT_MS,
-    };
-  }
-
   return {
-    host: connParams.host,
-    port: connParams.port,
-    user: connParams.user,
-    password: connParams.password,
-    database: connParams.database,
+    connectionString,
     ssl: ssl || undefined,
     max,
     idleTimeoutMillis: IDLE_TIMEOUT_MS,

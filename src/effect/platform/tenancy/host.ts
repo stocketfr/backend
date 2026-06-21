@@ -7,8 +7,6 @@ import {
 
 export { isValidTenantSlug } from '@stocket/types/common';
 
-const DEFAULT_TENANT_BASE_DOMAIN = 'stocket.fr';
-const DEFAULT_PLATFORM_SUBDOMAIN = 'app';
 const LOCAL_PLATFORM_HOST = 'localhost';
 const LOCAL_TENANT_BASE_DOMAIN = 'localhost';
 const LOCAL_TENANT_PORT = '3000';
@@ -42,20 +40,16 @@ const isLocalRuntime = () =>
 
 const requireHostConfig = (name: string) => {
   const value = normalizeHost(process.env[name]);
-  if (!value && !isLocalRuntime()) {
-    throw new Error(
-      `${name} is required when NODE_ENV=${process.env.NODE_ENV}`,
-    );
+  if (!value) {
+    throw new Error(`${name} environment variable is required`);
   }
   return value;
 };
 
 export const getTenantBaseDomain = () =>
-  requireHostConfig('TENANT_BASE_DOMAIN') ?? DEFAULT_TENANT_BASE_DOMAIN;
+  requireHostConfig('TENANT_BASE_DOMAIN');
 
-export const getPlatformHost = () =>
-  requireHostConfig('PLATFORM_HOST') ??
-  `${DEFAULT_PLATFORM_SUBDOMAIN}.${getTenantBaseDomain()}`;
+export const getPlatformHost = () => requireHostConfig('PLATFORM_HOST');
 
 // Backwards-compatible exports for callers/tests that still use the old names.
 export const getProductionTenantBaseDomain = getTenantBaseDomain;

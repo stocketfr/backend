@@ -49,9 +49,10 @@ import {
   storageLayer,
 } from './platform/storage';
 import { TracingLive } from './platform/observability/tracing';
+import { readRequiredEnv } from '../config/env.utils';
 
 const VALID_NODE_ENVS = ['development', 'staging', 'production'] as const;
-const nodeEnv = process.env.NODE_ENV ?? 'development';
+const nodeEnv = readRequiredEnv('NODE_ENV');
 if (!VALID_NODE_ENVS.includes(nodeEnv as (typeof VALID_NODE_ENVS)[number])) {
   throw new Error(
     `Invalid NODE_ENV="${nodeEnv}". Must be one of: ${VALID_NODE_ENVS.join(', ')}`,
@@ -61,7 +62,10 @@ process.env.NODE_ENV = nodeEnv;
 const isProduction = nodeEnv === 'production';
 const isDevelopment = nodeEnv === 'development';
 
-const port = Number(process.env.PORT ?? 8080);
+const port = Number(readRequiredEnv('PORT'));
+if (!Number.isInteger(port) || port <= 0) {
+  throw new Error('PORT must be a positive integer');
+}
 
 const platformLayer = Layer.mergeAll(
   drizzleLayer,
@@ -117,7 +121,9 @@ const runFreshDatabaseDataMigrationsEffect = (freshSchemaCreated: boolean) =>
     });
   });
 
-const prepareFreshDatabaseDataMigrationsEffect = (freshSchemaCreated: boolean) =>
+const prepareFreshDatabaseDataMigrationsEffect = (
+  freshSchemaCreated: boolean,
+) =>
   Effect.gen(function* () {
     const db = yield* DrizzleDatabase;
     yield* Effect.tryPromise({
@@ -178,7 +184,9 @@ const startupMigrations = Effect.gen(function* () {
   yield* runFreshDatabaseDataMigrationsEffect(freshSchemaCreated);
 });
 
-const notificationsApplicationLayer = withPlatform(NotificationsService.Default);
+const notificationsApplicationLayer = withPlatform(
+  NotificationsService.Default,
+);
 
 const foundationalServicesLayer = Layer.mergeAll(
   withPlatform(HealthService.Default),

@@ -71,6 +71,17 @@ describe('buildSeedPoolConfig', () => {
       max: 20,
     });
   });
+
+  it('requires DATABASE_URL when SEED_DATABASE_URL is not set', () => {
+    rememberEnv();
+    delete process.env.SEED_DATABASE_URL;
+    delete process.env.DATABASE_URL;
+    process.env.DB_POOL_MAX = '20';
+
+    expect(() => buildSeedPoolConfig()).toThrow(
+      'DATABASE_URL environment variable is required',
+    );
+  });
 });
 
 describe('resolveSeedTenant', () => {

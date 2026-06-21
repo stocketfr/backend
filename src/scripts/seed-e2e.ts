@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { defaultRoleSeedDefinitions } from '../effect/platform/seed/default-roles';
+import { getDatabaseUrl } from '../config/db-connection.utils';
+import { readOptionalEnv } from '../config/env.utils';
 
-const DEFAULT_DATABASE_URL =
-  'postgresql://postgres:postgres@localhost:5432/stocket_inventory';
 const DEFAULT_E2E_TENANT_NAME = 'E2E Tenant';
 const DEFAULT_E2E_TENANT_SLUG = 'e2e';
 const DEFAULT_E2E_USER_EMAIL = 'e2e-test@stocket.local';
@@ -30,10 +30,9 @@ export interface SeedE2eTenantResult {
 
 function databaseUrl(explicitDatabaseUrl?: string): string {
   return (
-    explicitDatabaseUrl ??
-    process.env.E2E_DATABASE_URL ??
-    process.env.DATABASE_URL ??
-    DEFAULT_DATABASE_URL
+    explicitDatabaseUrl?.trim() ||
+    readOptionalEnv('E2E_DATABASE_URL') ||
+    getDatabaseUrl()
   );
 }
 

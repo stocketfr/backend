@@ -7,7 +7,7 @@ import { StockMovementReason } from '@stocket/types/stock-movements';
 import { LocationType } from '@stocket/types/locations';
 import { categories, products, locations, inventory, stockMovements } from '../effect/platform/db/schema';
 import { parseDate } from '../effect/modules/products/import/utils';
-
+import { getDatabaseUrl } from '../config/db-connection.utils';
 
 interface SortlyRecord {
   'Entry Name': string;
@@ -46,17 +46,7 @@ interface ImportStats {
 }
 
 async function createDatabase(): Promise<NodePgDatabase> {
-  const pool = new pg.Pool(
-    process.env.DATABASE_URL
-      ? { connectionString: process.env.DATABASE_URL }
-      : {
-          host: process.env.PGHOST ?? 'localhost',
-          port: Number.parseInt(process.env.PGPORT ?? '5432'),
-          user: process.env.PGUSER,
-          password: process.env.PGPASSWORD,
-          database: process.env.PGDATABASE ?? 'stocket_inventory',
-        },
-  );
+  const pool = new pg.Pool({ connectionString: getDatabaseUrl() });
   return drizzle(pool);
 }
 

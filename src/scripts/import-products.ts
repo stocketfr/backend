@@ -2,10 +2,7 @@ import * as fs from 'node:fs';
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Effect, Layer } from 'effect';
-import {
-  DrizzleDatabase,
-  type DrizzleDb,
-} from '../effect/platform/db/drizzle';
+import { DrizzleDatabase, type DrizzleDb } from '../effect/platform/db/drizzle';
 import {
   CurrentRequestContext,
   type RequestContext,
@@ -22,6 +19,7 @@ import {
   ProductImportTypes,
   type ProductImportType,
 } from '../effect/modules/products/import/types';
+import { getDatabaseUrl } from '../config/db-connection.utils';
 
 interface CliOptions {
   readonly csvFilePath: string;
@@ -130,17 +128,7 @@ function readOptions(args: string[], env: NodeJS.ProcessEnv): CliOptions {
 }
 
 function createDatabase(): { readonly db: DrizzleDb; readonly pool: pg.Pool } {
-  const pool = new pg.Pool(
-    process.env.DATABASE_URL
-      ? { connectionString: process.env.DATABASE_URL }
-      : {
-          host: process.env.PGHOST ?? 'localhost',
-          port: Number.parseInt(process.env.PGPORT ?? '5432', 10),
-          user: process.env.PGUSER,
-          password: process.env.PGPASSWORD,
-          database: process.env.PGDATABASE ?? 'stocket_inventory',
-        },
-  );
+  const pool = new pg.Pool({ connectionString: getDatabaseUrl() });
 
   const db = drizzle(pool, {
     schema: { ...schema, ...relations },

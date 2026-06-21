@@ -1,12 +1,22 @@
-export function parseOrigins(value: string | undefined): string[] {
-  return (value ?? '')
+import { readRequiredEnv } from './env.utils';
+
+export function parseOrigins(value: string): string[] {
+  return value
     .split(',')
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
 }
 
+export function frontendOrigins(): string[] {
+  const origins = parseOrigins(readRequiredEnv('FRONTEND_URL'));
+  if (origins.length === 0) {
+    throw new Error('FRONTEND_URL must contain at least one origin');
+  }
+  return origins;
+}
+
 export function firstFrontendOrigin(): string {
-  return parseOrigins(process.env.FRONTEND_URL)[0] ?? 'http://localhost:3000';
+  return frontendOrigins()[0]!;
 }
 
 export function tryParseUrl(value: string, base?: string): URL | null {

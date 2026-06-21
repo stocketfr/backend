@@ -67,7 +67,7 @@ describe('platform host helpers', () => {
     expect(hostnameForTenantSlug('tenant-1')).toBe('tenant-1.localhost:3000');
   });
 
-  it('requires TENANT_BASE_DOMAIN outside local runtimes', () => {
+  it('requires TENANT_BASE_DOMAIN', () => {
     withEnv(
       {
         NODE_ENV: 'production',
@@ -76,13 +76,13 @@ describe('platform host helpers', () => {
       },
       () => {
         expect(() => hostnameForTenantSlug('tenant-1')).toThrow(
-          'TENANT_BASE_DOMAIN is required',
+          'TENANT_BASE_DOMAIN environment variable is required',
         );
       },
     );
   });
 
-  it('requires PLATFORM_HOST outside local runtimes', () => {
+  it('requires PLATFORM_HOST', () => {
     withEnv(
       {
         NODE_ENV: 'production',
@@ -91,7 +91,7 @@ describe('platform host helpers', () => {
       },
       () => {
         expect(() => isPlatformHost('app.stocket.fr')).toThrow(
-          'PLATFORM_HOST is required',
+          'PLATFORM_HOST environment variable is required',
         );
       },
     );

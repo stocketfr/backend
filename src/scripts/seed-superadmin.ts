@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { hashPassword } from 'better-auth/crypto';
 import pg from 'pg';
 import {
-  getDbConnectionParams,
+  getDatabaseUrl,
   getPoolMax,
   getSSLConfig,
   IDLE_TIMEOUT_MS,
@@ -36,7 +36,7 @@ Environment variables (seed mode):
                                   Refused by default: superadmins are platform-only accounts.
 
 Notes:
-  - Connects using the same DATABASE_URL / PG* settings as the API server.
+  - Connects using the same DATABASE_URL setting as the API server.
   - Idempotent: reruns keep the existing user, credential account, and super_admins row.
   - Sign in on the platform host (localhost:3000 in dev) and open /platform.
 `;
@@ -84,25 +84,12 @@ async function readStdin(): Promise<string> {
 }
 
 function buildPoolConfig(): pg.PoolConfig {
-  const connParams = getDbConnectionParams();
+  const connectionString = getDatabaseUrl();
   const ssl = getSSLConfig();
   const max = getPoolMax();
 
-  if ('url' in connParams) {
-    return {
-      connectionString: connParams.url,
-      ssl: ssl || undefined,
-      max,
-      idleTimeoutMillis: IDLE_TIMEOUT_MS,
-    };
-  }
-
   return {
-    host: connParams.host,
-    port: connParams.port,
-    user: connParams.user,
-    password: connParams.password,
-    database: connParams.database,
+    connectionString,
     ssl: ssl || undefined,
     max,
     idleTimeoutMillis: IDLE_TIMEOUT_MS,
@@ -147,13 +134,8 @@ export async function seedSuperAdmin(
   config?: SuperAdminSeedConfig,
   poolConfig: pg.PoolConfig = buildPoolConfig(),
 ): Promise<void> {
-  const {
-    email,
-    name,
-    passwordHash,
-    rotatePassword,
-    allowTenantMember,
-  } = config ?? (await readSeedConfig());
+  const { email, name, passwordHash, rotatePassword, allowTenantMember } =
+    config ?? (await readSeedConfig());
 
   const pool = new pg.Pool(poolConfig);
   let client: pg.PoolClient | undefined;

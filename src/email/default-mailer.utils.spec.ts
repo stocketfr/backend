@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { resolveDefaultTransport } from './default-mailer.utils';
+import {
+  DEV_FALLBACK_FROM,
+  resolveDefaultFromAddress,
+  resolveDefaultTransport,
+} from './default-mailer.utils';
 
 const message = {
   from: 'Stocket <hello@stocket.test>',
@@ -64,12 +68,50 @@ describe('default mailer transport resolution', () => {
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
-  it('still requires Resend in production', () => {
+  it('requires Resend in provider runtimes', () => {
+    vi.stubEnv('NODE_ENV', 'staging');
+    vi.stubEnv('RESEND_API_KEY', '');
+
+    expect(() => resolveDefaultTransport()).toThrow(
+      'RESEND_API_KEY environment variable is required',
+    );
+  });
+
+  it('requires Resend in production', () => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('RESEND_API_KEY', '');
 
     expect(() => resolveDefaultTransport()).toThrow(
-      'RESEND_API_KEY environment variable is required in production',
+      'RESEND_API_KEY environment variable is required',
+    );
+  });
+});
+
+describe('default sender resolution', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('uses the dev sender fallback outside provider runtimes', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('EMAIL_FROM', '');
+
+    expect(resolveDefaultFromAddress()).toBe(DEV_FALLBACK_FROM);
+  });
+
+  it('uses an explicit sender outside provider runtimes when configured', () => {
+    vi.stubEnv('NODE_ENV', 'test');
+    vi.stubEnv('EMAIL_FROM', 'Stocket <test@stocket.test>');
+
+    expect(resolveDefaultFromAddress()).toBe('Stocket <test@stocket.test>');
+  });
+
+  it('requires an explicit sender in provider runtimes', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('EMAIL_FROM', '');
+
+    expect(() => resolveDefaultFromAddress()).toThrow(
+      'EMAIL_FROM environment variable is required',
     );
   });
 });

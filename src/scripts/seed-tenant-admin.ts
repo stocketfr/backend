@@ -5,7 +5,7 @@ import { hashPassword } from 'better-auth/crypto';
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import {
-  getDbConnectionParams,
+  getDatabaseUrl,
   getPoolMax,
   getSSLConfig,
   IDLE_TIMEOUT_MS,
@@ -89,25 +89,12 @@ function readBooleanEnv(name: string): boolean {
 }
 
 function buildPoolConfig(): pg.PoolConfig {
-  const connParams = getDbConnectionParams();
+  const connectionString = getDatabaseUrl();
   const ssl = getSSLConfig();
   const max = getPoolMax();
 
-  if ('url' in connParams) {
-    return {
-      connectionString: connParams.url,
-      ssl: ssl || undefined,
-      max,
-      idleTimeoutMillis: IDLE_TIMEOUT_MS,
-    };
-  }
-
   return {
-    host: connParams.host,
-    port: connParams.port,
-    user: connParams.user,
-    password: connParams.password,
-    database: connParams.database,
+    connectionString,
     ssl: ssl || undefined,
     max,
     idleTimeoutMillis: IDLE_TIMEOUT_MS,

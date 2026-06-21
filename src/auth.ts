@@ -8,9 +8,10 @@ import {
   getSSLConfig,
   getPoolMax,
   IDLE_TIMEOUT_MS,
-  getDbConnectionParams,
+  getDatabaseUrl,
 } from './config/db-connection.utils';
-import { parseOrigins } from './config/frontend-url.utils';
+import { frontendOrigins } from './config/frontend-url.utils';
+import { readRequiredEnv } from './config/env.utils';
 import {
   getTenantBaseDomain,
   isPlatformHost,
@@ -25,7 +26,10 @@ const normalizeForwardedProto = (proto: string | null | undefined) => {
 };
 
 const localTenantHostCandidates = (hostname: string) => {
-  if (process.env.NODE_ENV === 'production' || !hostname.endsWith('.localhost')) {
+  if (
+    process.env.NODE_ENV === 'production' ||
+    !hostname.endsWith('.localhost')
+  ) {
     return [hostname];
   }
 
@@ -88,40 +92,26 @@ async function originFromForwardedHost(
     : null;
 }
 
-if (!process.env.BETTER_AUTH_SECRET) {
-  throw new Error('BETTER_AUTH_SECRET environment variable is required');
-}
-
+const betterAuthSecret = readRequiredEnv('BETTER_AUTH_SECRET');
+const betterAuthUrl = readRequiredEnv('BETTER_AUTH_URL');
 const ssl = getSSLConfig();
 const poolMax = getPoolMax();
-const params = getDbConnectionParams();
+const databaseUrl = getDatabaseUrl();
 
-const pool =
-  'url' in params
-    ? new Pool({
-        connectionString: params.url,
-        ssl,
-        max: poolMax,
-        idleTimeoutMillis: IDLE_TIMEOUT_MS,
-      })
-    : new Pool({
-        host: params.host,
-        ...(params.port !== undefined ? { port: params.port } : {}),
-        user: params.user,
-        password: params.password,
-        database: params.database,
-        ssl,
-        max: poolMax,
-        idleTimeoutMillis: IDLE_TIMEOUT_MS,
-      });
+const pool = new Pool({
+  connectionString: databaseUrl,
+  ssl,
+  max: poolMax,
+  idleTimeoutMillis: IDLE_TIMEOUT_MS,
+});
 
-const configuredFrontendOrigins = parseOrigins(process.env.FRONTEND_URL);
+const configuredFrontendOrigins = frontendOrigins();
 const configuredTrustedOrigins = [
   ...configuredFrontendOrigins,
   ...tenantTrustedOriginPatterns(),
 ];
 const crossSubDomainCookies = getCrossSubDomainCookieConfig({
-  authBaseUrl: process.env.BETTER_AUTH_URL,
+  authBaseUrl: betterAuthUrl,
   frontendOrigins: configuredFrontendOrigins,
   cookieDomain: process.env.BETTER_AUTH_COOKIE_DOMAIN,
 });
@@ -236,8 +226,8 @@ const organizationSchema = {
 const authEmails = makeAuthEmailHooks(defaultMailer);
 
 export const auth = betterAuth({
-  secret: process.env.BETTER_AUTH_SECRET,
-  baseURL: process.env.BETTER_AUTH_URL,
+  secret: betterAuthSecret,
+  baseURL: betterAuthUrl,
   trustedOrigins,
   database: pool,
   emailAndPassword: {

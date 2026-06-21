@@ -24,7 +24,7 @@ import {
   DEFAULT_TENANT_SLUG,
 } from '../../effect/platform/tenancy/tenant-constants';
 import {
-  getDbConnectionParams,
+  getDatabaseUrl,
   getPoolMax,
   getSSLConfig,
   IDLE_TIMEOUT_MS,
@@ -193,34 +193,11 @@ export const SUB_AREA_TEMPLATES = [
 export function buildSeedPoolConfig(): pg.PoolConfig {
   const ssl = getSSLConfig() || undefined;
   const max = getPoolMax();
-  const seedDatabaseUrl = process.env.SEED_DATABASE_URL;
-
-  if (seedDatabaseUrl) {
-    return {
-      connectionString: seedDatabaseUrl,
-      ssl,
-      max,
-      idleTimeoutMillis: IDLE_TIMEOUT_MS,
-    };
-  }
-
-  const connParams = getDbConnectionParams();
-
-  if ('url' in connParams) {
-    return {
-      connectionString: connParams.url,
-      ssl,
-      max,
-      idleTimeoutMillis: IDLE_TIMEOUT_MS,
-    };
-  }
+  const connectionString =
+    process.env.SEED_DATABASE_URL?.trim() || getDatabaseUrl();
 
   return {
-    host: connParams.host,
-    port: connParams.port,
-    user: connParams.user,
-    password: connParams.password,
-    database: connParams.database,
+    connectionString,
     ssl,
     max,
     idleTimeoutMillis: IDLE_TIMEOUT_MS,
