@@ -1,4 +1,4 @@
-import { readRequiredEnv } from './env.utils';
+import { readRequiredEnv } from '@stocket/types/common';
 
 export function parseOrigins(value: string): string[] {
   return value

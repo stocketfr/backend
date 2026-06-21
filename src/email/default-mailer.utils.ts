@@ -1,7 +1,7 @@
 import { createConsoleTransport } from './transports/console';
 import { createResendTransport } from './transports/resend';
 import type { EmailTransport } from './types';
-import { readOptionalEnv, readRequiredEnv } from '../config/env.utils';
+import { readOptionalEnv, readRequiredEnv } from '@stocket/types/common';
 
 // Used only outside provider runtimes; staging/production must configure a sender.
 export const DEV_FALLBACK_FROM = 'Stocket <onboarding@resend.dev>';

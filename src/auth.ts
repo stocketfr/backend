@@ -12,7 +12,7 @@ import {
   getDatabaseUrl,
 } from './config/db-connection.utils';
 import { frontendOrigins } from './config/frontend-url.utils';
-import { readRequiredEnv } from './config/env.utils';
+import { readRequiredEnv } from '@stocket/types/common';
 import {
   getTenantBaseDomain,
   isPlatformHost,

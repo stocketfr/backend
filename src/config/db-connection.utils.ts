@@ -2,7 +2,7 @@
  * Shared database connection utilities for Drizzle and Better Auth pg Pool.
  */
 
-import { readOptionalEnv, readRequiredEnv } from './env.utils';
+import { readOptionalEnv, readRequiredEnv } from '@stocket/types/common';
 
 export function getSSLConfig(): { rejectUnauthorized: boolean } | false {
   const rejectUnauthorized =

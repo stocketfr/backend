@@ -49,7 +49,7 @@ import {
   storageLayer,
 } from './platform/storage';
 import { TracingLive } from './platform/observability/tracing';
-import { readRequiredEnv } from '../config/env.utils';
+import { readRequiredEnv } from '@stocket/types/common';
 
 const VALID_NODE_ENVS = ['development', 'staging', 'production'] as const;
 const nodeEnv = readRequiredEnv('NODE_ENV');

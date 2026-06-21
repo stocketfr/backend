@@ -3,6 +3,7 @@ import { Option } from 'effect';
 import {
   isValidTenantSlug,
   normalizeHost as normalizeSharedHost,
+  readRequiredHostEnv,
 } from '@stocket/types/common';
 
 export { isValidTenantSlug } from '@stocket/types/common';
@@ -38,18 +39,10 @@ export const normalizeHost = normalizeSharedHost;
 const isLocalRuntime = () =>
   process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'staging';
 
-const requireHostConfig = (name: string) => {
-  const value = normalizeHost(process.env[name]);
-  if (!value) {
-    throw new Error(`${name} environment variable is required`);
-  }
-  return value;
-};
-
 export const getTenantBaseDomain = () =>
-  requireHostConfig('TENANT_BASE_DOMAIN');
+  readRequiredHostEnv('TENANT_BASE_DOMAIN');
 
-export const getPlatformHost = () => requireHostConfig('PLATFORM_HOST');
+export const getPlatformHost = () => readRequiredHostEnv('PLATFORM_HOST');
 
 // Backwards-compatible exports for callers/tests that still use the old names.
 export const getProductionTenantBaseDomain = getTenantBaseDomain;

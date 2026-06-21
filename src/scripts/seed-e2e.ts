@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { defaultRoleSeedDefinitions } from '../effect/platform/seed/default-roles';
 import { getDatabaseUrl } from '../config/db-connection.utils';
-import { readOptionalEnv } from '../config/env.utils';
+import { readOptionalEnv } from '@stocket/types/common';
 
 const DEFAULT_E2E_TENANT_NAME = 'E2E Tenant';
 const DEFAULT_E2E_TENANT_SLUG = 'e2e';
