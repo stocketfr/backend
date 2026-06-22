@@ -10,7 +10,13 @@
 import { describe, expect, it } from '@effect/vitest';
 import { Effect, Layer } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
+import {
+  EntitlementSource,
+  FeatureKey,
+  PlanKey,
+} from '@stocket/types/features';
 import { makeTestLayer } from '../../testing/test-harness';
+import { FeaturesService } from '../features/service';
 import { RolesService, type UserPermissions } from '../roles/service';
 import { AuthService } from './service';
 
@@ -70,12 +76,33 @@ const rolesLayer = (overrides: Partial<RolesService> = {}) =>
     ...overrides,
   });
 
-const serviceLayer = (roles = rolesLayer()) =>
-  AuthService.DefaultWithoutDependencies.pipe(Layer.provide(roles));
+const featuresLayer = (overrides: Partial<FeaturesService> = {}) =>
+  makeTestLayer(FeaturesService)({
+    getFeaturesForTenant: () =>
+      Effect.succeed({
+        tenantId: '00000000-0000-4000-8000-000000000001',
+        planKey: PlanKey.FREE,
+        source: EntitlementSource.SYSTEM,
+        features: {
+          [FeatureKey.SMART_IMPORT]: false,
+          [FeatureKey.ORDERS]: true,
+        },
+        overrides: [],
+        updated_at: null,
+        updated_by: null,
+      }),
+    ...overrides,
+  });
+
+const serviceLayer = (roles = rolesLayer(), features = featuresLayer()) =>
+  AuthService.DefaultWithoutDependencies.pipe(
+    Layer.provide(Layer.mergeAll(roles, features)),
+  );
 
 const withService = <A, E, R>(
   body: (svc: AuthService) => Effect.Effect<A, E, R>,
   rolesOverrides?: Partial<RolesService>,
+  featuresOverrides?: Partial<FeaturesService>,
 ): Effect.Effect<A, E, never> =>
   // `requireSession` is replaced by the `vi.mock` above, so its residual
   // `BetterAuthService | HttpServerRequest` requirements are discharged at
@@ -85,7 +112,9 @@ const withService = <A, E, R>(
     const svc = yield* AuthService;
     return yield* body(svc);
   }).pipe(
-    Effect.provide(serviceLayer(rolesLayer(rolesOverrides))),
+    Effect.provide(
+      serviceLayer(rolesLayer(rolesOverrides), featuresLayer(featuresOverrides)),
+    ),
   ) as unknown as Effect.Effect<A, E, never>;
 
 // ---------------------------------------------------------------------------
@@ -113,6 +142,11 @@ describe('AuthService', () => {
               tenantId: '00000000-0000-4000-8000-000000000001',
               tenantName: 'Stocket',
               tenantSlug: 'stocket',
+              planKey: PlanKey.FREE,
+              features: {
+                [FeatureKey.SMART_IMPORT]: false,
+                [FeatureKey.ORDERS]: true,
+              },
               roles: ['Admin'],
               permissions: {
                 [Resource.ROLES]: [Permission.READ, Permission.WRITE],
@@ -205,6 +239,33 @@ describe('AuthService', () => {
                 statusCode: 500,
                 message: 'boom',
                 messageKey: 'roles.loadPermissionsFailed',
+              } as any),
+          },
+        );
+      },
+    );
+
+    it.effect(
+      'propagates errors from FeaturesService.getFeaturesForTenant',
+      () => {
+        mockRequireSession.mockReturnValue(Effect.succeed(makeSession()));
+
+        return withService(
+          (svc) =>
+            Effect.gen(function* () {
+              const error = yield* Effect.flip(svc.me());
+              expect(error).toMatchObject({
+                _tag: 'FeaturesInfrastructureError',
+              });
+            }),
+          undefined,
+          {
+            getFeaturesForTenant: () =>
+              Effect.fail({
+                _tag: 'FeaturesInfrastructureError',
+                statusCode: 500,
+                message: 'boom',
+                messageKey: 'features.repositoryFailed',
               } as any),
           },
         );

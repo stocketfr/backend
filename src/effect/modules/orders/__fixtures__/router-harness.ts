@@ -6,8 +6,9 @@
  * `HttpRouter.catchAllCause(respondCause)` is re-applied so guard/decode
  * failures map to 401/403/400 instead of escaping as 500.
  */
-import { type Effect } from 'effect';
+import { Effect } from 'effect';
 import type { Permission, Resource } from '@stocket/types/auth';
+import { FeatureKey } from '@stocket/types/features';
 import type { AuditWriteParams } from '../../../platform/audit/index';
 import {
   type makeFakeSession,
@@ -15,6 +16,8 @@ import {
   makeRouterTestHarness,
 } from '../../../testing/router-harness';
 import { ordersRouter } from '../router';
+import { FeatureNotEnabled } from '../../features/features.errors';
+import { FeaturesService } from '../../features/service';
 import { OrdersService } from '../service';
 
 export { FAKE_USER_ID, makeFakeSession } from '../../../testing/router-harness';
@@ -26,6 +29,7 @@ export interface OrdersRouterHarnessOptions {
   readonly auditLog?: (
     params: AuditWriteParams,
   ) => Effect.Effect<void, never, unknown>;
+  readonly ordersFeatureEnabled?: boolean;
 }
 
 export interface OrdersRouterHarness {
@@ -38,9 +42,21 @@ export interface OrdersRouterHarness {
 export const makeOrdersRouterHarness = (
   opts: OrdersRouterHarnessOptions,
 ): OrdersRouterHarness => {
+  const featuresLayer = makeRouterServiceLayer(FeaturesService, {
+    requireFeature: () =>
+      opts.ordersFeatureEnabled === false
+        ? Effect.fail(
+            new FeatureNotEnabled({
+              featureKey: FeatureKey.ORDERS,
+              messageKey: 'features.notEnabled',
+            }),
+          )
+        : Effect.void,
+  });
+
   return makeRouterTestHarness({
     router: ordersRouter,
-    layers: [makeRouterServiceLayer(OrdersService, opts.service)],
+    layers: [makeRouterServiceLayer(OrdersService, opts.service), featuresLayer],
     permissions: opts.permissions,
     roleNames: [],
     session: opts.session,

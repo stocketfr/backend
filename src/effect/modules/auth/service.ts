@@ -8,12 +8,14 @@ import {
   toProfileResponse,
   toSessionClaimsResponse,
 } from './mappers';
+import { FeaturesService } from '../features/service';
 
 export class AuthService extends Effect.Service<AuthService>()(
   '@stocket/effect/auth/AuthService',
   {
     effect: Effect.gen(function* () {
       const rolesService = yield* RolesService;
+      const featuresService = yield* FeaturesService;
       const trace = makeServiceTracer({
         serviceName: 'AuthService',
         module: 'auth',
@@ -30,7 +32,15 @@ export class AuthService extends Effect.Service<AuthService>()(
             session.user.id,
             tenant.tenantId,
           );
-          return toCurrentUserResponse(session, userPermissions, tenant);
+          const tenantFeatures = yield* featuresService.getFeaturesForTenant(
+            tenant.tenantId,
+          );
+          return toCurrentUserResponse(
+            session,
+            userPermissions,
+            tenant,
+            tenantFeatures,
+          );
         }),
       );
 
@@ -56,6 +66,6 @@ export class AuthService extends Effect.Service<AuthService>()(
         sessionClaims,
       };
     }),
-    dependencies: [RolesService.Default],
+    dependencies: [RolesService.Default, FeaturesService.Default],
   },
 ) {}
