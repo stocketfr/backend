@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 import { Permission, Resource } from '@stocket/types/auth';
 import {
+  areas,
   inventory,
   locations,
   members,
@@ -142,13 +143,24 @@ async function seedImportWriteRole(userId: string) {
   });
 }
 
-function makeCsvUpload(csv: string, filename: string) {
+function makeCsvUpload(
+  csv: string,
+  filename: string,
+  fields: Record<string, string> = {},
+) {
   const formData = new FormData();
   formData.append('file', new File([csv], filename, { type: 'text/csv' }));
+  Object.entries(fields).forEach(([key, value]) => {
+    formData.append(key, value);
+  });
   return formData;
 }
 
-async function postImport(csv: string, filename = 'products.csv') {
+async function postImport(
+  csv: string,
+  filename = 'products.csv',
+  fields: Record<string, string> = {},
+) {
   await seedImportWriteRole(TEST_USER_ID);
   const { handler, dispose } = makeTestHttpAppHandler({
     session: makeSession(TEST_USER_ID),
@@ -158,7 +170,59 @@ async function postImport(csv: string, filename = 'products.csv') {
     const response = await handler(
       tenantRequest('/api/v1/products/import', {
         method: 'POST',
-        body: makeCsvUpload(csv, filename),
+        body: makeCsvUpload(csv, filename, fields),
+      }),
+    );
+    const body = await response.json();
+    return { status: response.status, body };
+  } finally {
+    await dispose();
+  }
+}
+
+async function postPreview(
+  csv: string,
+  filename = 'products.csv',
+  fields: Record<string, string> = {},
+) {
+  await seedImportWriteRole(TEST_USER_ID);
+  const { handler, dispose } = makeTestHttpAppHandler({
+    session: makeSession(TEST_USER_ID),
+  });
+
+  try {
+    const response = await handler(
+      tenantRequest('/api/v1/products/import/preview', {
+        method: 'POST',
+        body: makeCsvUpload(csv, filename, fields),
+      }),
+    );
+    const body = await response.json();
+    return { status: response.status, body };
+  } finally {
+    await dispose();
+  }
+}
+
+async function postCommit(
+  csv: string,
+  mapping: unknown,
+  filename = 'products.csv',
+  fields: Record<string, string> = {},
+) {
+  await seedImportWriteRole(TEST_USER_ID);
+  const { handler, dispose } = makeTestHttpAppHandler({
+    session: makeSession(TEST_USER_ID),
+  });
+
+  try {
+    const response = await handler(
+      tenantRequest('/api/v1/products/import/commit', {
+        method: 'POST',
+        body: makeCsvUpload(csv, filename, {
+          mapping: JSON.stringify(mapping),
+          ...fields,
+        }),
       }),
     );
     const body = await response.json();
@@ -247,7 +311,8 @@ beforeAll(() => {
 
 describe('POST /api/v1/products/import integration', () => {
   it('imports normalized CSV into products, categories, locations, and inventory', async () => {
-    const response = await postImport(`sku,name,category_path,reorder_point,quantity,location,unit,standard_price,barcode,description,notes,is_active,is_perishable,expiry_date
+    const response =
+      await postImport(`sku,name,category_path,reorder_point,quantity,location,unit,standard_price,barcode,description,notes,is_active,is_perishable,expiry_date
 IMP-001,Imported Gin,Beverages / Spirits,4,9,Main Warehouse,bottle,12.50,123456,Juniper gin,Top shelf,true,false,
 `);
 
@@ -343,6 +408,128 @@ Item,Imported Tonic,SORT-001,Drinks,Mixers,12,Bar,can,2,1.50,,QR2,Sortly notes,2
     expect(stock!.expiry_date).toBeInstanceOf(Date);
   });
 
+  it('previews Sortly CSV without writing products, locations, or inventory', async () => {
+    const response = await postPreview(
+      `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location,Photo1
+Folder,Amenities,,,,,
+Item,Imported Soap,SORT-PREVIEW-1,Amenities,6,Bay J - Shelf 4,https://example.com/photo.jpg
+`,
+      'sortly-preview.csv',
+      {
+        import_type: 'sortly-items',
+        known_locations: JSON.stringify(['Bay J']),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      detectedFormat: 'sortly-items',
+      stats: {
+        totalRows: 2,
+        importableRows: 1,
+        itemRows: 1,
+        folderRows: 1,
+        itemsWithPhotos: 1,
+      },
+      suggestedMapping: {
+        locationMappings: [
+          {
+            source: 'Bay J - Shelf 4',
+            locationName: 'Bay J',
+            areaPath: 'Shelf 4',
+          },
+        ],
+      },
+      issues: [],
+    });
+
+    await expect(findProductBySku('SORT-PREVIEW-1')).resolves.toBeNull();
+    const writtenLocations = await db
+      .select()
+      .from(locations)
+      .where(
+        and(
+          eq(locations.tenant_id, DEFAULT_TENANT_ID),
+          eq(locations.name, 'Bay J'),
+        ),
+      );
+    expect(writtenLocations).toHaveLength(0);
+  });
+
+  it('commits approved mappings into nested areas and area-scoped inventory', async () => {
+    const mapping = {
+      categoryMappings: [{ source: 'Amenities', target: 'Amenities' }],
+      locationMappings: [
+        {
+          source: 'Bay J - Shelf 4',
+          locationName: 'Bay J',
+          areaPath: 'Shelf 4',
+        },
+      ],
+    };
+    const response = await postCommit(
+      `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location
+Item,Imported Soap,SORT-COMMIT-1,Amenities,6,Bay J - Shelf 4
+`,
+      mapping,
+      'sortly-commit.csv',
+      { import_type: 'sortly-items' },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      categoriesCreated: 1,
+      locationsCreated: 1,
+      areasCreated: 1,
+      productsCreated: 1,
+      inventoryRecordsCreated: 1,
+      rowsSkipped: 0,
+      errors: [],
+    });
+
+    const product = await findProductBySku('SORT-COMMIT-1');
+    expect(product).toMatchObject({ name: 'Imported Soap' });
+
+    const [location] = await db
+      .select()
+      .from(locations)
+      .where(
+        and(
+          eq(locations.tenant_id, DEFAULT_TENANT_ID),
+          eq(locations.name, 'Bay J'),
+        ),
+      )
+      .limit(1);
+    expect(location).toBeTruthy();
+
+    const [area] = await db
+      .select()
+      .from(areas)
+      .where(
+        and(
+          eq(areas.tenant_id, DEFAULT_TENANT_ID),
+          eq(areas.location_id, location!.id),
+          eq(areas.name, 'Shelf 4'),
+        ),
+      )
+      .limit(1);
+    expect(area).toBeTruthy();
+
+    const [stock] = await db
+      .select()
+      .from(inventory)
+      .where(
+        and(
+          eq(inventory.tenant_id, DEFAULT_TENANT_ID),
+          eq(inventory.product_id, product!.id),
+          eq(inventory.location_id, location!.id),
+          eq(inventory.area_id, area!.id),
+        ),
+      )
+      .limit(1);
+    expect(stock).toMatchObject({ quantity: 6 });
+  });
+
   it('does not update products from another tenant with the same SKU', async () => {
     const otherTenantId = randomUUID();
     const otherCategory = await seedCategory(db, {
@@ -394,7 +581,8 @@ SHARED-SKU,Default Tenant Product,Default Category,3,Default Location
       productSku: 'AREA-SKU',
     });
 
-    const response = await postImport(`sku,name,category_path,reorder_point,quantity,location
+    const response =
+      await postImport(`sku,name,category_path,reorder_point,quantity,location
 AREA-SKU,Area Product,Area Category,10,8,Area Location
 `);
 
@@ -425,7 +613,8 @@ AREA-SKU,Area Product,Area Category,10,8,Area Location
       rootQuantity: 4,
     });
 
-    const response = await postImport(`sku,name,category_path,reorder_point,quantity,location
+    const response =
+      await postImport(`sku,name,category_path,reorder_point,quantity,location
 MIXED-AREA-SKU,Mixed Area Product,Mixed Area Category,10,8,Mixed Area Location
 `);
 
