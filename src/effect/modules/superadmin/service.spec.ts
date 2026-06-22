@@ -1,5 +1,7 @@
-import { Effect, Layer } from 'effect';
+import { Cause, Effect, Exit, Layer, Option } from 'effect';
 import { BetterAuth, BetterAuthHeaders } from '../../platform/auth/better-auth';
+import { DrizzleDatabase } from '../../platform/db/drizzle';
+import { ProductImportService } from '../products/import/service';
 import { UsersRepository } from '../users/repository';
 import { SuperAdminRepository } from './repository';
 import { SuperAdminService } from './service';
@@ -45,10 +47,13 @@ describe('Effect SuperAdminService', () => {
   const makeRepository = () => ({
     tenantSlugExists: vi.fn().mockReturnValue(Effect.succeed(false)),
     tenantHostnameExists: vi.fn().mockReturnValue(Effect.succeed(false)),
-    findBetterAuthUserByLoweredEmail: vi.fn().mockReturnValue(
-      Effect.succeed(null),
-    ),
+    findBetterAuthUserByLoweredEmail: vi
+      .fn()
+      .mockReturnValue(Effect.succeed(null)),
     createTenantWithAdmin: vi
+      .fn()
+      .mockReturnValue(Effect.succeed(createdTenant)),
+    createTenantWithAdminRecords: vi
       .fn()
       .mockReturnValue(Effect.succeed(createdTenant)),
     recordPlatformAuditEvent: vi.fn().mockReturnValue(Effect.void),
@@ -67,12 +72,41 @@ describe('Effect SuperAdminService', () => {
     },
   });
 
+  const makeProductImportService = () => ({
+    validateCsvContent: vi.fn().mockReturnValue(
+      Effect.succeed({
+        format: 'normalized-products',
+        rows: [],
+        validRows: [],
+        result: {
+          categoriesCreated: 0,
+          locationsCreated: 0,
+          productsCreated: 0,
+          productsUpdated: 0,
+          inventoryRecordsCreated: 0,
+          inventoryRecordsUpdated: 0,
+          rowsSkipped: 0,
+          errors: [],
+        },
+      }),
+    ),
+    importFromCsvContent: vi.fn(),
+  });
+
+  const makeDrizzle = () => ({
+    transaction: vi.fn(),
+  });
+
   const makeServiceLayer = ({
     betterAuth,
+    db = makeDrizzle(),
+    productImportService = makeProductImportService(),
     repository,
     usersRepository,
   }: {
     betterAuth: unknown;
+    db?: unknown;
+    productImportService?: unknown;
     repository: unknown;
     usersRepository: unknown;
   }) =>
@@ -83,6 +117,11 @@ describe('Effect SuperAdminService', () => {
           Layer.succeed(
             SuperAdminRepository,
             repository as typeof SuperAdminRepository.Service,
+          ),
+          Layer.succeed(DrizzleDatabase, db as typeof DrizzleDatabase.Service),
+          Layer.succeed(
+            ProductImportService,
+            productImportService as typeof ProductImportService.Service,
           ),
           Layer.succeed(
             UsersRepository,
@@ -153,7 +192,8 @@ describe('Effect SuperAdminService', () => {
     });
 
     await waitForCall(betterAuth.api.requestPasswordReset);
-    const welcomeRequest = betterAuth.api.requestPasswordReset.mock.calls[0]![0];
+    const welcomeRequest =
+      betterAuth.api.requestPasswordReset.mock.calls[0]![0];
     expect(welcomeRequest.body).toEqual({
       email: 'admin@example.com',
       redirectTo: 'https://acme.localhost:3000/reset-password?flow=welcome',
@@ -198,5 +238,69 @@ describe('Effect SuperAdminService', () => {
       email: 'existing@example.com',
       name: 'Existing Admin',
     });
+  });
+
+  it('rejects an invalid tenant import file before creating the tenant admin', async () => {
+    const betterAuth = makeBetterAuth();
+    const repository = makeRepository();
+    const usersRepository = makeUsersRepository();
+    const productImportService = makeProductImportService();
+    productImportService.validateCsvContent.mockReturnValue(
+      Effect.succeed({
+        format: 'normalized-products',
+        rows: [],
+        validRows: [],
+        result: {
+          categoriesCreated: 0,
+          locationsCreated: 0,
+          productsCreated: 0,
+          productsUpdated: 0,
+          inventoryRecordsCreated: 0,
+          inventoryRecordsUpdated: 0,
+          rowsSkipped: 1,
+          errors: [
+            { row: 2, error: 'Cannot import product without sku and name' },
+          ],
+        },
+      }),
+    );
+    const layer = makeServiceLayer({
+      betterAuth,
+      productImportService,
+      repository,
+      usersRepository,
+    });
+
+    const exit = await Effect.runPromiseExit(
+      Effect.flatMap(SuperAdminService, (service) =>
+        service.createTenant(createTenantInput, actor, {
+          importFile: {
+            filename: 'products.csv',
+            content: 'sku,name,category_path\n,Missing SKU,Food\n',
+          },
+        }),
+      ).pipe(
+        Effect.provideService(BetterAuthHeaders, requestHeaders),
+        Effect.provide(layer),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      throw new Error('Expected tenant import validation to fail');
+    }
+    const failure = Cause.failureOption(exit.cause);
+    expect(Option.isSome(failure)).toBe(true);
+    if (Option.isNone(failure)) {
+      throw new Error('Expected tenant import validation failure');
+    }
+    expect(failure.value).toMatchObject({
+      _tag: 'SuperAdminTenantImportInvalid',
+      messageKey: 'superadmin.tenantImportInvalid',
+    });
+
+    expect(betterAuth.api.createUser).not.toHaveBeenCalled();
+    expect(repository.createTenantWithAdmin).not.toHaveBeenCalled();
+    expect(repository.createTenantWithAdminRecords).not.toHaveBeenCalled();
+    expect(productImportService.importFromCsvContent).not.toHaveBeenCalled();
   });
 });

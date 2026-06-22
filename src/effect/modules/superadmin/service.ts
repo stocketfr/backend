@@ -1,4 +1,8 @@
-import { Effect } from 'effect';
+import { Cause, Effect, Exit, Layer, Option } from 'effect';
+import type {
+  ProductImportErrorDto,
+  ProductImportResultDto,
+} from '@stocket/types/products';
 import type {
   CreateSuperAdminTenantInput,
   SuperAdminCreateTenantResponse,
@@ -11,23 +15,32 @@ import {
   isValidTenantSlug,
 } from '../../platform/tenancy/host';
 import type { UserSession } from '../../platform/auth/user-session';
+import { DrizzleDatabase, type DrizzleDb } from '../../platform/db/drizzle';
+import { isAppError } from '../../platform/effect/domain-errors';
+import {
+  CurrentRequestContext,
+  type RequestContext,
+} from '../../platform/http/request-context';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { makeTryAsync } from '../../platform/effect/try-async';
 import { BetterAuth, BetterAuthHeaders } from '../../platform/auth/better-auth';
 import { type LogPayload } from '../../platform/observability/messages';
 import { UsersRepository } from '../users/repository';
-import {
-  tenantWelcomeOrigin,
-  welcomeRedirectUrl,
-} from '../users/users.utils';
+import { tenantWelcomeOrigin, welcomeRedirectUrl } from '../users/users.utils';
 import {
   InvalidTenantSlug,
   ReservedTenantSlug,
   SuperAdminRepositoryError,
+  SuperAdminTenantImportInvalid,
   TenantHostnameAlreadyExists,
   TenantSlugAlreadyExists,
 } from './superadmin.errors';
-import { SuperAdminRepository } from './repository';
+import { ProductImportService } from '../products/import/service';
+import {
+  type CreatedTenantResult,
+  type CreateTenantInput,
+  SuperAdminRepository,
+} from './repository';
 
 interface BetterAuthCreateUserResponse {
   readonly user: { readonly id: string };
@@ -40,8 +53,94 @@ interface BetterAuthCreateUserBody {
   readonly data?: { readonly emailVerified: boolean };
 }
 
+interface TenantImportFile {
+  readonly filename?: string;
+  readonly content: string;
+}
+
+interface CreateTenantOptions {
+  readonly importFile?: TenantImportFile;
+}
+
+interface CreatedTenantWithImportResult extends CreatedTenantResult {
+  readonly productImport?: ProductImportResultDto;
+}
+
 const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
   value !== null && typeof value === 'object';
+
+const importErrorDetails = (errors: readonly ProductImportErrorDto[]): string =>
+  errors
+    .slice(0, 5)
+    .map((error) =>
+      error.row > 0 ? `Row ${error.row}: ${error.error}` : error.error,
+    )
+    .join('; ');
+
+const makeTenantImportInvalid = (
+  file: TenantImportFile,
+  errors: readonly ProductImportErrorDto[],
+  cause?: unknown,
+) => {
+  const details =
+    importErrorDetails(errors) ||
+    (cause instanceof Error && cause.message
+      ? cause.message
+      : 'The import file is not valid.');
+
+  return new SuperAdminTenantImportInvalid({
+    filename: file.filename,
+    details,
+    cause,
+    messageKey: 'superadmin.tenantImportInvalid',
+    messageArgs: { details },
+  });
+};
+
+class SuperAdminTransactionDefect extends Error {
+  constructor(public readonly cause: Cause.Cause<unknown>) {
+    super(Cause.pretty(cause));
+    this.name = 'SuperAdminTransactionDefect';
+  }
+}
+
+const runEffectAsPromise = async <A, E>(
+  effect: Effect.Effect<A, E, never>,
+): Promise<A> => {
+  const exit = await Effect.runPromiseExit(effect);
+  if (Exit.isSuccess(exit)) return exit.value;
+
+  const failure = Cause.failureOption(exit.cause);
+  if (Option.isSome(failure)) throw failure.value;
+  throw new SuperAdminTransactionDefect(exit.cause);
+};
+
+const makeTenantImportRequestContext = (
+  current: Option.Option<RequestContext>,
+  created: CreatedTenantResult,
+  actor: { readonly ipAddress?: string | null },
+): RequestContext => {
+  const base = Option.isSome(current) ? current.value : null;
+  return {
+    requestId: base?.requestId ?? '00000000-0000-4000-8000-000000000301',
+    path: base?.path ?? '/api/v1/superadmin/tenants',
+    method: base?.method ?? ('POST' as RequestContext['method']),
+    ip: base?.ip ?? actor.ipAddress ?? null,
+    locale: base?.locale ?? 'en',
+    tenantId: created.tenant.id,
+    tenantName: created.tenant.name,
+    tenantSlug: created.tenant.slug,
+  };
+};
+
+const mapTransactionCause = (cause: unknown) =>
+  isAppError(cause)
+    ? cause
+    : new SuperAdminRepositoryError({
+        action: 'create tenant with import',
+        cause,
+        messageKey: 'superadmin.repositoryFailed',
+      });
 
 const uniqueConstraintName = (cause: unknown): string | null => {
   if (!isRecord(cause)) return null;
@@ -95,6 +194,8 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
       const repository = yield* SuperAdminRepository;
       const usersRepository = yield* UsersRepository;
       const betterAuth = yield* BetterAuth;
+      const db = yield* DrizzleDatabase;
+      const productImportService = yield* ProductImportService;
       const trace = makeServiceTracer({
         serviceName: 'SuperAdminService',
         module: 'superadmin',
@@ -157,6 +258,98 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
         ),
       );
 
+      const validateTenantImportFile = (file: TenantImportFile) =>
+        productImportService
+          .validateCsvContent({ content: file.content, requireRows: true })
+          .pipe(
+            Effect.mapError((error) =>
+              makeTenantImportInvalid(
+                file,
+                [{ row: 0, error: error.message }],
+                error,
+              ),
+            ),
+            Effect.flatMap((validated) =>
+              validated.result.errors.length > 0
+                ? Effect.fail(
+                    makeTenantImportInvalid(file, validated.result.errors),
+                  )
+                : Effect.succeed(validated),
+            ),
+          );
+
+      const createTenantWithImport = (
+        input: CreateTenantInput,
+        file: TenantImportFile,
+        actor: { readonly ipAddress?: string | null },
+      ) =>
+        Effect.gen(function* () {
+          const requestContext = yield* Effect.serviceOption(
+            CurrentRequestContext,
+          );
+
+          return yield* Effect.tryPromise({
+            try: () =>
+              db.transaction(async (tx) => {
+                const txDb = tx as unknown as DrizzleDb;
+                const txDbLayer = Layer.succeed(DrizzleDatabase, txDb);
+                const txRepositoryLayer = SuperAdminRepository.Default.pipe(
+                  Layer.provide(txDbLayer),
+                );
+
+                const txEffect = Effect.gen(function* () {
+                  const txRepository = yield* SuperAdminRepository;
+                  const created =
+                    yield* txRepository.createTenantWithAdminRecords(input);
+                  const importRequestContext = makeTenantImportRequestContext(
+                    requestContext,
+                    created,
+                    actor,
+                  );
+                  const txImportLayer = ProductImportService.Default.pipe(
+                    Layer.provide(txDbLayer),
+                  );
+                  const productImport = yield* Effect.flatMap(
+                    ProductImportService,
+                    (service) =>
+                      service.importFromCsvContent({
+                        content: file.content,
+                        importType: 'auto',
+                        userId: input.adminUserId,
+                      }),
+                  ).pipe(
+                    Effect.provide(txImportLayer),
+                    Effect.provideService(
+                      CurrentRequestContext,
+                      importRequestContext,
+                    ),
+                    Effect.mapError((error) =>
+                      makeTenantImportInvalid(
+                        file,
+                        [{ row: 0, error: error.message }],
+                        error,
+                      ),
+                    ),
+                  );
+
+                  if (productImport.errors.length > 0) {
+                    return yield* Effect.fail(
+                      makeTenantImportInvalid(file, productImport.errors),
+                    );
+                  }
+
+                  return {
+                    ...created,
+                    productImport,
+                  } satisfies CreatedTenantWithImportResult;
+                }).pipe(Effect.provide(txRepositoryLayer));
+
+                return runEffectAsPromise(txEffect);
+              }),
+            catch: mapTransactionCause,
+          });
+        });
+
       const createTenant = trace.traced(
         'createTenant',
         (
@@ -166,6 +359,7 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
             readonly ipAddress?: string | null;
             readonly userAgent?: string | null;
           },
+          options: CreateTenantOptions = {},
         ) =>
           Effect.gen(function* () {
             const slug = input.slug.trim().toLowerCase();
@@ -206,6 +400,10 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
               );
             }
 
+            if (options.importFile) {
+              yield* validateTenantImportFile(options.importFile);
+            }
+
             const normalizedEmail = input.admin.email.trim().toLowerCase();
             const adminName = input.admin.name.trim();
 
@@ -236,25 +434,54 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
               adminCreatedHere = true;
             }
 
-            const created = yield* repository
-              .createTenantWithAdmin({
-                name: input.name.trim(),
-                slug,
-                hostname,
-                adminUserId,
-              })
-              .pipe(
-                Effect.catchAll((error) =>
-                  Effect.fail(mapCreateTenantError(error, slug, hostname)),
-                ),
-                Effect.tapError(() =>
-                  adminCreatedHere
-                    ? usersRepository
-                        .deleteBetterAuthUser(adminUserId)
-                        .pipe(Effect.ignore)
-                    : Effect.void,
-                ),
-              );
+            const tenantInput = {
+              name: input.name.trim(),
+              slug,
+              hostname,
+              adminUserId,
+            } satisfies CreateTenantInput;
+
+            const createTenantRecords = (
+              options.importFile
+                ? createTenantWithImport(tenantInput, options.importFile, actor)
+                : repository
+                    .createTenantWithAdmin(tenantInput)
+                    .pipe(
+                      Effect.map(
+                        (created): CreatedTenantWithImportResult => created,
+                      ),
+                    )
+            ) as Effect.Effect<CreatedTenantWithImportResult, unknown, never>;
+
+            const created = yield* createTenantRecords.pipe(
+              Effect.mapError((error) =>
+                error instanceof SuperAdminRepositoryError
+                  ? mapCreateTenantError(error, slug, hostname)
+                  : error,
+              ),
+              Effect.tapError(() =>
+                adminCreatedHere
+                  ? usersRepository
+                      .deleteBetterAuthUser(adminUserId)
+                      .pipe(Effect.ignore)
+                  : Effect.void,
+              ),
+            );
+
+            const importSummary = created.productImport
+              ? {
+                  filename: options.importFile?.filename ?? null,
+                  categoriesCreated: created.productImport.categoriesCreated,
+                  locationsCreated: created.productImport.locationsCreated,
+                  productsCreated: created.productImport.productsCreated,
+                  productsUpdated: created.productImport.productsUpdated,
+                  inventoryRecordsCreated:
+                    created.productImport.inventoryRecordsCreated,
+                  inventoryRecordsUpdated:
+                    created.productImport.inventoryRecordsUpdated,
+                  rowsSkipped: created.productImport.rowsSkipped,
+                }
+              : undefined;
 
             if (adminCreatedHere) {
               yield* Effect.forkDaemon(
@@ -277,6 +504,7 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
                     slug: created.tenant.slug,
                     hostname: created.tenant.hostname,
                     adminUserId,
+                    ...(importSummary ? { productImport: importSummary } : {}),
                   },
                   ipAddress: actor.ipAddress ?? null,
                   userAgent: actor.userAgent ?? null,
@@ -291,6 +519,9 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
                 email: existing?.email ?? normalizedEmail,
                 name: existing?.name ?? adminName,
               },
+              ...(created.productImport
+                ? { productImport: created.productImport }
+                : {}),
             } satisfies SuperAdminCreateTenantResponse;
           }),
         (input) => ({ attributes: { entityId: input.slug } }),
@@ -302,6 +533,10 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
         createTenant,
       };
     }),
-    dependencies: [SuperAdminRepository.Default, UsersRepository.Default],
+    dependencies: [
+      SuperAdminRepository.Default,
+      UsersRepository.Default,
+      ProductImportService.Default,
+    ],
   },
 ) {}

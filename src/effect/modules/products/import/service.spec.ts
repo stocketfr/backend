@@ -34,14 +34,15 @@ function makeInMemoryRepository() {
   const id = (prefix: string) => `${prefix}-${nextId++}`;
 
   const repo = {
-    findCategoryByNameAndParent: vi.fn((name: string, parentId: string | null) =>
-      Effect.sync(
-        () =>
-          categories.find(
-            (category) =>
-              category.name === name && category.parent_id === parentId,
-          ) ?? null,
-      ),
+    findCategoryByNameAndParent: vi.fn(
+      (name: string, parentId: string | null) =>
+        Effect.sync(
+          () =>
+            categories.find(
+              (category) =>
+                category.name === name && category.parent_id === parentId,
+            ) ?? null,
+        ),
     ),
     createCategory: vi.fn((data: any) =>
       Effect.sync(() => {
@@ -189,8 +190,9 @@ const seedExistingProductWithRootInventory = (
   );
 
   if (options.hasAreaScopedInventory) {
-    (state.repo.hasAreaScopedInventoryForProductAndLocation as any)
-      .mockReturnValue(Effect.succeed(true));
+    (
+      state.repo.hasAreaScopedInventoryForProductAndLocation as any
+    ).mockReturnValue(Effect.succeed(true));
   }
 };
 
@@ -204,7 +206,11 @@ const runImport = (
   );
   return Effect.runPromise(
     Effect.flatMap(ProductImportService, (service) =>
-      service.importFromCsvContent({ content, importType, userId: TEST_USER_ID }),
+      service.importFromCsvContent({
+        content,
+        importType,
+        userId: TEST_USER_ID,
+      }),
     ).pipe(Effect.provide(layer)),
   );
 };
@@ -221,7 +227,11 @@ const runImportWithState = async (
   );
   const result = await Effect.runPromise(
     Effect.flatMap(ProductImportService, (service) =>
-      service.importFromCsvContent({ content, importType, userId: TEST_USER_ID }),
+      service.importFromCsvContent({
+        content,
+        importType,
+        userId: TEST_USER_ID,
+      }),
     ).pipe(Effect.provide(layer)),
   );
   return { result, state };
@@ -238,7 +248,44 @@ const failImport = (
   return Effect.runPromise(
     Effect.flip(
       Effect.flatMap(ProductImportService, (service) =>
-        service.importFromCsvContent({ content, importType, userId: TEST_USER_ID }),
+        service.importFromCsvContent({
+          content,
+          importType,
+          userId: TEST_USER_ID,
+        }),
+      ).pipe(Effect.provide(layer)),
+    ),
+  );
+};
+
+const runValidate = (
+  content: string,
+  importType: 'auto' | 'normalized-products' | 'sortly-items' = 'auto',
+  requireRows = true,
+) => {
+  const { repo } = makeInMemoryRepository();
+  const layer = ProductImportService.DefaultWithoutDependencies.pipe(
+    Layer.provide(makeTestLayer(ProductImportRepository)(repo)),
+  );
+  return Effect.runPromise(
+    Effect.flatMap(ProductImportService, (service) =>
+      service.validateCsvContent({ content, importType, requireRows }),
+    ).pipe(Effect.provide(layer)),
+  );
+};
+
+const failValidate = (
+  content: string,
+  importType: 'auto' | 'normalized-products' | 'sortly-items' = 'auto',
+) => {
+  const { repo } = makeInMemoryRepository();
+  const layer = ProductImportService.DefaultWithoutDependencies.pipe(
+    Layer.provide(makeTestLayer(ProductImportRepository)(repo)),
+  );
+  return Effect.runPromise(
+    Effect.flip(
+      Effect.flatMap(ProductImportService, (service) =>
+        service.validateCsvContent({ content, importType, requireRows: true }),
       ).pipe(Effect.provide(layer)),
     ),
   );
@@ -356,6 +403,72 @@ describe('ProductImportService', () => {
     expect(error).toMatchObject({ _tag: 'ProductImportUnsupportedFormat' });
   });
 
+  it('strictly validates a normalized product CSV', async () => {
+    const validated = await runValidate(`sku,name,category_path,location
+SKU-1,Whisky,Spirits,Warehouse
+`);
+
+    expect(validated.format).toBe('normalized-products');
+    expect(validated.validRows).toHaveLength(1);
+    expect(validated.result.errors).toEqual([]);
+  });
+
+  it('strictly validates a Sortly item CSV', async () => {
+    const validated = await runValidate(
+      `Entry Type,Entry Name,SID,Primary Folder,Quantity
+Folder,Bar,FOLDER-1,Root,0
+Item,Tonic,SORT-1,Drinks,12
+`,
+      'sortly-items',
+    );
+
+    expect(validated.format).toBe('sortly-items');
+    expect(validated.validRows).toHaveLength(1);
+    expect(validated.result.errors).toEqual([]);
+  });
+
+  it('strict validation rejects unsupported CSV headers', async () => {
+    const error = await failValidate('foo,bar\n1,2\n');
+    expect(error).toMatchObject({ _tag: 'ProductImportUnsupportedFormat' });
+  });
+
+  it('strict validation reports empty importable files', async () => {
+    const validated = await runValidate(
+      `Entry Type,Entry Name,SID,Primary Folder
+Folder,Bar,FOLDER-1,Root
+`,
+      'sortly-items',
+    );
+
+    expect(validated.validRows).toHaveLength(0);
+    expect(validated.result.errors).toEqual([
+      { row: 1, error: 'No importable product rows found' },
+    ]);
+  });
+
+  it('strict validation reports row-level import errors', async () => {
+    const validated = await runValidate(`sku,name,category_path,expiry_date
+,Missing SKU,Food,
+SKU-1,First,Food,
+SKU-1,Second,Food,
+SKU-2,Expired,Food,31/02/2025
+`);
+
+    expect(validated.validRows).toHaveLength(0);
+    expect(validated.result.errors).toEqual([
+      { row: 2, error: 'Cannot import product without sku and name' },
+      {
+        row: 3,
+        error: 'Conflicting duplicate SKU "SKU-1" has different product fields',
+      },
+      {
+        row: 4,
+        error: 'Conflicting duplicate SKU "SKU-1" has different product fields',
+      },
+      { row: 5, error: 'Invalid expiry_date "31/02/2025"' },
+    ]);
+  });
+
   it('reports missing sku or name as row errors', async () => {
     const result = await runImport(`sku,name,category_path
 ,Missing SKU,Food
@@ -390,7 +503,8 @@ SKU-1,Second Name,Food,Bar
   });
 
   it('allows consistent duplicate SKUs for multiple locations', async () => {
-    const { result, state } = await runImportWithState(`sku,name,category_path,location,quantity,reorder_point
+    const { result, state } =
+      await runImportWithState(`sku,name,category_path,location,quantity,reorder_point
 SKU-1,Same Product,Food,Warehouse,5,1
 SKU-1,Same Product,Food,Bar,7,1
 `);
@@ -404,7 +518,8 @@ SKU-1,Same Product,Food,Bar,7,1
   });
 
   it('reports normalized duplicate SKUs with conflicting reorder points', async () => {
-    const result = await runImport(`sku,name,category_path,location,quantity,reorder_point
+    const result =
+      await runImport(`sku,name,category_path,location,quantity,reorder_point
 SKU-1,Same Product,Food,Warehouse,5,1
 SKU-1,Same Product,Food,Bar,7,2
 `);

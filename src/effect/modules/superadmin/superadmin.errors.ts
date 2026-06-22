@@ -24,6 +24,21 @@ export class TenantHostnameAlreadyExists extends ConflictError(
   readonly hostname: string;
 }> {}
 
+export class SuperAdminTenantImportInvalid extends BadRequestError(
+  'SuperAdminTenantImportInvalid',
+)<{
+  readonly filename?: string;
+  readonly details: string;
+  readonly cause?: unknown;
+}> {}
+
+export class SuperAdminTenantImportReadFailed extends InternalError(
+  'SuperAdminTenantImportReadFailed',
+)<{
+  readonly filename?: string;
+  readonly cause?: unknown;
+}> {}
+
 export class SuperAdminRepositoryError extends InternalError(
   'SuperAdminRepositoryError',
 )<{

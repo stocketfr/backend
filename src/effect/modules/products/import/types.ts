@@ -57,6 +57,19 @@ export interface ImportProductsFromCsvOptions {
   readonly userId: string;
 }
 
+export interface ValidateProductImportCsvOptions {
+  readonly content: string;
+  readonly importType?: ProductImportType;
+  readonly requireRows?: boolean;
+}
+
+export interface ValidatedProductImportCsv {
+  readonly format: ProductImportFormat;
+  readonly rows: readonly NormalizedProductImportRow[];
+  readonly validRows: readonly NormalizedProductImportRow[];
+  readonly result: ProductImportResultDto;
+}
+
 export interface ProductImportValues {
   readonly name: string;
   readonly description: string | null;

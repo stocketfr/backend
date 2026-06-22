@@ -111,8 +111,7 @@ export const enCatalog = {
   'products.importCsvParseFailed': 'Could not parse the uploaded CSV file.',
   'products.importReadUploadFailed':
     'Failed to read the uploaded product import file.',
-  'products.importUnsupportedFormat':
-    'Unsupported product import CSV headers.',
+  'products.importUnsupportedFormat': 'Unsupported product import CSV headers.',
   'products.infrastructureFailed': 'Product operation failed.',
   'products.notDeleted': 'Product is not deleted.',
   'products.notFound': 'Product not found.',
@@ -132,6 +131,10 @@ export const enCatalog = {
   'superadmin.infrastructureFailed': 'Superadmin authorization failed.',
   'superadmin.repositoryFailed': 'Superadmin operation failed.',
   'superadmin.reservedTenantSlug': 'Tenant slug is reserved.',
+  'superadmin.tenantImportInvalid':
+    'The selected import file cannot be imported: {details}',
+  'superadmin.tenantImportReadFailed':
+    'Failed to read the selected tenant import file.',
   'superadmin.tenantHostnameAlreadyExists':
     'A tenant with this hostname already exists.',
   'superadmin.tenantSlugAlreadyExists':

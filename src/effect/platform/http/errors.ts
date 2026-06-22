@@ -1,4 +1,4 @@
-import { HttpServerError, HttpServerResponse } from '@effect/platform';
+import { HttpServerError, HttpServerResponse, Multipart } from '@effect/platform';
 import { Effect, Cause, ParseResult } from 'effect';
 import { TreeFormatter } from 'effect/ParseResult';
 import { isAppError } from '../effect/domain-errors';
@@ -18,6 +18,7 @@ const STATUS_NAMES: Record<number, string> = {
   404: 'Not Found',
   405: 'Method Not Allowed',
   409: 'Conflict',
+  413: 'Payload Too Large',
   422: 'Unprocessable Entity',
   429: 'Too Many Requests',
   500: 'Internal Server Error',
@@ -91,6 +92,30 @@ const toErrorDetails = (
       error: getStatusName(400),
       messageKey: 'http.parseError',
       messageArgs: { details: TreeFormatter.formatErrorSync(error) },
+    };
+  }
+
+  if (error instanceof Multipart.MultipartError) {
+    if (error.reason === 'InternalError') {
+      return {
+        statusCode: 500,
+        error: getStatusName(500),
+        messageKey: 'http.serverError',
+      };
+    }
+
+    const statusCode =
+      error.reason === 'FileTooLarge' ||
+      error.reason === 'FieldTooLarge' ||
+      error.reason === 'BodyTooLarge'
+        ? 413
+        : 400;
+
+    return {
+      statusCode,
+      error: getStatusName(statusCode),
+      messageKey: 'http.requestError',
+      messageArgs: { details: `Invalid multipart request: ${error.reason}` },
     };
   }
 

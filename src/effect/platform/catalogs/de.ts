@@ -160,6 +160,10 @@ export const deCatalog: Record<MessageKey, string> = {
     'Die Superadmin-Autorisierung ist fehlgeschlagen.',
   'superadmin.repositoryFailed': 'Der Superadmin-Vorgang ist fehlgeschlagen.',
   'superadmin.reservedTenantSlug': 'Der Tenant-Slug ist reserviert.',
+  'superadmin.tenantImportInvalid':
+    'Die ausgewaehlte Importdatei kann nicht importiert werden: {details}',
+  'superadmin.tenantImportReadFailed':
+    'Die ausgewaehlte Tenant-Importdatei konnte nicht gelesen werden.',
   'superadmin.tenantHostnameAlreadyExists':
     'Ein Tenant mit diesem Hostnamen existiert bereits.',
   'superadmin.tenantSlugAlreadyExists':

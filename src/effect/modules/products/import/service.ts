@@ -9,6 +9,8 @@ import type {
   NormalizedProductImportRow,
   ProductImportResultDto,
   ProductImportValues,
+  ValidateProductImportCsvOptions,
+  ValidatedProductImportCsv,
 } from './types';
 import {
   detectProductImportFormat,
@@ -144,10 +146,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
             standard_price: parseProductImportNumber(row.standard_price),
             reorder_point: parseInteger(row.reorder_point, 0),
             is_active: parseBoolean(row.is_active, true),
-            is_perishable: parseBoolean(
-              row.is_perishable,
-              Boolean(expiryDate),
-            ),
+            is_perishable: parseBoolean(row.is_perishable, Boolean(expiryDate)),
             notes: nullableText(row.notes),
           };
 
@@ -169,10 +168,10 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
             return existing;
           }
 
-          const product = yield* repository.updateProduct(
-            existing.id,
-            { ...values, updated_by: updatedBy },
-          );
+          const product = yield* repository.updateProduct(existing.id, {
+            ...values,
+            updated_by: updatedBy,
+          });
           if (!product) {
             return yield* Effect.fail(
               new ProductsInfrastructureError({
@@ -309,12 +308,12 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           yield* upsertInventory(product, locationId, row, result, expiryDate);
         });
 
-      const importFromCsvContent = ({
+      const validateCsvContent = ({
         content,
         importType = 'auto',
-        userId,
-      }: ImportProductsFromCsvOptions): Effect.Effect<
-        ProductImportResultDto,
+        requireRows = false,
+      }: ValidateProductImportCsvOptions): Effect.Effect<
+        ValidatedProductImportCsv,
         ProductImportCsvParseFailed | ProductImportUnsupportedFormat
       > =>
         Effect.gen(function* () {
@@ -337,14 +336,10 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
 
           const result = makeEmptyProductImportResult();
           const rows = normalizeProductImportRecords(parsed.records, format);
+          const validRows: NormalizedProductImportRow[] = [];
           const duplicateConflictRows = findConflictingDuplicateSkuRows(rows, {
             includeReorderPoint: format === 'normalized-products',
           });
-          const caches: ImportCaches = {
-            categories: new Map<string, string>(),
-            locations: new Map<string, string>(),
-            products: new Map<string, ImportProductRow>(),
-          };
 
           for (const row of rows) {
             if (!row.sku || !row.name) {
@@ -375,14 +370,48 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
               continue;
             }
 
+            validRows.push(row);
+          }
+
+          if (
+            requireRows &&
+            validRows.length === 0 &&
+            result.errors.length === 0
+          ) {
+            pushRowError(result, 1, 'No importable product rows found');
+          }
+
+          return {
+            format,
+            rows,
+            validRows,
+            result,
+          } satisfies ValidatedProductImportCsv;
+        }).pipe(Effect.withSpan('ProductImportService.validateCsvContent'));
+
+      const importFromCsvContent = ({
+        content,
+        importType = 'auto',
+        userId,
+      }: ImportProductsFromCsvOptions): Effect.Effect<
+        ProductImportResultDto,
+        ProductImportCsvParseFailed | ProductImportUnsupportedFormat
+      > =>
+        Effect.gen(function* () {
+          const validated = yield* validateCsvContent({ content, importType });
+          const result = validated.result;
+          const caches: ImportCaches = {
+            categories: new Map<string, string>(),
+            locations: new Map<string, string>(),
+            products: new Map<string, ImportProductRow>(),
+          };
+
+          for (const row of validated.validRows) {
+            const expiryDate = parseDate(row.expiry_date);
             yield* importRow(row, caches, result, expiryDate, userId).pipe(
               Effect.catchAll((error) =>
                 Effect.sync(() => {
-                  pushRowError(
-                    result,
-                    row.sourceRow,
-                    formatImportError(error),
-                  );
+                  pushRowError(result, row.sourceRow, formatImportError(error));
                 }),
               ),
             );
@@ -393,6 +422,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
 
       return {
         importFromCsvContent,
+        validateCsvContent,
       };
     }),
     dependencies: [ProductImportRepository.Default],

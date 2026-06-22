@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { and, asc, eq, sql } from 'drizzle-orm';
-import { DrizzleDatabase } from '../../platform/db/drizzle';
+import { DrizzleDatabase, type DrizzleDb } from '../../platform/db/drizzle';
 import {
   betterAuthUsers,
   members,
@@ -70,6 +70,93 @@ export interface CreatedTenantResult {
 
 const rowsOf = <A>(result: unknown): A[] =>
   ((result as { rows?: A[] }).rows ?? (result as A[])) as A[];
+
+const insertTenantWithAdmin = async (
+  tx: DrizzleDb,
+  input: CreateTenantInput,
+): Promise<CreatedTenantResult> => {
+  const tenantId = randomUUID();
+
+  const [tenant] = await tx
+    .insert(organizations)
+    .values({
+      id: tenantId,
+      name: input.name,
+      slug: input.slug,
+    })
+    .returning({
+      id: organizations.id,
+      name: organizations.name,
+      slug: organizations.slug,
+    });
+
+  await tx.insert(tenantDomains).values({
+    tenant_id: tenantId,
+    hostname: input.hostname,
+    kind: 'subdomain',
+    is_primary: true,
+    verified_at: new Date(),
+  });
+
+  for (const seed of defaultRoleSeedDefinitions) {
+    const [role] = await tx
+      .insert(roles)
+      .values({
+        tenant_id: tenantId,
+        name: seed.name,
+        description: seed.description,
+        is_system: true,
+      })
+      .returning({ id: roles.id });
+
+    await tx.insert(rolePermissions).values(
+      seed.permissions.map((permission) => ({
+        role_id: role!.id,
+        resource: permission.resource,
+        permission: permission.permission,
+      })),
+    );
+  }
+
+  await tx
+    .insert(members)
+    .values({
+      id: randomUUID(),
+      organization_id: tenantId,
+      user_id: input.adminUserId,
+      role: 'member',
+    })
+    .onConflictDoNothing();
+
+  const adminRoleRows = await tx
+    .select({ id: roles.id })
+    .from(roles)
+    .where(and(eq(roles.tenant_id, tenantId), eq(roles.name, 'Admin')))
+    .limit(1);
+
+  const adminRoleId = adminRoleRows[0]?.id;
+  if (!adminRoleId) {
+    throw new Error('Admin role seed missing after tenant creation');
+  }
+
+  await tx.insert(userRoles).values({
+    tenant_id: tenantId,
+    user_id: input.adminUserId,
+    role_id: adminRoleId,
+  });
+
+  return {
+    tenant: {
+      id: tenant!.id,
+      name: tenant!.name,
+      slug: tenant!.slug,
+      hostname: input.hostname,
+    },
+    admin: {
+      id: input.adminUserId,
+    },
+  } satisfies CreatedTenantResult;
+};
 
 export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()(
   '@stocket/effect/superadmin/SuperAdminRepository',
@@ -149,90 +236,15 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
 
       const createTenantWithAdmin = (input: CreateTenantInput) =>
         tryAsync('create tenant with admin', async () => {
-          const tenantId = randomUUID();
-
-          return db.transaction(async (tx) => {
-            const [tenant] = await tx
-              .insert(organizations)
-              .values({
-                id: tenantId,
-                name: input.name,
-                slug: input.slug,
-              })
-              .returning({
-                id: organizations.id,
-                name: organizations.name,
-                slug: organizations.slug,
-              });
-
-            await tx.insert(tenantDomains).values({
-              tenant_id: tenantId,
-              hostname: input.hostname,
-              kind: 'subdomain',
-              is_primary: true,
-              verified_at: new Date(),
-            });
-
-            for (const seed of defaultRoleSeedDefinitions) {
-              const [role] = await tx
-                .insert(roles)
-                .values({
-                  tenant_id: tenantId,
-                  name: seed.name,
-                  description: seed.description,
-                  is_system: true,
-                })
-                .returning({ id: roles.id });
-
-              await tx.insert(rolePermissions).values(
-                seed.permissions.map((permission) => ({
-                  role_id: role!.id,
-                  resource: permission.resource,
-                  permission: permission.permission,
-                })),
-              );
-            }
-
-            await tx
-              .insert(members)
-              .values({
-                id: randomUUID(),
-                organization_id: tenantId,
-                user_id: input.adminUserId,
-                role: 'member',
-              })
-              .onConflictDoNothing();
-
-            const adminRoleRows = await tx
-              .select({ id: roles.id })
-              .from(roles)
-              .where(and(eq(roles.tenant_id, tenantId), eq(roles.name, 'Admin')))
-              .limit(1);
-
-            const adminRoleId = adminRoleRows[0]?.id;
-            if (!adminRoleId) {
-              throw new Error('Admin role seed missing after tenant creation');
-            }
-
-            await tx.insert(userRoles).values({
-              tenant_id: tenantId,
-              user_id: input.adminUserId,
-              role_id: adminRoleId,
-            });
-
-            return {
-              tenant: {
-                id: tenant!.id,
-                name: tenant!.name,
-                slug: tenant!.slug,
-                hostname: input.hostname,
-              },
-              admin: {
-                id: input.adminUserId,
-              },
-            } satisfies CreatedTenantResult;
-          });
+          return db.transaction(async (tx) =>
+            insertTenantWithAdmin(tx as unknown as DrizzleDb, input),
+          );
         });
+
+      const createTenantWithAdminRecords = (input: CreateTenantInput) =>
+        tryAsync('create tenant with admin records', () =>
+          insertTenantWithAdmin(db, input),
+        );
 
       const recordPlatformAuditEvent = (input: PlatformAuditEventInput) =>
         tryAsync('record platform audit event', async () => {
@@ -254,6 +266,7 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
         tenantSlugExists,
         tenantHostnameExists,
         createTenantWithAdmin,
+        createTenantWithAdminRecords,
         recordPlatformAuditEvent,
       };
     }),
