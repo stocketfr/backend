@@ -25,12 +25,18 @@ describe('runFreshDatabaseDataMigrations', () => {
     vi.clearAllMocks();
   });
 
-  it('skips existing databases with no pending fresh-database data migrations', async () => {
-    const db = makeDb([{ rows: [{ table_exists: false }] }]);
+  it('seeds when an existing database has no data-migration marker table yet', async () => {
+    const db = makeDb([
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+    ]);
 
     await runFreshDatabaseDataMigrations(db, { freshSchemaCreated: false });
 
-    expect(seedSuperAdminMock).not.toHaveBeenCalled();
+    expect(seedSuperAdminMock).toHaveBeenCalledTimes(2);
   });
 
   it('prepares the marker table as soon as a fresh schema is created', async () => {
@@ -51,7 +57,8 @@ describe('runFreshDatabaseDataMigrations', () => {
 
   it('seeds the platform superadmin for a freshly created schema', async () => {
     const db = makeDb([
-      { rows: [{ table_exists: false }] },
+      { rows: [] },
+      { rows: [] },
       { rows: [] },
       { rows: [] },
       { rows: [] },
@@ -59,13 +66,27 @@ describe('runFreshDatabaseDataMigrations', () => {
 
     await runFreshDatabaseDataMigrations(db, { freshSchemaCreated: true });
 
-    expect(seedSuperAdminMock).toHaveBeenCalledOnce();
+    expect(seedSuperAdminMock).toHaveBeenCalledTimes(2);
   });
 
   it('retries a pending first-database data migration on later startups', async () => {
     const db = makeDb([
-      { rows: [{ table_exists: true }] },
       { rows: [] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+    ]);
+
+    await runFreshDatabaseDataMigrations(db, { freshSchemaCreated: false });
+
+    expect(seedSuperAdminMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('reconciles the password after the seed migration marker exists', async () => {
+    const db = makeDb([
+      { rows: [] },
+      { rows: [{ name: '0000_seed_platform_superadmin' }] },
       { rows: [] },
       { rows: [] },
     ]);
@@ -75,11 +96,11 @@ describe('runFreshDatabaseDataMigrations', () => {
     expect(seedSuperAdminMock).toHaveBeenCalledOnce();
   });
 
-  it('skips the superadmin seed after its data migration marker exists', async () => {
+  it('skips the superadmin seed after all data migration markers exist', async () => {
     const db = makeDb([
-      { rows: [{ table_exists: true }] },
       { rows: [] },
       { rows: [{ name: '0000_seed_platform_superadmin' }] },
+      { rows: [{ name: '0001_reconcile_platform_superadmin_password' }] },
     ]);
 
     await runFreshDatabaseDataMigrations(db, { freshSchemaCreated: false });

@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 import { getCrossSubDomainCookieConfig } from './auth-cookie-domain';
 import { makeAuthEmailHooks } from './email/auth';
 import { defaultMailer } from './email/default-mailer';
+import { normalizeBetterAuthBaseUrl } from './auth-base-url';
 import {
   getSSLConfig,
   getPoolMax,
@@ -93,7 +94,9 @@ async function originFromForwardedHost(
 }
 
 const betterAuthSecret = readRequiredEnv('BETTER_AUTH_SECRET');
-const betterAuthUrl = readRequiredEnv('BETTER_AUTH_URL');
+const betterAuthUrl = normalizeBetterAuthBaseUrl(
+  readRequiredEnv('BETTER_AUTH_URL'),
+);
 const ssl = getSSLConfig();
 const poolMax = getPoolMax();
 const databaseUrl = getDatabaseUrl();
