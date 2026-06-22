@@ -109,10 +109,10 @@ export const enCatalog = {
   'products.importAreaScopedInventoryConflict':
     'Cannot import location-level inventory while area-scoped inventory exists for this product and location.',
   'products.importCsvParseFailed': 'Could not parse the uploaded CSV file.',
+  'products.importInvalidMapping': 'Invalid product import mapping payload.',
   'products.importReadUploadFailed':
     'Failed to read the uploaded product import file.',
-  'products.importUnsupportedFormat':
-    'Unsupported product import CSV headers.',
+  'products.importUnsupportedFormat': 'Unsupported product import CSV headers.',
   'products.infrastructureFailed': 'Product operation failed.',
   'products.notDeleted': 'Product is not deleted.',
   'products.notFound': 'Product not found.',

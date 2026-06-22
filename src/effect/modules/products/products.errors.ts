@@ -35,6 +35,12 @@ export class ProductImportCsvParseFailed extends BadRequestError(
   readonly cause?: unknown;
 }> {}
 
+export class ProductImportInvalidMapping extends BadRequestError(
+  'ProductImportInvalidMapping',
+)<{
+  readonly cause?: unknown;
+}> {}
+
 export class ProductsInfrastructureError extends InternalError(
   'ProductInfrastructureError',
 )<{

@@ -2,19 +2,26 @@ import { Effect } from 'effect';
 import { LocationType } from '@stocket/types/locations';
 import type {
   ImportCaches,
+  ImportAreaRow,
   ImportCategoryRow,
   ImportLocationRow,
   ImportProductRow,
   ImportProductsFromCsvOptions,
   NormalizedProductImportRow,
+  PreviewProductsFromCsvOptions,
+  ProductImportCommitResultDto,
+  ProductImportPreviewDto,
   ProductImportResultDto,
   ProductImportValues,
 } from './types';
 import {
+  applyProductImportMapping,
   detectProductImportFormat,
   findConflictingDuplicateSkuRows,
   formatImportError,
-  makeEmptyProductImportResult,
+  makeEmptyProductImportCommitResult,
+  makeProductImportMappingLookups,
+  makeProductImportPreview,
   normalizeCategoryPath,
   normalizeProductImportRecords,
   nullableText,
@@ -25,6 +32,7 @@ import {
   parseProductImportNumber,
   productValuesMatch,
   pushRowError,
+  pushWarning,
 } from './utils';
 import {
   ProductImportCsvParseFailed,
@@ -32,12 +40,14 @@ import {
   ProductsInfrastructureError,
 } from '../products.errors';
 import { ProductImportRepository } from './repository';
+import { PhotosService } from '../../photos/service';
 
 export class ProductImportService extends Effect.Service<ProductImportService>()(
   '@stocket/effect/products/ProductImportService',
   {
     effect: Effect.gen(function* () {
       const repository = yield* ProductImportRepository;
+      const photosService = yield* PhotosService;
 
       const getOrCreateCategoryPath = (
         categoryPath: string,
@@ -94,7 +104,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
       const getOrCreateLocation = (
         locationName: string,
         caches: ImportCaches,
-        result: ProductImportResultDto,
+        result: ProductImportCommitResultDto,
       ) =>
         Effect.gen(function* () {
           const name = locationName.trim();
@@ -122,6 +132,58 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           return location.id;
         });
 
+      const getOrCreateAreaPath = (
+        locationId: string,
+        areaPath: string,
+        caches: ImportCaches,
+        result: ProductImportCommitResultDto,
+      ) =>
+        Effect.gen(function* () {
+          const parts = areaPath
+            .split('/')
+            .map((part) => part.trim())
+            .filter(Boolean);
+          if (parts.length === 0) return null;
+
+          let parentId: string | null = null;
+          let areaId = '';
+
+          for (const part of parts) {
+            const cacheKey = `${locationId}:${parentId ?? 'root'}:${part}`;
+            const cached = caches.areas.get(cacheKey);
+            if (cached) {
+              parentId = cached;
+              areaId = cached;
+              continue;
+            }
+
+            let area: ImportAreaRow | null =
+              yield* repository.findAreaByNameLocationAndParent(
+                part,
+                locationId,
+                parentId,
+              );
+
+            if (!area) {
+              area = yield* repository.createArea({
+                location_id: locationId,
+                parent_id: parentId,
+                name: part,
+                code: '',
+                description: 'Imported via product import',
+                is_active: true,
+              });
+              result.areasCreated++;
+            }
+
+            caches.areas.set(cacheKey, area.id);
+            parentId = area.id;
+            areaId = area.id;
+          }
+
+          return areaId;
+        });
+
       const upsertProduct = (
         row: NormalizedProductImportRow,
         categoryId: string,
@@ -144,10 +206,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
             standard_price: parseProductImportNumber(row.standard_price),
             reorder_point: parseInteger(row.reorder_point, 0),
             is_active: parseBoolean(row.is_active, true),
-            is_perishable: parseBoolean(
-              row.is_perishable,
-              Boolean(expiryDate),
-            ),
+            is_perishable: parseBoolean(row.is_perishable, Boolean(expiryDate)),
             notes: nullableText(row.notes),
           };
 
@@ -169,10 +228,10 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
             return existing;
           }
 
-          const product = yield* repository.updateProduct(
-            existing.id,
-            { ...values, updated_by: updatedBy },
-          );
+          const product = yield* repository.updateProduct(existing.id, {
+            ...values,
+            updated_by: updatedBy,
+          });
           if (!product) {
             return yield* Effect.fail(
               new ProductsInfrastructureError({
@@ -189,37 +248,41 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
       const upsertInventory = (
         product: ImportProductRow,
         locationId: string | null,
+        areaId: string | null,
         row: NormalizedProductImportRow,
-        result: ProductImportResultDto,
+        result: ProductImportCommitResultDto,
         expiryDate: Date | null,
       ) =>
         Effect.gen(function* () {
           if (!locationId) return;
 
-          const existing =
-            yield* repository.findRootInventoryByProductAndLocation(
-              product.id,
-              locationId,
-            );
+          const existing = yield* repository.findInventoryByProductLocationArea(
+            product.id,
+            locationId,
+            areaId,
+          );
           const quantity = parseInteger(row.quantity, 0);
-          const hasAreaScopedInventory =
-            yield* repository.hasAreaScopedInventoryForProductAndLocation(
-              product.id,
-              locationId,
-            );
-          if (hasAreaScopedInventory) {
-            return yield* Effect.fail(
-              new ProductsInfrastructureError({
-                action: 'import root inventory with area-scoped inventory',
-                messageKey: 'products.importAreaScopedInventoryConflict',
-              }),
-            );
+          if (areaId === null) {
+            const hasAreaScopedInventory =
+              yield* repository.hasAreaScopedInventoryForProductAndLocation(
+                product.id,
+                locationId,
+              );
+            if (hasAreaScopedInventory) {
+              return yield* Effect.fail(
+                new ProductsInfrastructureError({
+                  action: 'import root inventory with area-scoped inventory',
+                  messageKey: 'products.importAreaScopedInventoryConflict',
+                }),
+              );
+            }
           }
 
           if (!existing) {
             yield* repository.createInventory({
               product_id: product.id,
               location_id: locationId,
+              area_id: areaId,
               quantity,
               expiry_date: expiryDate,
             });
@@ -242,13 +305,107 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           result.inventoryRecordsUpdated++;
         });
 
+      const importPhotosForProduct = (
+        product: ImportProductRow,
+        row: NormalizedProductImportRow,
+        result: ProductImportCommitResultDto,
+        userId: string,
+        importedPhotoProducts: Set<string>,
+      ) =>
+        Effect.gen(function* () {
+          if (
+            row.photo_urls.length === 0 ||
+            importedPhotoProducts.has(product.id)
+          ) {
+            return;
+          }
+          importedPhotoProducts.add(product.id);
+
+          for (const photoUrl of row.photo_urls) {
+            const response = yield* Effect.tryPromise({
+              try: () => fetch(photoUrl),
+              catch: (cause) => cause,
+            }).pipe(
+              Effect.catchAll((cause) =>
+                Effect.sync(() => {
+                  pushWarning(
+                    result,
+                    `Failed to download Sortly photo ${photoUrl}: ${formatImportError(cause)}`,
+                    row.sourceRow,
+                  );
+                  return null;
+                }),
+              ),
+            );
+            if (!response) continue;
+
+            if (!response.ok) {
+              pushWarning(
+                result,
+                `Failed to download Sortly photo ${photoUrl}: HTTP ${response.status}`,
+                row.sourceRow,
+              );
+              continue;
+            }
+
+            const contentType =
+              response.headers.get('content-type') ??
+              'application/octet-stream';
+            const arrayBuffer = yield* Effect.tryPromise({
+              try: () => response.arrayBuffer(),
+              catch: (cause) => cause,
+            }).pipe(
+              Effect.catchAll((cause) =>
+                Effect.sync(() => {
+                  pushWarning(
+                    result,
+                    `Failed to read Sortly photo ${photoUrl}: ${formatImportError(cause)}`,
+                    row.sourceRow,
+                  );
+                  return null;
+                }),
+              ),
+            );
+            if (!arrayBuffer) continue;
+
+            const buffer = Buffer.from(arrayBuffer);
+            const filename =
+              photoUrl.split('/').pop()?.split('?')[0] || 'sortly-photo';
+            yield* photosService
+              .uploadPhoto(
+                product.id,
+                {
+                  originalname: filename,
+                  mimetype: contentType,
+                  size: buffer.length,
+                  buffer,
+                },
+                userId,
+              )
+              .pipe(
+                Effect.match({
+                  onFailure: (error) => {
+                    pushWarning(
+                      result,
+                      `Failed to import Sortly photo ${photoUrl}: ${formatImportError(error)}`,
+                      row.sourceRow,
+                    );
+                  },
+                  onSuccess: () => {
+                    result.photosImported++;
+                  },
+                }),
+              );
+          }
+        });
+
       const validateRootInventoryImport = (
         row: NormalizedProductImportRow,
         caches: ImportCaches,
       ) =>
         Effect.gen(function* () {
           const locationName = row.location.trim();
-          if (locationName === '') return;
+          if (locationName === '' || row.area_path.trim() !== '') return;
 
           const cachedProduct = caches.products.get(row.sku);
           let product = cachedProduct ?? null;
@@ -282,11 +439,19 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
       const importRow = (
         row: NormalizedProductImportRow,
         caches: ImportCaches,
-        result: ProductImportResultDto,
+        result: ProductImportCommitResultDto,
         expiryDate: Date | null,
         userId: string,
+        importedPhotoProducts: Set<string>,
+        importPhotos: boolean,
       ) =>
         Effect.gen(function* () {
+          if (row.area_path.trim() !== '' && row.location.trim() === '') {
+            return yield* Effect.fail(
+              new Error('Cannot import area_path without location'),
+            );
+          }
+
           yield* validateRootInventoryImport(row, caches);
           const categoryId = yield* getOrCreateCategoryPath(
             row.category_path,
@@ -306,17 +471,37 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
             caches,
             result,
           );
-          yield* upsertInventory(product, locationId, row, result, expiryDate);
+          const areaId = locationId
+            ? yield* getOrCreateAreaPath(
+                locationId,
+                row.area_path,
+                caches,
+                result,
+              )
+            : null;
+          yield* upsertInventory(
+            product,
+            locationId,
+            areaId,
+            row,
+            result,
+            expiryDate,
+          );
+          if (importPhotos) {
+            yield* importPhotosForProduct(
+              product,
+              row,
+              result,
+              userId,
+              importedPhotoProducts,
+            );
+          }
         });
 
-      const importFromCsvContent = ({
-        content,
-        importType = 'auto',
-        userId,
-      }: ImportProductsFromCsvOptions): Effect.Effect<
-        ProductImportResultDto,
-        ProductImportCsvParseFailed | ProductImportUnsupportedFormat
-      > =>
+      const parseImportRequest = (
+        content: string,
+        importType: ImportProductsFromCsvOptions['importType'],
+      ) =>
         Effect.gen(function* () {
           const parsed = yield* Effect.try({
             try: () => parseCsvContent(content),
@@ -334,17 +519,69 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
               }),
             );
           }
+          return { parsed, format };
+        });
 
-          const result = makeEmptyProductImportResult();
-          const rows = normalizeProductImportRecords(parsed.records, format);
+      const previewFromCsvContent = ({
+        content,
+        importType = 'auto',
+        knownLocations = [],
+        useLlm = false,
+      }: PreviewProductsFromCsvOptions): Effect.Effect<
+        ProductImportPreviewDto,
+        ProductImportCsvParseFailed | ProductImportUnsupportedFormat
+      > =>
+        Effect.gen(function* () {
+          const { parsed, format } = yield* parseImportRequest(
+            content,
+            importType,
+          );
+          return makeProductImportPreview(parsed, format, {
+            knownLocations,
+            useLlm,
+          });
+        }).pipe(Effect.withSpan('ProductImportService.previewFromCsvContent'));
+
+      const importFromCsvContent = ({
+        content,
+        importType = 'auto',
+        mapping,
+        importPhotos = false,
+        userId,
+      }: ImportProductsFromCsvOptions): Effect.Effect<
+        ProductImportCommitResultDto,
+        ProductImportCsvParseFailed | ProductImportUnsupportedFormat
+      > =>
+        Effect.gen(function* () {
+          const { parsed, format } = yield* parseImportRequest(
+            content,
+            importType,
+          );
+          const result = makeEmptyProductImportCommitResult();
+          const mappingLookups = makeProductImportMappingLookups(mapping);
+          const rows: NormalizedProductImportRow[] = [];
+          for (const rawRow of normalizeProductImportRecords(
+            parsed.records,
+            format,
+          )) {
+            const mapped = applyProductImportMapping(rawRow, mappingLookups);
+            if (mapped.error) {
+              pushRowError(result, rawRow.sourceRow, mapped.error);
+              continue;
+            }
+            rows.push(mapped.row);
+          }
+
           const duplicateConflictRows = findConflictingDuplicateSkuRows(rows, {
             includeReorderPoint: format === 'normalized-products',
           });
           const caches: ImportCaches = {
+            areas: new Map<string, string>(),
             categories: new Map<string, string>(),
             locations: new Map<string, string>(),
             products: new Map<string, ImportProductRow>(),
           };
+          const importedPhotoProducts = new Set<string>();
 
           for (const row of rows) {
             if (!row.sku || !row.name) {
@@ -375,14 +612,18 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
               continue;
             }
 
-            yield* importRow(row, caches, result, expiryDate, userId).pipe(
+            yield* importRow(
+              row,
+              caches,
+              result,
+              expiryDate,
+              userId,
+              importedPhotoProducts,
+              importPhotos,
+            ).pipe(
               Effect.catchAll((error) =>
                 Effect.sync(() => {
-                  pushRowError(
-                    result,
-                    row.sourceRow,
-                    formatImportError(error),
-                  );
+                  pushRowError(result, row.sourceRow, formatImportError(error));
                 }),
               ),
             );
@@ -392,9 +633,11 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
         }).pipe(Effect.withSpan('ProductImportService.importFromCsvContent'));
 
       return {
+        previewFromCsvContent,
+        commitFromCsvContent: importFromCsvContent,
         importFromCsvContent,
       };
     }),
-    dependencies: [ProductImportRepository.Default],
+    dependencies: [ProductImportRepository.Default, PhotosService.Default],
   },
 ) {}

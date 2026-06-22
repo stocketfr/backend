@@ -17,11 +17,18 @@ import {
 import { requirePermission } from '../../platform/auth/authorization';
 import { respondJson, respondJsonOk } from '../../platform/http/errors';
 import { AuditLogWriter } from '../../platform/audit/index';
-import { getOptionalSession, requireSession } from '../../platform/http/session';
+import {
+  getOptionalSession,
+  requireSession,
+} from '../../platform/http/session';
 import { makeMessageResponse } from '../../platform/observability/messages';
 import { ProductImportService } from './import/service';
 import { ProductImportTypes } from './import/types';
-import { ProductsInfrastructureError } from './products.errors';
+import {
+  ProductImportInvalidMapping,
+  ProductsInfrastructureError,
+} from './products.errors';
+import { parseProductImportMappingJson } from './import/utils';
 import { ProductsService } from './service';
 
 /**
@@ -30,7 +37,13 @@ import { ProductsService } from './service';
  * them even though every field encodes to a string at runtime. This helper hides the cast.
  */
 const searchParams = <A, I, R>(schema: Schema.Schema<A, I, R>) =>
-  HttpServerRequest.schemaSearchParams(schema as unknown as Schema.Schema<A, Record<string, string | ReadonlyArray<string> | undefined>, R>);
+  HttpServerRequest.schemaSearchParams(
+    schema as unknown as Schema.Schema<
+      A,
+      Record<string, string | ReadonlyArray<string> | undefined>,
+      R
+    >,
+  );
 
 const ProductPathParams = Schema.Struct({ id: ProductIdSchema });
 const CategoryPathParams = Schema.Struct({ categoryId: Schema.UUID });
@@ -41,6 +54,69 @@ const ProductImportUploadSchema = Schema.Struct({
     default: () => 'auto' as const,
   }),
 });
+const ProductImportPreviewUploadSchema = Schema.Struct({
+  file: Multipart.SingleFileSchema,
+  import_type: Schema.optionalWith(ProductImportTypeSchema, {
+    default: () => 'auto' as const,
+  }),
+  known_locations: Schema.optionalWith(Schema.String, {
+    default: () => '[]',
+  }),
+  use_llm: Schema.optionalWith(Schema.BooleanFromString, {
+    default: () => false,
+  }),
+});
+const ProductImportCommitUploadSchema = Schema.Struct({
+  file: Multipart.SingleFileSchema,
+  import_type: Schema.optionalWith(ProductImportTypeSchema, {
+    default: () => 'auto' as const,
+  }),
+  mapping: Schema.String,
+  import_photos: Schema.optionalWith(Schema.BooleanFromString, {
+    default: () => false,
+  }),
+});
+
+const readProductImportUpload = (file: { readonly path: string }) =>
+  Effect.tryPromise({
+    try: () => readFile(file.path),
+    catch: (cause) =>
+      new ProductsInfrastructureError({
+        action: 'read uploaded product import file',
+        cause,
+        messageKey: 'products.importReadUploadFailed',
+      }),
+  }).pipe(Effect.map((buffer) => buffer.toString('utf8')));
+
+const parseJsonStringArray = (value: string) =>
+  Effect.try({
+    try: () => {
+      const parsed = JSON.parse(value) as unknown;
+      if (
+        !Array.isArray(parsed) ||
+        !parsed.every((item) => typeof item === 'string')
+      ) {
+        throw new Error('Expected JSON string array');
+      }
+      return parsed.map((item) => item.trim()).filter(Boolean);
+    },
+    catch: (cause) =>
+      new ProductImportInvalidMapping({
+        cause,
+        messageKey: 'products.importInvalidMapping',
+      }),
+  });
+
+const parseImportMapping = (value: string) =>
+  Effect.sync(() => parseProductImportMappingJson(value)).pipe(
+    Effect.filterOrFail(
+      (mapping) => mapping !== null,
+      () =>
+        new ProductImportInvalidMapping({
+          messageKey: 'products.importInvalidMapping',
+        }),
+    ),
+  );
 
 const IncludeDeletedQuery = Schema.Struct({
   include_deleted: Schema.optionalWith(ProductBooleanQuerySchema, {
@@ -76,8 +152,9 @@ export const productsRouter = HttpRouter.empty.pipe(
     '/bulk',
     Effect.gen(function* () {
       yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
-      const dto =
-        yield* HttpServerRequest.schemaBodyJson(BulkCreateProductsSchema);
+      const dto = yield* HttpServerRequest.schemaBodyJson(
+        BulkCreateProductsSchema,
+      );
       const session = yield* getOptionalSession;
       const userId = session?.user.id;
       const productsService = yield* ProductsService;
@@ -94,6 +171,52 @@ export const productsRouter = HttpRouter.empty.pipe(
     }),
   ),
   HttpRouter.post(
+    '/import/preview',
+    Effect.gen(function* () {
+      yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
+      const { file, import_type, known_locations, use_llm } =
+        yield* HttpServerRequest.schemaBodyMultipart(
+          ProductImportPreviewUploadSchema,
+        );
+      const content = yield* readProductImportUpload(file);
+      const knownLocations = yield* parseJsonStringArray(known_locations);
+      const productImportService = yield* ProductImportService;
+      const result = yield* productImportService.previewFromCsvContent({
+        content,
+        importType: import_type,
+        knownLocations,
+        useLlm: use_llm,
+      });
+      return yield* respondJsonOk(result);
+    }),
+  ),
+  HttpRouter.post(
+    '/import/commit',
+    Effect.gen(function* () {
+      yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
+      yield* requirePermission(Resource.LOCATIONS, Permission.WRITE);
+      yield* requirePermission(Resource.INVENTORY, Permission.WRITE);
+      const { file, import_type, mapping, import_photos } =
+        yield* HttpServerRequest.schemaBodyMultipart(
+          ProductImportCommitUploadSchema,
+        );
+      const session = yield* requireSession;
+      const userId = session.user.id;
+      const content = yield* readProductImportUpload(file);
+      const importMapping = yield* parseImportMapping(mapping);
+
+      const productImportService = yield* ProductImportService;
+      const result = yield* productImportService.commitFromCsvContent({
+        content,
+        importType: import_type,
+        mapping: importMapping,
+        importPhotos: import_photos,
+        userId,
+      });
+      return yield* respondJsonOk(result);
+    }),
+  ),
+  HttpRouter.post(
     '/import',
     Effect.gen(function* () {
       yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
@@ -104,19 +227,11 @@ export const productsRouter = HttpRouter.empty.pipe(
       const session = yield* requireSession;
       const userId = session.user.id;
 
-      const buffer = yield* Effect.tryPromise({
-        try: () => readFile(file.path),
-        catch: (cause) =>
-          new ProductsInfrastructureError({
-            action: 'read uploaded product import file',
-            cause,
-            messageKey: 'products.importReadUploadFailed',
-          }),
-      });
+      const content = yield* readProductImportUpload(file);
 
       const productImportService = yield* ProductImportService;
       const result = yield* productImportService.importFromCsvContent({
-        content: buffer.toString('utf8'),
+        content,
         importType: import_type,
         userId,
       });
@@ -130,9 +245,7 @@ export const productsRouter = HttpRouter.empty.pipe(
       const { categoryId } =
         yield* HttpRouter.schemaPathParams(CategoryPathParams);
       const productsService = yield* ProductsService;
-      return yield* respondJson(
-        productsService.findByCategoryTree(categoryId),
-      );
+      return yield* respondJson(productsService.findByCategoryTree(categoryId));
     }),
   ),
   HttpRouter.get(
@@ -149,8 +262,9 @@ export const productsRouter = HttpRouter.empty.pipe(
     '/',
     Effect.gen(function* () {
       yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
-      const dto =
-        yield* HttpServerRequest.schemaBodyJson(CreateProductRequestSchema);
+      const dto = yield* HttpServerRequest.schemaBodyJson(
+        CreateProductRequestSchema,
+      );
       const session = yield* getOptionalSession;
       const userId = session?.user.id;
       const productsService = yield* ProductsService;
@@ -168,8 +282,9 @@ export const productsRouter = HttpRouter.empty.pipe(
     '/bulk/status',
     Effect.gen(function* () {
       yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
-      const dto =
-        yield* HttpServerRequest.schemaBodyJson(BulkUpdateStatusSchema);
+      const dto = yield* HttpServerRequest.schemaBodyJson(
+        BulkUpdateStatusSchema,
+      );
       const session = yield* getOptionalSession;
       const userId = session?.user.id;
       const productsService = yield* ProductsService;
@@ -240,8 +355,9 @@ export const productsRouter = HttpRouter.empty.pipe(
     Effect.gen(function* () {
       yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
       const { id } = yield* HttpRouter.schemaPathParams(ProductPathParams);
-      const dto =
-        yield* HttpServerRequest.schemaBodyJson(UpdateProductRequestSchema);
+      const dto = yield* HttpServerRequest.schemaBodyJson(
+        UpdateProductRequestSchema,
+      );
       const session = yield* getOptionalSession;
       const userId = session?.user.id;
       const productsService = yield* ProductsService;

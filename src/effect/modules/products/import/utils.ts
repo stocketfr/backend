@@ -4,9 +4,13 @@ import type {
   CsvRecord,
   ImportProductRow,
   NormalizedProductImportRow,
+  ProductImportCommitResultDto,
   ProductImportErrorDto,
   ProductImportFormat,
+  ProductImportMappingDto,
+  ProductImportPreviewDto,
   ProductImportResultDto,
+  ProductImportWarningDto,
   ProductImportType,
   ProductImportValues,
 } from './types';
@@ -31,6 +35,14 @@ export const makeEmptyProductImportResult = (): ProductImportResultDto => ({
   rowsSkipped: 0,
   errors: [],
 });
+
+export const makeEmptyProductImportCommitResult =
+  (): ProductImportCommitResultDto => ({
+    ...makeEmptyProductImportResult(),
+    areasCreated: 0,
+    photosImported: 0,
+    warnings: [],
+  });
 
 const hasAllHeaders = (
   headerSet: ReadonlySet<string>,
@@ -113,6 +125,14 @@ export const normalizeCategoryPath = (categoryPath: string): string => {
   return parts.length > 0 ? parts.join(' / ') : 'Uncategorized';
 };
 
+export const normalizeAreaPath = (areaPath: string): string => {
+  const parts = areaPath
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.join(' / ');
+};
+
 const normalizeNormalizedRecord = (
   record: CsvRecord,
   sourceRow: number,
@@ -124,6 +144,7 @@ const normalizeNormalizedRecord = (
   reorder_point: readCell(record, 'reorder_point'),
   quantity: readCell(record, 'quantity'),
   location: readCell(record, 'location'),
+  area_path: normalizeAreaPath(readCell(record, 'area_path')),
   unit: readCell(record, 'unit'),
   standard_price: readCell(record, 'standard_price'),
   barcode: readCell(record, 'barcode'),
@@ -132,7 +153,17 @@ const normalizeNormalizedRecord = (
   is_active: readCell(record, 'is_active'),
   is_perishable: readCell(record, 'is_perishable'),
   expiry_date: readCell(record, 'expiry_date'),
+  photo_urls: [],
 });
+
+const collectSortlyPhotoUrls = (record: CsvRecord): string[] => {
+  const urls: string[] = [];
+  for (let i = 1; i <= 8; i++) {
+    const value = readCell(record, `Photo${i}`);
+    if (value !== '') urls.push(value);
+  }
+  return urls;
+};
 
 const normalizeSortlyRecord = (
   record: CsvRecord,
@@ -154,6 +185,7 @@ const normalizeSortlyRecord = (
     reorder_point: readCell(record, 'Min Level') || '0',
     quantity: readCell(record, 'Quantity') || '0',
     location: readCell(record, 'Location'),
+    area_path: '',
     unit: readCell(record, 'Unit'),
     standard_price: readCell(record, 'Price'),
     barcode: qr1 || qr2,
@@ -162,6 +194,7 @@ const normalizeSortlyRecord = (
     is_active: 'true',
     is_perishable: expiryDate === '' ? 'false' : 'true',
     expiry_date: expiryDate,
+    photo_urls: collectSortlyPhotoUrls(record),
   };
 };
 
@@ -180,6 +213,292 @@ export function normalizeProductImportRecords(
   return records.map((record, index) =>
     normalizeNormalizedRecord(record, index + 2),
   );
+}
+
+const countBy = <T>(values: readonly T[], selector: (value: T) => string) => {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    const key = selector(value).trim();
+    if (key === '') continue;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => a.value.localeCompare(b.value));
+};
+
+const normalizeKnownLocations = (knownLocations: readonly string[]) =>
+  knownLocations
+    .map((location) => location.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+const removeLeadingLocationSeparator = (value: string): string =>
+  value.replace(/^\s*(?:-|\/|>|:)\s*/, '').trim();
+
+const suggestLocationMapping = (
+  source: string,
+  knownLocations: readonly string[],
+) => {
+  const normalizedSource = source.replace(/\s+/g, ' ').trim();
+  for (const knownLocation of normalizeKnownLocations(knownLocations)) {
+    if (normalizedSource === knownLocation) {
+      return { locationName: knownLocation, areaPath: '' };
+    }
+    if (normalizedSource.startsWith(`${knownLocation} `)) {
+      const areaPath = removeLeadingLocationSeparator(
+        normalizedSource.slice(knownLocation.length),
+      );
+      if (areaPath !== '') {
+        return {
+          locationName: knownLocation,
+          areaPath: normalizeAreaPath(areaPath),
+        };
+      }
+    }
+  }
+
+  const delimiterMatch = normalizedSource.match(/^(.+?)\s+-\s+(.+)$/);
+  if (delimiterMatch) {
+    return {
+      locationName: delimiterMatch[1]!.trim(),
+      areaPath: normalizeAreaPath(delimiterMatch[2]!.trim()),
+    };
+  }
+
+  return { locationName: normalizedSource, areaPath: '' };
+};
+
+export function suggestImportMapping(
+  rows: readonly NormalizedProductImportRow[],
+  knownLocations: readonly string[] = [],
+): ProductImportMappingDto {
+  return {
+    categoryMappings: countBy(rows, (row) => row.category_path).map(
+      ({ value }) => ({ source: value, target: value }),
+    ),
+    locationMappings: countBy(rows, (row) => row.location).map(({ value }) => ({
+      source: value,
+      ...suggestLocationMapping(value, knownLocations),
+    })),
+  };
+}
+
+export interface ProductImportMappingLookups {
+  readonly categoryMappings: ReadonlyMap<string, string>;
+  readonly locationMappings: ReadonlyMap<
+    string,
+    { readonly locationName: string; readonly areaPath: string }
+  >;
+}
+
+export function makeProductImportMappingLookups(
+  mapping: ProductImportMappingDto | undefined,
+): ProductImportMappingLookups | null {
+  if (!mapping) return null;
+
+  return {
+    categoryMappings: new Map(
+      mapping.categoryMappings.map((item) => [
+        item.source.trim(),
+        item.target.trim(),
+      ]),
+    ),
+    locationMappings: new Map(
+      mapping.locationMappings.map((item) => [
+        item.source.trim(),
+        {
+          locationName: item.locationName.trim(),
+          areaPath: normalizeAreaPath(item.areaPath),
+        },
+      ]),
+    ),
+  };
+}
+
+export function applyProductImportMapping(
+  row: NormalizedProductImportRow,
+  lookups: ProductImportMappingLookups | null,
+): { readonly row: NormalizedProductImportRow; readonly error?: string } {
+  if (!lookups) return { row };
+
+  const categoryPath = row.category_path.trim();
+  const mappedCategory = lookups.categoryMappings.get(categoryPath);
+  if (!mappedCategory) {
+    return {
+      row,
+      error: `Missing category mapping for "${categoryPath}"`,
+    };
+  }
+
+  const locationName = row.location.trim();
+  if (locationName === '') {
+    return {
+      row: {
+        ...row,
+        category_path: normalizeCategoryPath(mappedCategory),
+        area_path: '',
+      },
+    };
+  }
+
+  const mappedLocation = lookups.locationMappings.get(locationName);
+  if (!mappedLocation) {
+    return {
+      row,
+      error: `Missing location mapping for "${locationName}"`,
+    };
+  }
+
+  if (mappedLocation.locationName === '') {
+    return {
+      row,
+      error: `Location mapping for "${locationName}" must include a location`,
+    };
+  }
+
+  return {
+    row: {
+      ...row,
+      category_path: normalizeCategoryPath(mappedCategory),
+      location: mappedLocation.locationName,
+      area_path: mappedLocation.areaPath,
+    },
+  };
+}
+
+const isStringRecordArray = (
+  value: unknown,
+  fields: readonly string[],
+): value is Record<string, string>[] =>
+  Array.isArray(value) &&
+  value.every(
+    (item) =>
+      typeof item === 'object' &&
+      item !== null &&
+      fields.every(
+        (field) => typeof (item as Record<string, unknown>)[field] === 'string',
+      ),
+  );
+
+export function parseProductImportMappingJson(
+  value: string,
+): ProductImportMappingDto | null {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      !isStringRecordArray(
+        (parsed as { categoryMappings?: unknown }).categoryMappings,
+        ['source', 'target'],
+      ) ||
+      !isStringRecordArray(
+        (parsed as { locationMappings?: unknown }).locationMappings,
+        ['source', 'locationName', 'areaPath'],
+      )
+    ) {
+      return null;
+    }
+
+    const mapping = parsed as ProductImportMappingDto;
+    return {
+      categoryMappings: mapping.categoryMappings.map((item) => ({
+        source: item.source.trim(),
+        target: normalizeCategoryPath(item.target),
+      })),
+      locationMappings: mapping.locationMappings.map((item) => ({
+        source: item.source.trim(),
+        locationName: item.locationName.trim(),
+        areaPath: normalizeAreaPath(item.areaPath),
+      })),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function makeProductImportPreview(
+  parsed: CsvParseResult,
+  format: ProductImportFormat,
+  options: {
+    readonly knownLocations?: readonly string[];
+    readonly useLlm?: boolean;
+  } = {},
+): ProductImportPreviewDto {
+  const rows = normalizeProductImportRecords(parsed.records, format);
+  const issues: ProductImportErrorDto[] = [];
+  const warnings: ProductImportWarningDto[] = [];
+  const duplicateConflictRows = findConflictingDuplicateSkuRows(rows, {
+    includeReorderPoint: format === 'normalized-products',
+  });
+
+  for (const row of rows) {
+    if (!row.sku || !row.name) {
+      issues.push({
+        row: row.sourceRow,
+        error: 'Cannot import product without sku and name',
+      });
+    }
+
+    if (duplicateConflictRows.has(row.sourceRow)) {
+      issues.push({
+        row: row.sourceRow,
+        error: `Conflicting duplicate SKU "${row.sku}" has different product fields`,
+      });
+    }
+
+    const expiryDate = parseDate(row.expiry_date);
+    if (row.expiry_date.trim() !== '' && expiryDate === null) {
+      issues.push({
+        row: row.sourceRow,
+        error: `Invalid expiry_date "${row.expiry_date}"`,
+      });
+    }
+  }
+
+  if (options.useLlm) {
+    warnings.push({
+      warning:
+        'AI mapping suggestions are not configured in this environment; deterministic suggestions were used.',
+    });
+  }
+
+  const itemRows =
+    format === 'sortly-items'
+      ? parsed.records.filter(
+          (record) => readCell(record, 'Entry Type') === 'Item',
+        ).length
+      : rows.length;
+  const folderRows =
+    format === 'sortly-items'
+      ? parsed.records.filter(
+          (record) => readCell(record, 'Entry Type') === 'Folder',
+        ).length
+      : 0;
+
+  return {
+    detectedFormat: format,
+    stats: {
+      totalRows: parsed.records.length,
+      importableRows: rows.length,
+      itemRows,
+      folderRows,
+      rowsMissingSku: rows.filter((row) => row.sku === '').length,
+      rowsMissingName: rows.filter((row) => row.name === '').length,
+      rowsMissingLocation: rows.filter((row) => row.location === '').length,
+      rowsMissingCategory: rows.filter(
+        (row) => row.category_path === 'Uncategorized',
+      ).length,
+      itemsWithPhotos: rows.filter((row) => row.photo_urls.length > 0).length,
+      itemsWithBarcodes: rows.filter((row) => row.barcode !== '').length,
+    },
+    categories: countBy(rows, (row) => row.category_path),
+    locations: countBy(rows, (row) => row.location),
+    suggestedMapping: suggestImportMapping(rows, options.knownLocations ?? []),
+    issues,
+    warnings,
+  };
 }
 
 export function parseDate(value: string): Date | null {
@@ -362,6 +681,18 @@ export const pushRowError = (
 ) => {
   result.rowsSkipped++;
   result.errors.push({ row, error } satisfies ProductImportErrorDto);
+};
+
+export const pushWarning = (
+  result: { warnings: ProductImportWarningDto[] },
+  warning: string,
+  row?: number,
+) => {
+  result.warnings.push(
+    row === undefined
+      ? { warning }
+      : ({ row, warning } satisfies ProductImportWarningDto),
+  );
 };
 
 export const formatImportError = (error: unknown): string => {

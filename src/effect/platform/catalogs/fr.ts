@@ -17,8 +17,7 @@ export const frCatalog: Record<MessageKey, string> = {
   'auth.permissionDenied': 'Permissions insuffisantes.',
   'auth.unauthorized': 'Non autorise.',
   'email.sendFailed': "L'envoi de l'e-mail a echoue.",
-  'email.welcomeRequestFailed':
-    "La demande d'e-mail de bienvenue a echoue.",
+  'email.welcomeRequestFailed': "La demande d'e-mail de bienvenue a echoue.",
   'tenant.membershipRejected':
     "Le tenant actif n'est pas disponible pour cet utilisateur.",
   'tenant.notResolved':
@@ -126,6 +125,7 @@ export const frCatalog: Record<MessageKey, string> = {
     "Impossible d'importer un stock au niveau emplacement lorsqu'un stock par zone existe deja pour ce produit et cet emplacement.",
   'products.importCsvParseFailed':
     "Impossible d'analyser le fichier CSV televerse.",
+  'products.importInvalidMapping': "Le mapping d'import produits est invalide.",
   'products.importReadUploadFailed':
     "La lecture du fichier d'import produits televerse a echoue.",
   'products.importUnsupportedFormat':

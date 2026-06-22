@@ -133,6 +133,8 @@ export const deCatalog: Record<MessageKey, string> = {
     'Standortbestand kann nicht importiert werden, solange fuer dieses Produkt und diesen Standort bereichsbezogener Bestand existiert.',
   'products.importCsvParseFailed':
     'Die hochgeladene CSV-Datei konnte nicht geparst werden.',
+  'products.importInvalidMapping':
+    'Die Zuordnung fuer den Produktimport ist ungueltig.',
   'products.importReadUploadFailed':
     'Die hochgeladene Produktimportdatei konnte nicht gelesen werden.',
   'products.importUnsupportedFormat':

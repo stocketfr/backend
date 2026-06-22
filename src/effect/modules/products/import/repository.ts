@@ -4,6 +4,7 @@ import { makeTryAsync } from '../../../platform/effect/try-async';
 import { DrizzleDatabase } from '../../../platform/db/drizzle';
 import { TenantQuery } from '../../../platform/tenancy/tenant-query';
 import {
+  areas,
   categories,
   inventory,
   locations,
@@ -94,6 +95,37 @@ export class ProductImportRepository extends Effect.Service<ProductImportReposit
           });
         });
 
+      const findAreaByNameLocationAndParent = (
+        name: string,
+        locationId: string,
+        parentId: string | null,
+      ) =>
+        Effect.gen(function* () {
+          const conditions: SQL[] = [
+            eq(areas.name, name),
+            eq(areas.location_id, locationId),
+          ];
+          conditions.push(
+            parentId === null
+              ? isNull(areas.parent_id)
+              : eq(areas.parent_id, parentId),
+          );
+          const where = yield* tenantQuery.whereTenant(areas, ...conditions);
+          return yield* tryAsync('find import area', async () => {
+            const rows = await db.select().from(areas).where(where).limit(1);
+            return rows[0] ?? null;
+          });
+        });
+
+      const createArea = (data: typeof areas.$inferInsert) =>
+        Effect.gen(function* () {
+          const values = yield* tenantQuery.insertValues(data);
+          return yield* tryAsync('create import area', async () => {
+            const rows = await db.insert(areas).values(values).returning();
+            return rows[0]!;
+          });
+        });
+
       const findProductBySku = (sku: string) =>
         Effect.gen(function* () {
           const where = yield* tenantQuery.whereTenant(
@@ -101,11 +133,7 @@ export class ProductImportRepository extends Effect.Service<ProductImportReposit
             eq(products.sku, sku),
           );
           return yield* tryAsync('find import product by sku', async () => {
-            const rows = await db
-              .select()
-              .from(products)
-              .where(where)
-              .limit(1);
+            const rows = await db.select().from(products).where(where).limit(1);
             return rows[0] ?? null;
           });
         });
@@ -136,15 +164,20 @@ export class ProductImportRepository extends Effect.Service<ProductImportReposit
           });
         });
 
-      const findRootInventoryByProductAndLocation = (
+      const findInventoryByProductLocationArea = (
         productId: string,
         locationId: string,
+        areaId: string | null,
       ) =>
         Effect.gen(function* () {
+          const areaCondition =
+            areaId === null
+              ? isNull(inventory.area_id)
+              : eq(inventory.area_id, areaId);
           const where = yield* tenantQuery.whereTenant(
             inventory,
             ...inventoryProductLocationConditions(productId, locationId),
-            isNull(inventory.area_id),
+            areaCondition,
           );
           return yield* tryAsync('find import inventory', async () => {
             const rows = await db
@@ -155,6 +188,11 @@ export class ProductImportRepository extends Effect.Service<ProductImportReposit
             return rows[0] ?? null;
           });
         });
+
+      const findRootInventoryByProductAndLocation = (
+        productId: string,
+        locationId: string,
+      ) => findInventoryByProductLocationArea(productId, locationId, null);
 
       const hasAreaScopedInventoryForProductAndLocation = (
         productId: string,
@@ -207,9 +245,12 @@ export class ProductImportRepository extends Effect.Service<ProductImportReposit
         createCategory,
         findLocationByName,
         createLocation,
+        findAreaByNameLocationAndParent,
+        createArea,
         findProductBySku,
         createProduct,
         updateProduct,
+        findInventoryByProductLocationArea,
         findRootInventoryByProductAndLocation,
         hasAreaScopedInventoryForProductAndLocation,
         createInventory,
