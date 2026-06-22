@@ -10,7 +10,14 @@
 import { describe, expect, it } from '@effect/vitest';
 import { Effect, Layer } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
+import {
+  DEFAULT_FEATURE_STATES,
+  EntitlementSource,
+  FeatureKey,
+  PlanKey,
+} from '@stocket/types/features';
 import { makeTestLayer } from '../../testing/test-harness';
+import { TenantFeaturesService } from '../../platform/tenancy/tenant-features';
 import { RolesService, type UserPermissions } from '../roles/service';
 import { AuthService } from './service';
 
@@ -70,12 +77,32 @@ const rolesLayer = (overrides: Partial<RolesService> = {}) =>
     ...overrides,
   });
 
-const serviceLayer = (roles = rolesLayer()) =>
-  AuthService.DefaultWithoutDependencies.pipe(Layer.provide(roles));
+const tenantFeaturesLayer = (overrides: Partial<TenantFeaturesService> = {}) =>
+  makeTestLayer(TenantFeaturesService)({
+    listOverrides: () => Effect.succeed([]),
+    getEffectiveFeatures: () => Effect.succeed(DEFAULT_FEATURE_STATES),
+    getTenantFeatures: () =>
+      Effect.succeed({
+        tenantId: '00000000-0000-4000-8000-000000000001',
+        planKey: PlanKey.FREE,
+        source: EntitlementSource.SYSTEM,
+        features: DEFAULT_FEATURE_STATES,
+        overrides: [],
+        updated_at: null,
+        updated_by: null,
+      }),
+    ...overrides,
+  });
+
+const serviceLayer = (roles = rolesLayer(), features = tenantFeaturesLayer()) =>
+  AuthService.DefaultWithoutDependencies.pipe(
+    Layer.provide(Layer.mergeAll(roles, features)),
+  );
 
 const withService = <A, E, R>(
   body: (svc: AuthService) => Effect.Effect<A, E, R>,
   rolesOverrides?: Partial<RolesService>,
+  featuresOverrides?: Partial<TenantFeaturesService>,
 ): Effect.Effect<A, E, never> =>
   // `requireSession` is replaced by the `vi.mock` above, so its residual
   // `BetterAuthService | HttpServerRequest` requirements are discharged at
@@ -85,7 +112,12 @@ const withService = <A, E, R>(
     const svc = yield* AuthService;
     return yield* body(svc);
   }).pipe(
-    Effect.provide(serviceLayer(rolesLayer(rolesOverrides))),
+    Effect.provide(
+      serviceLayer(
+        rolesLayer(rolesOverrides),
+        tenantFeaturesLayer(featuresOverrides),
+      ),
+    ),
   ) as unknown as Effect.Effect<A, E, never>;
 
 // ---------------------------------------------------------------------------
@@ -113,6 +145,8 @@ describe('AuthService', () => {
               tenantId: '00000000-0000-4000-8000-000000000001',
               tenantName: 'Stocket',
               tenantSlug: 'stocket',
+              planKey: PlanKey.FREE,
+              features: DEFAULT_FEATURE_STATES,
               roles: ['Admin'],
               permissions: {
                 [Resource.ROLES]: [Permission.READ, Permission.WRITE],
@@ -210,6 +244,31 @@ describe('AuthService', () => {
         );
       },
     );
+
+    it.effect('returns effective features from TenantFeaturesService', () => {
+      mockRequireSession.mockReturnValue(Effect.succeed(makeSession()));
+      const features = {
+        ...DEFAULT_FEATURE_STATES,
+        [FeatureKey.SMART_IMPORT]: true,
+      };
+      const getEffectiveFeatures = vi
+        .fn()
+        .mockReturnValue(Effect.succeed(features));
+
+      return withService(
+        (svc) =>
+          Effect.gen(function* () {
+            const result = yield* svc.me();
+
+            expect(getEffectiveFeatures).toHaveBeenCalledWith(
+              '00000000-0000-4000-8000-000000000001',
+            );
+            expect(result.features).toEqual(features);
+          }),
+        undefined,
+        { getEffectiveFeatures },
+      );
+    });
   });
 
   describe('profile', () => {

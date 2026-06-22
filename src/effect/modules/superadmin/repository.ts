@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { and, asc, eq, sql } from 'drizzle-orm';
+import {
+  DEFAULT_FEATURE_STATES,
+  type FeatureStates,
+} from '@stocket/types/features';
+import {
+  FEATURE_KEYS,
+  type TenantFeatureOverrideRow,
+} from '../../platform/tenancy/tenant-features';
 import { DrizzleDatabase } from '../../platform/db/drizzle';
 import {
   betterAuthUsers,
@@ -9,6 +17,7 @@ import {
   platformAuditEvents,
   rolePermissions,
   roles,
+  tenantFeatureOverrides,
   tenantDomains,
   userRoles,
 } from '../../platform/db/schema';
@@ -46,6 +55,13 @@ export interface CreateTenantInput {
   readonly adminUserId: string;
 }
 
+export interface UpdateTenantInput {
+  readonly tenantId: string;
+  readonly name: string;
+  readonly features: FeatureStates;
+  readonly updatedBy: string;
+}
+
 export interface PlatformAuditEventInput {
   readonly actorUserId: string;
   readonly action: string;
@@ -66,6 +82,11 @@ export interface CreatedTenantResult {
   readonly admin: {
     readonly id: string;
   };
+}
+
+export interface UpdatedTenantResult {
+  readonly tenant: TenantListRow;
+  readonly overrides: TenantFeatureOverrideRow[];
 }
 
 const rowsOf = <A>(result: unknown): A[] =>
@@ -125,6 +146,30 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
             .orderBy(asc(organizations.created_at), asc(organizations.name));
 
           return rows;
+        });
+
+      const findTenantById = (tenantId: string) =>
+        tryAsync('find platform tenant', async () => {
+          const rows = await db
+            .select({
+              id: organizations.id,
+              name: organizations.name,
+              slug: organizations.slug,
+              primaryHostname: tenantDomains.hostname,
+              createdAt: organizations.created_at,
+            })
+            .from(organizations)
+            .leftJoin(
+              tenantDomains,
+              and(
+                eq(tenantDomains.tenant_id, organizations.id),
+                eq(tenantDomains.is_primary, true),
+              ),
+            )
+            .where(eq(organizations.id, tenantId))
+            .limit(1);
+
+          return rows[0] ?? null;
         });
 
       const tenantSlugExists = (slug: string) =>
@@ -206,7 +251,9 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
             const adminRoleRows = await tx
               .select({ id: roles.id })
               .from(roles)
-              .where(and(eq(roles.tenant_id, tenantId), eq(roles.name, 'Admin')))
+              .where(
+                and(eq(roles.tenant_id, tenantId), eq(roles.name, 'Admin')),
+              )
               .limit(1);
 
             const adminRoleId = adminRoleRows[0]?.id;
@@ -234,6 +281,100 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
           });
         });
 
+      const updateTenant = (input: UpdateTenantInput) =>
+        tryAsync('update tenant', async () =>
+          db.transaction(async (tx) => {
+            const now = new Date();
+            const [tenant] = await tx
+              .update(organizations)
+              .set({ name: input.name })
+              .where(eq(organizations.id, input.tenantId))
+              .returning({
+                id: organizations.id,
+                name: organizations.name,
+                slug: organizations.slug,
+                createdAt: organizations.created_at,
+              });
+
+            if (!tenant) {
+              return null;
+            }
+
+            for (const featureKey of FEATURE_KEYS) {
+              const enabled = input.features[featureKey];
+              const defaultEnabled = DEFAULT_FEATURE_STATES[featureKey];
+
+              if (enabled === defaultEnabled) {
+                await tx
+                  .delete(tenantFeatureOverrides)
+                  .where(
+                    and(
+                      eq(tenantFeatureOverrides.tenant_id, input.tenantId),
+                      eq(tenantFeatureOverrides.feature_key, featureKey),
+                    ),
+                  );
+                continue;
+              }
+
+              await tx
+                .insert(tenantFeatureOverrides)
+                .values({
+                  tenant_id: input.tenantId,
+                  feature_key: featureKey,
+                  enabled,
+                  expires_at: null,
+                  updated_at: now,
+                  updated_by: input.updatedBy,
+                })
+                .onConflictDoUpdate({
+                  target: [
+                    tenantFeatureOverrides.tenant_id,
+                    tenantFeatureOverrides.feature_key,
+                  ],
+                  set: {
+                    enabled,
+                    expires_at: null,
+                    updated_at: now,
+                    updated_by: input.updatedBy,
+                  },
+                });
+            }
+
+            const [primaryDomain] = await tx
+              .select({ hostname: tenantDomains.hostname })
+              .from(tenantDomains)
+              .where(
+                and(
+                  eq(tenantDomains.tenant_id, input.tenantId),
+                  eq(tenantDomains.is_primary, true),
+                ),
+              )
+              .limit(1);
+
+            const overrides = await tx
+              .select({
+                featureKey: tenantFeatureOverrides.feature_key,
+                enabled: tenantFeatureOverrides.enabled,
+                expiresAt: tenantFeatureOverrides.expires_at,
+                updatedAt: tenantFeatureOverrides.updated_at,
+                updatedBy: tenantFeatureOverrides.updated_by,
+              })
+              .from(tenantFeatureOverrides)
+              .where(eq(tenantFeatureOverrides.tenant_id, input.tenantId));
+
+            return {
+              tenant: {
+                id: tenant.id,
+                name: tenant.name,
+                slug: tenant.slug,
+                primaryHostname: primaryDomain?.hostname ?? null,
+                createdAt: tenant.createdAt,
+              },
+              overrides,
+            } satisfies UpdatedTenantResult;
+          }),
+        );
+
       const recordPlatformAuditEvent = (input: PlatformAuditEventInput) =>
         tryAsync('record platform audit event', async () => {
           await db.insert(platformAuditEvents).values({
@@ -251,9 +392,11 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
         findSuperAdminUser,
         findBetterAuthUserByLoweredEmail,
         listTenants,
+        findTenantById,
         tenantSlugExists,
         tenantHostnameExists,
         createTenantWithAdmin,
+        updateTenant,
         recordPlatformAuditEvent,
       };
     }),

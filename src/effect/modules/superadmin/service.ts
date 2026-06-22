@@ -4,27 +4,30 @@ import type {
   SuperAdminCreateTenantResponse,
   SuperAdminMeResponse,
   SuperAdminTenantListResponse,
+  UpdateSuperAdminTenantInput,
 } from '@stocket/types/superadmin';
 import {
   hostnameForTenantSlug,
   isReservedTenantSlug,
   isValidTenantSlug,
 } from '../../platform/tenancy/host';
+import {
+  normalizeFeatureStates,
+  TenantFeaturesService,
+} from '../../platform/tenancy/tenant-features';
 import type { UserSession } from '../../platform/auth/user-session';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { makeTryAsync } from '../../platform/effect/try-async';
 import { BetterAuth, BetterAuthHeaders } from '../../platform/auth/better-auth';
 import { type LogPayload } from '../../platform/observability/messages';
 import { UsersRepository } from '../users/repository';
-import {
-  tenantWelcomeOrigin,
-  welcomeRedirectUrl,
-} from '../users/users.utils';
+import { tenantWelcomeOrigin, welcomeRedirectUrl } from '../users/users.utils';
 import {
   InvalidTenantSlug,
   ReservedTenantSlug,
   SuperAdminRepositoryError,
   TenantHostnameAlreadyExists,
+  TenantNotFound,
   TenantSlugAlreadyExists,
 } from './superadmin.errors';
 import { SuperAdminRepository } from './repository';
@@ -94,6 +97,7 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
     effect: Effect.gen(function* () {
       const repository = yield* SuperAdminRepository;
       const usersRepository = yield* UsersRepository;
+      const tenantFeaturesService = yield* TenantFeaturesService;
       const betterAuth = yield* BetterAuth;
       const trace = makeServiceTracer({
         serviceName: 'SuperAdminService',
@@ -155,6 +159,78 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
               })),
             }) satisfies SuperAdminTenantListResponse,
         ),
+      );
+
+      const getTenantFeatures = trace.traced(
+        'getTenantFeatures',
+        (tenantId: string) =>
+          Effect.gen(function* () {
+            const tenant = yield* repository.findTenantById(tenantId);
+            if (!tenant) {
+              return yield* Effect.fail(
+                new TenantNotFound({
+                  tenantId,
+                  messageKey: 'superadmin.tenantNotFound',
+                }),
+              );
+            }
+
+            return yield* tenantFeaturesService.getTenantFeatures(tenantId);
+          }),
+        (tenantId) => ({ attributes: { entityId: tenantId } }),
+      );
+
+      const updateTenant = trace.traced(
+        'updateTenant',
+        (
+          tenantId: string,
+          input: UpdateSuperAdminTenantInput,
+          actor: {
+            readonly userId: string;
+            readonly ipAddress?: string | null;
+            readonly userAgent?: string | null;
+          },
+        ) =>
+          Effect.gen(function* () {
+            const name = input.name.trim();
+            const features = normalizeFeatureStates(input.features);
+            const updated = yield* repository.updateTenant({
+              tenantId,
+              name,
+              features,
+              updatedBy: actor.userId,
+            });
+
+            if (!updated) {
+              return yield* Effect.fail(
+                new TenantNotFound({
+                  tenantId,
+                  messageKey: 'superadmin.tenantNotFound',
+                }),
+              );
+            }
+
+            yield* Effect.forkDaemon(
+              repository
+                .recordPlatformAuditEvent({
+                  actorUserId: actor.userId,
+                  action: 'tenant.update',
+                  entityType: 'tenant',
+                  entityId: tenantId,
+                  metadata: {
+                    name: updated.tenant.name,
+                    slug: updated.tenant.slug,
+                    features,
+                  },
+                  ipAddress: actor.ipAddress ?? null,
+                  userAgent: actor.userAgent ?? null,
+                })
+                .pipe(Effect.ignore),
+            );
+
+            return yield* tenantFeaturesService.getTenantFeatures(tenantId);
+          }),
+        (tenantId) => ({ attributes: { entityId: tenantId } }),
       );
 
       const createTenant = trace.traced(
@@ -299,9 +375,15 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
       return {
         me,
         listTenants,
+        getTenantFeatures,
+        updateTenant,
         createTenant,
       };
     }),
-    dependencies: [SuperAdminRepository.Default, UsersRepository.Default],
+    dependencies: [
+      SuperAdminRepository.Default,
+      UsersRepository.Default,
+      TenantFeaturesService.Default,
+    ],
   },
 ) {}

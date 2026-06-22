@@ -21,6 +21,8 @@ export const deCatalog: Record<MessageKey, string> = {
     'Die Anforderung der Willkommens-E-Mail ist fehlgeschlagen.',
   'tenant.membershipRejected':
     'Der aktive Tenant ist fuer diesen Benutzer nicht verfuegbar.',
+  'tenantFeatures.repositoryFailed':
+    'Der Tenant-Feature-Vorgang ist fehlgeschlagen.',
   'tenant.notResolved':
     'Fuer diese Anfrage konnte kein aktiver Tenant ermittelt werden.',
   'tenant.hostNotFound': 'Tenant-Host nicht gefunden.',
@@ -162,6 +164,7 @@ export const deCatalog: Record<MessageKey, string> = {
     'Die Superadmin-Autorisierung ist fehlgeschlagen.',
   'superadmin.repositoryFailed': 'Der Superadmin-Vorgang ist fehlgeschlagen.',
   'superadmin.reservedTenantSlug': 'Der Tenant-Slug ist reserviert.',
+  'superadmin.tenantNotFound': 'Tenant nicht gefunden.',
   'superadmin.tenantHostnameAlreadyExists':
     'Ein Tenant mit diesem Hostnamen existiert bereits.',
   'superadmin.tenantSlugAlreadyExists':

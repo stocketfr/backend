@@ -20,6 +20,8 @@ export const frCatalog: Record<MessageKey, string> = {
   'email.welcomeRequestFailed': "La demande d'e-mail de bienvenue a echoue.",
   'tenant.membershipRejected':
     "Le tenant actif n'est pas disponible pour cet utilisateur.",
+  'tenantFeatures.repositoryFailed':
+    "L'operation sur les fonctionnalites du tenant a echoue.",
   'tenant.notResolved':
     'Aucun tenant actif na pu etre resolu pour cette requete.',
   'tenant.hostNotFound': 'Hote tenant introuvable.',
@@ -151,6 +153,7 @@ export const frCatalog: Record<MessageKey, string> = {
   'superadmin.infrastructureFailed': "L'autorisation superadmin a echoue.",
   'superadmin.repositoryFailed': "L'operation superadmin a echoue.",
   'superadmin.reservedTenantSlug': 'Le slug tenant est reserve.',
+  'superadmin.tenantNotFound': 'Tenant introuvable.',
   'superadmin.tenantHostnameAlreadyExists':
     'Un tenant avec cet hote existe deja.',
   'superadmin.tenantSlugAlreadyExists': 'Un tenant avec ce slug existe deja.',
