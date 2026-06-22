@@ -5,9 +5,11 @@ import { DrizzleDatabase } from '../../../platform/db/drizzle';
 import { TenantQuery } from '../../../platform/tenancy/tenant-query';
 import {
   categories,
+  areas,
   inventory,
   locations,
   products,
+  suppliers,
 } from '../../../platform/db/schema';
 import { ProductsInfrastructureError } from '../products.errors';
 
@@ -94,6 +96,62 @@ export class ProductImportRepository extends Effect.Service<ProductImportReposit
           });
         });
 
+      const findAreaByNameParentAndLocation = (
+        name: string,
+        parentId: string | null,
+        locationId: string,
+      ) =>
+        Effect.gen(function* () {
+          const conditions: SQL[] = [
+            eq(areas.name, name),
+            eq(areas.location_id, locationId),
+          ];
+          conditions.push(
+            parentId === null
+              ? isNull(areas.parent_id)
+              : eq(areas.parent_id, parentId),
+          );
+          const where = yield* tenantQuery.whereTenant(areas, ...conditions);
+          return yield* tryAsync('find import area', async () => {
+            const rows = await db.select().from(areas).where(where).limit(1);
+            return rows[0] ?? null;
+          });
+        });
+
+      const createArea = (data: typeof areas.$inferInsert) =>
+        Effect.gen(function* () {
+          const values = yield* tenantQuery.insertValues(data);
+          return yield* tryAsync('create import area', async () => {
+            const rows = await db.insert(areas).values(values).returning();
+            return rows[0]!;
+          });
+        });
+
+      const findSupplierByName = (name: string) =>
+        Effect.gen(function* () {
+          const where = yield* tenantQuery.whereTenant(
+            suppliers,
+            eq(suppliers.name, name),
+          );
+          return yield* tryAsync('find import supplier', async () => {
+            const rows = await db
+              .select()
+              .from(suppliers)
+              .where(where)
+              .limit(1);
+            return rows[0] ?? null;
+          });
+        });
+
+      const createSupplier = (data: typeof suppliers.$inferInsert) =>
+        Effect.gen(function* () {
+          const values = yield* tenantQuery.insertValues(data);
+          return yield* tryAsync('create import supplier', async () => {
+            const rows = await db.insert(suppliers).values(values).returning();
+            return rows[0]!;
+          });
+        });
+
       const findProductBySku = (sku: string) =>
         Effect.gen(function* () {
           const where = yield* tenantQuery.whereTenant(
@@ -101,11 +159,7 @@ export class ProductImportRepository extends Effect.Service<ProductImportReposit
             eq(products.sku, sku),
           );
           return yield* tryAsync('find import product by sku', async () => {
-            const rows = await db
-              .select()
-              .from(products)
-              .where(where)
-              .limit(1);
+            const rows = await db.select().from(products).where(where).limit(1);
             return rows[0] ?? null;
           });
         });
@@ -139,12 +193,20 @@ export class ProductImportRepository extends Effect.Service<ProductImportReposit
       const findRootInventoryByProductAndLocation = (
         productId: string,
         locationId: string,
+      ) => findInventoryByProductLocationArea(productId, locationId, null);
+
+      const findInventoryByProductLocationArea = (
+        productId: string,
+        locationId: string,
+        areaId: string | null,
       ) =>
         Effect.gen(function* () {
           const where = yield* tenantQuery.whereTenant(
             inventory,
             ...inventoryProductLocationConditions(productId, locationId),
-            isNull(inventory.area_id),
+            areaId === null
+              ? isNull(inventory.area_id)
+              : eq(inventory.area_id, areaId),
           );
           return yield* tryAsync('find import inventory', async () => {
             const rows = await db
@@ -207,10 +269,15 @@ export class ProductImportRepository extends Effect.Service<ProductImportReposit
         createCategory,
         findLocationByName,
         createLocation,
+        findAreaByNameParentAndLocation,
+        createArea,
+        findSupplierByName,
+        createSupplier,
         findProductBySku,
         createProduct,
         updateProduct,
         findRootInventoryByProductAndLocation,
+        findInventoryByProductLocationArea,
         hasAreaScopedInventoryForProductAndLocation,
         createInventory,
         updateInventory,

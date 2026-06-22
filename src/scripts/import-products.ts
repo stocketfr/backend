@@ -17,25 +17,33 @@ import * as relations from '../effect/platform/db/relations';
 import { ProductImportService } from '../effect/modules/products/import/service';
 import {
   ProductImportTypes,
+  type ProductImportApprovedPlanDto,
   type ProductImportType,
 } from '../effect/modules/products/import/types';
 import { getDatabaseUrl } from '../config/db-connection.utils';
 
+const SCRIPT_PREVIEW_USER_ID = '00000000-0000-4000-a000-000000000202';
+
 interface CliOptions {
   readonly csvFilePath: string;
   readonly importType: ProductImportType;
+  readonly mode: 'import' | 'preview' | 'propose';
   readonly tenantId: string;
   readonly tenantName: string;
   readonly tenantSlug: string;
   readonly userId: string;
+  readonly approvedPlanPath?: string;
+  readonly allowCreateSuppliers: boolean;
 }
 
 const usage = () => {
   console.error(`Usage:
   tsx src/scripts/import-products.ts [--import-type auto|normalized-products|sortly-items] [--tenant-id <uuid>] <csv-file>
+  tsx src/scripts/import-products.ts --preview [--import-type auto|normalized-products|sortly-items] <csv-file>
+  tsx src/scripts/import-products.ts --propose [--import-type auto|normalized-products|sortly-items] <csv-file>
 
 Environment:
-  IMPORT_USER_ID      Required user id to attribute created/updated products to.
+  IMPORT_USER_ID      Required for import mode to attribute created/updated products to.
   IMPORT_TENANT_ID    Tenant id to scope import writes. Defaults to the default tenant.
   IMPORT_TENANT_NAME  Optional tenant display name for the script request context.
   IMPORT_TENANT_SLUG  Optional tenant slug for the script request context.`);
@@ -54,7 +62,10 @@ const takeValue = (args: string[], index: number, flag: string): string => {
 
 function readOptions(args: string[], env: NodeJS.ProcessEnv): CliOptions {
   let importType: ProductImportType = 'auto';
+  let mode: CliOptions['mode'] = 'import';
   let tenantId = env.IMPORT_TENANT_ID ?? DEFAULT_TENANT_ID;
+  let approvedPlanPath: string | undefined;
+  let allowCreateSuppliers = false;
   let csvFilePath: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
@@ -72,6 +83,32 @@ function readOptions(args: string[], env: NodeJS.ProcessEnv): CliOptions {
       }
       importType = value;
       i++;
+      continue;
+    }
+
+    if (arg === '--preview') {
+      mode = 'preview';
+      continue;
+    }
+
+    if (arg === '--propose') {
+      mode = 'propose';
+      continue;
+    }
+
+    if (arg === '--allow-create-suppliers') {
+      allowCreateSuppliers = true;
+      continue;
+    }
+
+    if (arg === '--plan') {
+      approvedPlanPath = takeValue(args, i, arg);
+      i++;
+      continue;
+    }
+
+    if (arg.startsWith('--plan=')) {
+      approvedPlanPath = arg.slice('--plan='.length);
       continue;
     }
 
@@ -109,13 +146,14 @@ function readOptions(args: string[], env: NodeJS.ProcessEnv): CliOptions {
     throw new Error('Please provide a CSV file path');
   }
 
-  if (!env.IMPORT_USER_ID) {
+  if (mode === 'import' && !env.IMPORT_USER_ID) {
     throw new Error('IMPORT_USER_ID is required');
   }
 
   return {
     csvFilePath,
     importType,
+    mode,
     tenantId,
     tenantName:
       env.IMPORT_TENANT_NAME ??
@@ -123,7 +161,9 @@ function readOptions(args: string[], env: NodeJS.ProcessEnv): CliOptions {
     tenantSlug:
       env.IMPORT_TENANT_SLUG ??
       (tenantId === DEFAULT_TENANT_ID ? DEFAULT_TENANT_SLUG : tenantId),
-    userId: env.IMPORT_USER_ID,
+    userId: env.IMPORT_USER_ID ?? SCRIPT_PREVIEW_USER_ID,
+    approvedPlanPath,
+    allowCreateSuppliers,
   };
 }
 
@@ -155,6 +195,8 @@ function printSummary(result: Awaited<ReturnType<typeof runImport>>) {
   console.log('Summary:');
   console.log(`  - Categories created: ${result.categoriesCreated}`);
   console.log(`  - Locations created: ${result.locationsCreated}`);
+  console.log(`  - Areas created: ${result.areasCreated ?? 0}`);
+  console.log(`  - Suppliers created: ${result.suppliersCreated ?? 0}`);
   console.log(`  - Products created: ${result.productsCreated}`);
   console.log(`  - Products updated: ${result.productsUpdated}`);
   console.log(
@@ -176,11 +218,40 @@ function printSummary(result: Awaited<ReturnType<typeof runImport>>) {
   }
 }
 
+function printPreview(result: Awaited<ReturnType<typeof runPreview>>) {
+  console.log('\nImport preview completed.\n');
+  console.log(`Format: ${result.format}`);
+  console.log(`Rows: ${result.importableRows}/${result.totalRows} importable`);
+  console.log(`Categories: ${result.categoryMappings.length}`);
+  console.log(`Locations: ${result.locationMappings.length}`);
+  console.log(`Supplier candidates: ${result.supplierMappings.length}`);
+  console.log(
+    `Duplicate SKU conflicts: ${result.duplicateSkuConflicts.length}`,
+  );
+  console.log(`Warnings: ${result.warnings.length}`);
+  console.log(JSON.stringify(result, null, 2));
+}
+
+function printProposal(result: Awaited<ReturnType<typeof runPropose>>) {
+  console.log('\nImport proposal completed.\n');
+  console.log(JSON.stringify(result, null, 2));
+}
+
+function readApprovedPlan(
+  options: CliOptions,
+): ProductImportApprovedPlanDto | undefined {
+  if (!options.approvedPlanPath) return undefined;
+  return JSON.parse(
+    fs.readFileSync(options.approvedPlanPath, 'utf-8'),
+  ) as ProductImportApprovedPlanDto;
+}
+
 async function runImport(options: CliOptions) {
   const { db, pool } = createDatabase();
 
   try {
     const content = fs.readFileSync(options.csvFilePath, 'utf-8');
+    const approvedPlan = readApprovedPlan(options);
     const serviceLayer = ProductImportService.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -199,6 +270,70 @@ async function runImport(options: CliOptions) {
           content,
           importType: options.importType,
           userId: options.userId,
+          approvedPlan,
+          allowCreateSuppliers:
+            options.allowCreateSuppliers ||
+            approvedPlan?.allowCreateSuppliers === true,
+        }),
+      ).pipe(Effect.provide(serviceLayer)),
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
+async function runPreview(options: CliOptions) {
+  const { db, pool } = createDatabase();
+
+  try {
+    const content = fs.readFileSync(options.csvFilePath, 'utf-8');
+    const serviceLayer = ProductImportService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(DrizzleDatabase, db),
+          Layer.succeed(
+            CurrentRequestContext,
+            makeScriptRequestContext(options),
+          ),
+        ),
+      ),
+    );
+
+    return await Effect.runPromise(
+      Effect.flatMap(ProductImportService, (service) =>
+        service.previewCsvContent({
+          content,
+          importType: options.importType,
+        }),
+      ).pipe(Effect.provide(serviceLayer)),
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
+async function runPropose(options: CliOptions) {
+  const { db, pool } = createDatabase();
+
+  try {
+    const content = fs.readFileSync(options.csvFilePath, 'utf-8');
+    const serviceLayer = ProductImportService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(DrizzleDatabase, db),
+          Layer.succeed(
+            CurrentRequestContext,
+            makeScriptRequestContext(options),
+          ),
+        ),
+      ),
+    );
+
+    return await Effect.runPromise(
+      Effect.flatMap(ProductImportService, (service) =>
+        service.proposeImportPlan({
+          content,
+          importType: options.importType,
         }),
       ).pipe(Effect.provide(serviceLayer)),
     );
@@ -215,10 +350,17 @@ async function main() {
     }
 
     console.log(
-      `Starting product import (${options.importType}) for tenant ${options.tenantId}`,
+      `Starting product import ${options.mode} (${options.importType}) for tenant ${options.tenantId}`,
     );
-    const result = await runImport(options);
-    printSummary(result);
+    if (options.mode === 'preview') {
+      printPreview(await runPreview(options));
+      return;
+    }
+    if (options.mode === 'propose') {
+      printProposal(await runPropose(options));
+      return;
+    }
+    printSummary(await runImport(options));
   } catch (error) {
     console.error(
       `\nImport failed: ${error instanceof Error ? error.message : String(error)}`,

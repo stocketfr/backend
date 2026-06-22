@@ -40,9 +40,10 @@ const mockMultipart = vi.hoisted(() => vi.fn());
 const mockReadFile = vi.hoisted(() => vi.fn());
 
 vi.mock('@effect/platform', async () => {
-  const actual = await vi.importActual<typeof import('@effect/platform')>(
-    '@effect/platform',
-  );
+  const actual =
+    await vi.importActual<typeof import('@effect/platform')>(
+      '@effect/platform',
+    );
   const { Effect } = await vi.importActual<typeof import('effect')>('effect');
 
   return {
@@ -56,9 +57,10 @@ vi.mock('@effect/platform', async () => {
 });
 
 vi.mock('node:fs/promises', async () => {
-  const actual = await vi.importActual<typeof import('node:fs/promises')>(
-    'node:fs/promises',
-  );
+  const actual =
+    await vi.importActual<typeof import('node:fs/promises')>(
+      'node:fs/promises',
+    );
   return {
     ...actual,
     readFile: (...args: unknown[]) => mockReadFile(...args),
@@ -110,7 +112,14 @@ const makeProductResponse = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const bulkResult = (overrides: Partial<{ succeeded: string[]; failures: unknown[]; success_count: number; failure_count: number }> = {}) => ({
+const bulkResult = (
+  overrides: Partial<{
+    succeeded: string[];
+    failures: unknown[];
+    success_count: number;
+    failure_count: number;
+  }> = {},
+) => ({
   succeeded: [PRODUCT_ID],
   failures: [],
   success_count: 1,
@@ -151,6 +160,10 @@ const writeAll = {
   [Resource.PRODUCTS]: [Permission.READ, Permission.WRITE],
   [Resource.LOCATIONS]: [Permission.READ, Permission.WRITE],
   [Resource.INVENTORY]: [Permission.READ, Permission.WRITE],
+};
+const writeAllWithSuppliers = {
+  ...writeAll,
+  [Resource.SUPPLIERS]: [Permission.READ, Permission.WRITE],
 };
 const readOnly = {
   [Resource.PRODUCTS]: [Permission.READ],
@@ -422,9 +435,7 @@ describe('productsRouter', () => {
     });
 
     it('rejects without LOCATIONS and INVENTORY write permissions', async () => {
-      const importFromCsvContent = vi.fn(() =>
-        Effect.succeed(importResult()),
-      );
+      const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
       const { handler } = makeProductsRouterHarness({
         service: {},
         importService: { importFromCsvContent },
@@ -450,9 +461,7 @@ describe('productsRouter', () => {
         Schema.Struct({ file: Schema.String }),
       )({}).pipe(Effect.flip, Effect.runSync);
       mockMultipart.mockReturnValue(Effect.fail(multipartError));
-      const importFromCsvContent = vi.fn(() =>
-        Effect.succeed(importResult()),
-      );
+      const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
       const { handler } = makeProductsRouterHarness({
         service: {},
         importService: { importFromCsvContent },
@@ -478,9 +487,7 @@ describe('productsRouter', () => {
         }),
       );
       mockReadFile.mockRejectedValueOnce(new Error('disk read failed'));
-      const importFromCsvContent = vi.fn(() =>
-        Effect.succeed(importResult()),
-      );
+      const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
       const { handler } = makeProductsRouterHarness({
         service: {},
         importService: { importFromCsvContent },
@@ -502,6 +509,34 @@ describe('productsRouter', () => {
       expect(importFromCsvContent).not.toHaveBeenCalled();
     });
 
+    it('returns 400 when the approved plan shape is invalid', async () => {
+      mockMultipart.mockReturnValue(
+        Effect.succeed({
+          file: makePersistedFile(),
+          import_type: 'auto',
+          plan: JSON.stringify({
+            supplierMappings: [{}],
+          }),
+        }),
+      );
+      const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
+      const { handler } = makeProductsRouterHarness({
+        service: {},
+        importService: { importFromCsvContent },
+        permissions: writeAll,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/products/import', {
+          method: 'POST',
+          body: 'ignored',
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      expect(importFromCsvContent).not.toHaveBeenCalled();
+    });
+
     it('calls the import service and returns ProductImportResultDto', async () => {
       mockMultipart.mockReturnValue(
         Effect.succeed({
@@ -509,9 +544,7 @@ describe('productsRouter', () => {
           import_type: 'auto',
         }),
       );
-      const importFromCsvContent = vi.fn(() =>
-        Effect.succeed(importResult()),
-      );
+      const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
       const { handler } = makeProductsRouterHarness({
         service: {},
         importService: { importFromCsvContent },
@@ -532,6 +565,98 @@ describe('productsRouter', () => {
         content: 'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
         importType: 'auto',
         userId: '00000000-0000-4000-a000-000000000001',
+        approvedPlan: undefined,
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // POST /products/import/preview and /products/import/propose
+  // -------------------------------------------------------------------
+  describe('POST /products/import/preview', () => {
+    it('calls the preview service and returns ProductImportPreviewDto', async () => {
+      mockMultipart.mockReturnValue(
+        Effect.succeed({
+          file: makePersistedFile(),
+          import_type: 'auto',
+        }),
+      );
+      const preview = {
+        format: 'normalized-products' as const,
+        totalRows: 1,
+        itemRows: 1,
+        folderRows: 0,
+        importableRows: 1,
+        missingRequiredRows: 0,
+        duplicateSkuConflicts: [],
+        categoryMappings: [],
+        supplierMappings: [],
+        locationMappings: [],
+        inventoryPreviews: [],
+        warnings: [],
+      };
+      const previewCsvContent = vi.fn(() => Effect.succeed(preview));
+      const { handler } = makeProductsRouterHarness({
+        service: {},
+        importService: { previewCsvContent },
+        permissions: writeAllWithSuppliers,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/products/import/preview', {
+          method: 'POST',
+          body: 'ignored',
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual(preview);
+      expect(previewCsvContent).toHaveBeenCalledWith({
+        content: 'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
+        importType: 'auto',
+      });
+    });
+  });
+
+  describe('POST /products/import/propose', () => {
+    it('calls the AI proposal service and returns a proposal', async () => {
+      mockMultipart.mockReturnValue(
+        Effect.succeed({
+          file: makePersistedFile(),
+          import_type: 'sortly-items',
+        }),
+      );
+      const proposal = {
+        format: 'sortly-items' as const,
+        confidence: 0.5,
+        productIdentity: {
+          sourceColumn: 'SID',
+          conflictPolicy: 'reject' as const,
+        },
+        categoryMappings: [],
+        supplierMappings: [],
+        locationMappings: [],
+        warnings: [],
+      };
+      const proposeImportPlan = vi.fn(() => Effect.succeed(proposal));
+      const { handler } = makeProductsRouterHarness({
+        service: {},
+        importService: { proposeImportPlan },
+        permissions: writeAllWithSuppliers,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/products/import/propose', {
+          method: 'POST',
+          body: 'ignored',
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual(proposal);
+      expect(proposeImportPlan).toHaveBeenCalledWith({
+        content: 'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
+        importType: 'sortly-items',
       });
     });
   });
@@ -790,8 +915,7 @@ describe('productsRouter', () => {
     it('returns 400 on malformed body', async () => {
       const { handler } = makeProductsRouterHarness({
         service: {
-          bulkUpdateStatus: () =>
-            Effect.die('service should not be called'),
+          bulkUpdateStatus: () => Effect.die('service should not be called'),
         },
         permissions: writeAll,
       });

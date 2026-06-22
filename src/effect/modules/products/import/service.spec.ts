@@ -28,20 +28,23 @@ function makeInMemoryRepository() {
   let nextId = 1;
   const categories: any[] = [];
   const locations: any[] = [];
+  const areas: any[] = [];
+  const suppliers: any[] = [];
   const productsBySku = new Map<string, any>();
   const inventoryByKey = new Map<string, any>();
 
   const id = (prefix: string) => `${prefix}-${nextId++}`;
 
   const repo = {
-    findCategoryByNameAndParent: vi.fn((name: string, parentId: string | null) =>
-      Effect.sync(
-        () =>
-          categories.find(
-            (category) =>
-              category.name === name && category.parent_id === parentId,
-          ) ?? null,
-      ),
+    findCategoryByNameAndParent: vi.fn(
+      (name: string, parentId: string | null) =>
+        Effect.sync(
+          () =>
+            categories.find(
+              (category) =>
+                category.name === name && category.parent_id === parentId,
+            ) ?? null,
+        ),
     ),
     createCategory: vi.fn((data: any) =>
       Effect.sync(() => {
@@ -59,6 +62,37 @@ function makeInMemoryRepository() {
       Effect.sync(() => {
         const row = makeRow({ id: id('loc'), ...data } as any);
         locations.push(row);
+        return row;
+      }),
+    ),
+    findAreaByNameParentAndLocation: vi.fn(
+      (name: string, parentId: string | null, locationId: string) =>
+        Effect.sync(
+          () =>
+            areas.find(
+              (area) =>
+                area.name === name &&
+                area.parent_id === parentId &&
+                area.location_id === locationId,
+            ) ?? null,
+        ),
+    ),
+    createArea: vi.fn((data: any) =>
+      Effect.sync(() => {
+        const row = makeRow({ id: id('area'), ...data } as any);
+        areas.push(row);
+        return row;
+      }),
+    ),
+    findSupplierByName: vi.fn((name: string) =>
+      Effect.sync(
+        () => suppliers.find((supplier) => supplier.name === name) ?? null,
+      ),
+    ),
+    createSupplier: vi.fn((data: any) =>
+      Effect.sync(() => {
+        const row = makeRow({ id: id('supplier'), ...data } as any);
+        suppliers.push(row);
         return row;
       }),
     ),
@@ -91,7 +125,16 @@ function makeInMemoryRepository() {
     findRootInventoryByProductAndLocation: vi.fn(
       (productId: string, locationId: string) =>
         Effect.sync(
-          () => inventoryByKey.get(`${productId}:${locationId}`) ?? null,
+          () => inventoryByKey.get(`${productId}:${locationId}:root`) ?? null,
+        ),
+    ),
+    findInventoryByProductLocationArea: vi.fn(
+      (productId: string, locationId: string, areaId: string | null) =>
+        Effect.sync(
+          () =>
+            inventoryByKey.get(
+              `${productId}:${locationId}:${areaId ?? 'root'}`,
+            ) ?? null,
         ),
     ),
     hasAreaScopedInventoryForProductAndLocation: vi.fn(() =>
@@ -100,7 +143,10 @@ function makeInMemoryRepository() {
     createInventory: vi.fn((data: any) =>
       Effect.sync(() => {
         const row = makeRow({ id: id('inv'), ...data } as any);
-        inventoryByKey.set(`${row.product_id}:${row.location_id}`, row);
+        inventoryByKey.set(
+          `${row.product_id}:${row.location_id}:${row.area_id ?? 'root'}`,
+          row,
+        );
         return row;
       }),
     ),
@@ -122,6 +168,8 @@ function makeInMemoryRepository() {
     repo: repo as Partial<ProductImportRepository>,
     categories,
     locations,
+    areas,
+    suppliers,
     productsBySku,
     inventoryByKey,
   };
@@ -163,10 +211,13 @@ const seedExistingProductWithRootInventory = (
       name: 'Same Product',
       category_id: 'cat-1',
       description: null,
+      standard_cost: null,
       unit: null,
       barcode: null,
       standard_price: null,
       reorder_point: 0,
+      primary_supplier_id: null,
+      supplier_sku: null,
       is_active: true,
       is_perishable: false,
       notes: null,
@@ -174,7 +225,7 @@ const seedExistingProductWithRootInventory = (
     } as any),
   );
   state.inventoryByKey.set(
-    'prod-1:loc-1',
+    'prod-1:loc-1:root',
     makeRow({
       id: 'inv-1',
       product_id: 'prod-1',
@@ -189,8 +240,9 @@ const seedExistingProductWithRootInventory = (
   );
 
   if (options.hasAreaScopedInventory) {
-    (state.repo.hasAreaScopedInventoryForProductAndLocation as any)
-      .mockReturnValue(Effect.succeed(true));
+    (
+      state.repo.hasAreaScopedInventoryForProductAndLocation as any
+    ).mockReturnValue(Effect.succeed(true));
   }
 };
 
@@ -204,12 +256,46 @@ const runImport = (
   );
   return Effect.runPromise(
     Effect.flatMap(ProductImportService, (service) =>
-      service.importFromCsvContent({ content, importType, userId: TEST_USER_ID }),
+      service.importFromCsvContent({
+        content,
+        importType,
+        userId: TEST_USER_ID,
+      }),
     ).pipe(Effect.provide(layer)),
   );
 };
 
 const runImportWithState = async (
+  content: string,
+  importType: 'auto' | 'normalized-products' | 'sortly-items' = 'auto',
+  setup?: (state: ReturnType<typeof makeInMemoryRepository>) => void,
+  options: {
+    readonly approvedPlan?: Parameters<
+      ProductImportService['importFromCsvContent']
+    >[0]['approvedPlan'];
+    readonly allowCreateSuppliers?: boolean;
+  } = {},
+) => {
+  const state = makeInMemoryRepository();
+  setup?.(state);
+  const layer = ProductImportService.DefaultWithoutDependencies.pipe(
+    Layer.provide(makeTestLayer(ProductImportRepository)(state.repo)),
+  );
+  const result = await Effect.runPromise(
+    Effect.flatMap(ProductImportService, (service) =>
+      service.importFromCsvContent({
+        content,
+        importType,
+        userId: TEST_USER_ID,
+        approvedPlan: options.approvedPlan,
+        allowCreateSuppliers: options.allowCreateSuppliers,
+      }),
+    ).pipe(Effect.provide(layer)),
+  );
+  return { result, state };
+};
+
+const runPreviewWithState = async (
   content: string,
   importType: 'auto' | 'normalized-products' | 'sortly-items' = 'auto',
   setup?: (state: ReturnType<typeof makeInMemoryRepository>) => void,
@@ -221,7 +307,7 @@ const runImportWithState = async (
   );
   const result = await Effect.runPromise(
     Effect.flatMap(ProductImportService, (service) =>
-      service.importFromCsvContent({ content, importType, userId: TEST_USER_ID }),
+      service.previewCsvContent({ content, importType }),
     ).pipe(Effect.provide(layer)),
   );
   return { result, state };
@@ -238,7 +324,11 @@ const failImport = (
   return Effect.runPromise(
     Effect.flip(
       Effect.flatMap(ProductImportService, (service) =>
-        service.importFromCsvContent({ content, importType, userId: TEST_USER_ID }),
+        service.importFromCsvContent({
+          content,
+          importType,
+          userId: TEST_USER_ID,
+        }),
       ).pipe(Effect.provide(layer)),
     ),
   );
@@ -390,7 +480,8 @@ SKU-1,Second Name,Food,Bar
   });
 
   it('allows consistent duplicate SKUs for multiple locations', async () => {
-    const { result, state } = await runImportWithState(`sku,name,category_path,location,quantity,reorder_point
+    const { result, state } =
+      await runImportWithState(`sku,name,category_path,location,quantity,reorder_point
 SKU-1,Same Product,Food,Warehouse,5,1
 SKU-1,Same Product,Food,Bar,7,1
 `);
@@ -404,7 +495,8 @@ SKU-1,Same Product,Food,Bar,7,1
   });
 
   it('reports normalized duplicate SKUs with conflicting reorder points', async () => {
-    const result = await runImport(`sku,name,category_path,location,quantity,reorder_point
+    const result =
+      await runImport(`sku,name,category_path,location,quantity,reorder_point
 SKU-1,Same Product,Food,Warehouse,5,1
 SKU-1,Same Product,Food,Bar,7,2
 `);
@@ -440,6 +532,284 @@ Item,Same Product,SORT-1,Food,7,Bar,5
     expect(result.errors).toEqual([]);
   });
 
+  it('previews Sortly imports without creating rows', async () => {
+    const { result, state } = await runPreviewWithState(
+      `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location,Price
+Folder,Spa,FOLDER-1,,,,
+Item,Aesop Soap,SORT-1,Aesop,5,Bay I - Shelf 3,
+Item,Aesop Soap Copy,SORT-1,Aesop,2,Bay I - Shelf 3,
+`,
+      'sortly-items',
+    );
+
+    expect(result).toMatchObject({
+      format: 'sortly-items',
+      totalRows: 3,
+      itemRows: 2,
+      folderRows: 1,
+      importableRows: 2,
+    });
+    expect(result.duplicateSkuConflicts).toHaveLength(1);
+    expect(result.locationMappings[0]).toMatchObject({
+      sourceLocation: 'Bay I - Shelf 3',
+      areaPath: 'Bay I / Shelf 3',
+      action: 'create-area',
+    });
+    expect(result.supplierMappings[0]).toMatchObject({
+      supplierName: 'Aesop',
+      action: 'create',
+    });
+    expect(state.categories).toHaveLength(0);
+    expect(state.locations).toHaveLength(0);
+    expect(state.productsBySku.size).toBe(0);
+  });
+
+  it('previews existing area-scoped inventory as an update', async () => {
+    const { result } = await runPreviewWithState(
+      `sku,name,category_path,location,area_path,quantity
+SKU-1,Same Product,Food,Warehouse,Bay I / Shelf 3,8
+`,
+      'normalized-products',
+      (state) => {
+        state.categories.push(
+          makeRow({
+            id: 'cat-1',
+            name: 'Food',
+            parent_id: null,
+            description: null,
+          } as any),
+        );
+        state.locations.push(
+          makeRow({
+            id: 'loc-1',
+            name: 'Warehouse',
+            type: 'WAREHOUSE',
+            address: '',
+            contact_person: '',
+            phone: '',
+            is_active: true,
+          } as any),
+        );
+        state.areas.push(
+          makeRow({
+            id: 'area-1',
+            location_id: 'loc-1',
+            parent_id: null,
+            name: 'Bay I',
+            code: '',
+            description: null,
+            is_active: true,
+          } as any),
+          makeRow({
+            id: 'area-2',
+            location_id: 'loc-1',
+            parent_id: 'area-1',
+            name: 'Shelf 3',
+            code: '',
+            description: null,
+            is_active: true,
+          } as any),
+        );
+        state.productsBySku.set(
+          'SKU-1',
+          makeRow({
+            id: 'prod-1',
+            sku: 'SKU-1',
+            name: 'Same Product',
+            category_id: 'cat-1',
+            description: null,
+            standard_cost: null,
+            unit: null,
+            barcode: null,
+            standard_price: null,
+            reorder_point: 0,
+            primary_supplier_id: null,
+            supplier_sku: null,
+            is_active: true,
+            is_perishable: false,
+            notes: null,
+            deleted_at: null,
+          } as any),
+        );
+        state.inventoryByKey.set(
+          'prod-1:loc-1:area-2',
+          makeRow({
+            id: 'inv-1',
+            product_id: 'prod-1',
+            location_id: 'loc-1',
+            area_id: 'area-2',
+            quantity: 4,
+            batch_number: '',
+            expiry_date: null,
+            cost_per_unit: null,
+            received_date: null,
+          } as any),
+        );
+      },
+    );
+
+    expect(result.inventoryPreviews[0]).toMatchObject({
+      row: 2,
+      sku: 'SKU-1',
+      location: 'Warehouse',
+      areaPath: 'Bay I / Shelf 3',
+      quantity: 8,
+      action: 'update',
+    });
+  });
+
+  it('creates approved suppliers and links imported products', async () => {
+    const { result, state } = await runImportWithState(
+      `sku,name,category_path,location,quantity,supplier_name,supplier_sku,supplier_cost
+SKU-1,Soap,Amenities,Warehouse,5,Aesop,AES-1,1.25
+`,
+      'normalized-products',
+      undefined,
+      { allowCreateSuppliers: true },
+    );
+
+    expect(result.suppliersCreated).toBe(1);
+    expect(result.productsCreated).toBe(1);
+    const product = state.productsBySku.get('SKU-1');
+    expect(product).toMatchObject({
+      primary_supplier_id: state.suppliers[0].id,
+      supplier_sku: 'AES-1',
+      standard_cost: 1.25,
+    });
+  });
+
+  it('creates approved Sortly suppliers from category-root mappings', async () => {
+    const { result, state } = await runImportWithState(
+      `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location
+Item,Aesop Soap,SORT-1,Aesop,5,Warehouse
+`,
+      'sortly-items',
+      undefined,
+      {
+        allowCreateSuppliers: true,
+        approvedPlan: {
+          allowCreateSuppliers: true,
+          supplierMappings: [
+            {
+              sourcePattern: 'Aesop',
+              supplierName: 'Aesop',
+              action: 'create',
+              confidence: 0.55,
+              rowCount: 1,
+            },
+          ],
+        },
+      },
+    );
+
+    expect(result.suppliersCreated).toBe(1);
+    const product = state.productsBySku.get('SORT-1');
+    expect(product).toMatchObject({
+      primary_supplier_id: state.suppliers[0].id,
+    });
+  });
+
+  it('does not create suppliers for ignored approved supplier mappings', async () => {
+    const { result, state } = await runImportWithState(
+      `sku,name,category_path,location,quantity,supplier_name
+SKU-1,Soap,Amenities,Warehouse,5,Aesop
+`,
+      'normalized-products',
+      undefined,
+      {
+        allowCreateSuppliers: true,
+        approvedPlan: {
+          allowCreateSuppliers: true,
+          supplierMappings: [
+            {
+              sourcePattern: 'Aesop',
+              supplierName: 'Aesop',
+              action: 'ignore',
+              confidence: 1,
+              rowCount: 1,
+            },
+          ],
+        },
+      },
+    );
+
+    expect(result.suppliersCreated).toBe(0);
+    expect(state.suppliers).toHaveLength(0);
+    expect(state.productsBySku.get('SKU-1')).toMatchObject({
+      primary_supplier_id: null,
+    });
+  });
+
+  it('preserves existing supplier fields when import rows do not provide supplier values', async () => {
+    const { result, state } = await runImportWithState(
+      `sku,name,category_path,location,quantity
+SKU-1,Same Product,Food,Warehouse,8
+`,
+      'normalized-products',
+      (state) => {
+        seedExistingProductWithRootInventory(state);
+        state.suppliers.push(
+          makeRow({
+            id: 'supplier-1',
+            name: 'Existing Supplier',
+            notes: null,
+            is_active: true,
+          } as any),
+        );
+        state.productsBySku.set('SKU-1', {
+          ...state.productsBySku.get('SKU-1'),
+          primary_supplier_id: 'supplier-1',
+          supplier_sku: 'EXISTING-SKU',
+          standard_cost: 3.5,
+        });
+      },
+    );
+
+    expect(result.productsUpdated).toBe(0);
+    expect(result.inventoryRecordsUpdated).toBe(1);
+    expect(state.productsBySku.get('SKU-1')).toMatchObject({
+      primary_supplier_id: 'supplier-1',
+      supplier_sku: 'EXISTING-SKU',
+      standard_cost: 3.5,
+    });
+  });
+
+  it('imports area-scoped inventory when an approved area path is present', async () => {
+    const { result, state } = await runImportWithState(
+      `sku,name,category_path,location,area_path,quantity
+SKU-1,Soap,Amenities,Main Store,Bay I / Shelf 3,5
+`,
+      'normalized-products',
+    );
+
+    expect(result.areasCreated).toBe(2);
+    expect(result.inventoryRecordsCreated).toBe(1);
+    const product = state.productsBySku.get('SKU-1');
+    const location = state.locations.find((row) => row.name === 'Main Store');
+    const shelf = state.areas.find((row) => row.name === 'Shelf 3');
+    expect(
+      state.inventoryByKey.get(`${product.id}:${location.id}:${shelf.id}`),
+    ).toMatchObject({ quantity: 5 });
+  });
+
+  it('can derive SKUs for approved conflicting Sortly IDs', async () => {
+    const { result, state } = await runImportWithState(
+      `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location
+Item,Black Glove,SORT-1,Amenities,5,Warehouse
+Item,White Glove,SORT-1,Amenities,7,Warehouse
+`,
+      'sortly-items',
+      undefined,
+      { approvedPlan: { skuConflictPolicy: 'derive-sku' } },
+    );
+
+    expect(result.rowsSkipped).toBe(0);
+    expect(result.productsCreated).toBe(2);
+    expect([...state.productsBySku.keys()]).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^SORT-1-/)]),
+    );
+  });
+
   it('clears stale inventory expiry dates when an update row has an empty expiry date', async () => {
     const existingExpiry = new Date('2026-01-01T00:00:00.000Z');
     const { result, state } = await runImportWithState(
@@ -454,7 +824,7 @@ SKU-1,Same Product,Food,Warehouse,8
     );
 
     expect(result.inventoryRecordsUpdated).toBe(1);
-    expect(state.inventoryByKey.get('prod-1:loc-1')).toMatchObject({
+    expect(state.inventoryByKey.get('prod-1:loc-1:root')).toMatchObject({
       quantity: 8,
       expiry_date: null,
     });
@@ -510,7 +880,7 @@ SKU-1,Changed Product,Drinks,Warehouse,8
       name: 'Same Product',
       category_id: 'cat-1',
     });
-    expect(state.inventoryByKey.get('prod-1:loc-1')).toMatchObject({
+    expect(state.inventoryByKey.get('prod-1:loc-1:root')).toMatchObject({
       quantity: 4,
     });
   });

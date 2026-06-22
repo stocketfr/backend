@@ -2,6 +2,7 @@ import { parse } from 'csv-parse/sync';
 import type {
   CsvParseResult,
   CsvRecord,
+  DuplicateSkuConflict,
   ImportProductRow,
   NormalizedProductImportRow,
   ProductImportErrorDto,
@@ -24,6 +25,8 @@ const sortlySidHeaders = ['SID', 'Sortly ID (SID)'] as const;
 export const makeEmptyProductImportResult = (): ProductImportResultDto => ({
   categoriesCreated: 0,
   locationsCreated: 0,
+  areasCreated: 0,
+  suppliersCreated: 0,
   productsCreated: 0,
   productsUpdated: 0,
   inventoryRecordsCreated: 0,
@@ -129,6 +132,10 @@ const normalizeNormalizedRecord = (
   barcode: readCell(record, 'barcode'),
   description: readCell(record, 'description'),
   notes: readCell(record, 'notes'),
+  supplier_name: readCell(record, 'supplier_name'),
+  supplier_sku: readCell(record, 'supplier_sku'),
+  supplier_cost: readCell(record, 'supplier_cost'),
+  area_path: readCell(record, 'area_path'),
   is_active: readCell(record, 'is_active'),
   is_perishable: readCell(record, 'is_perishable'),
   expiry_date: readCell(record, 'expiry_date'),
@@ -159,6 +166,10 @@ const normalizeSortlyRecord = (
     barcode: qr1 || qr2,
     description: '',
     notes: readCell(record, 'Notes'),
+    supplier_name: '',
+    supplier_sku: '',
+    supplier_cost: '',
+    area_path: '',
     is_active: 'true',
     is_perishable: expiryDate === '' ? 'false' : 'true',
     expiry_date: expiryDate,
@@ -310,6 +321,9 @@ function productDefinitionKey(
     name: row.name.trim(),
     category_path: normalizeCategoryPath(row.category_path),
     unit: nullableText(row.unit) ?? '',
+    supplier_name: nullableText(row.supplier_name) ?? '',
+    supplier_sku: nullableText(row.supplier_sku) ?? '',
+    supplier_cost: parseProductImportNumber(row.supplier_cost),
     standard_price: parseProductImportNumber(row.standard_price),
     ...(options.includeReorderPoint
       ? { reorder_point: parseInteger(row.reorder_point, 0) }
@@ -326,6 +340,14 @@ export function findConflictingDuplicateSkuRows(
   rows: readonly NormalizedProductImportRow[],
   options: { readonly includeReorderPoint?: boolean } = {},
 ): Set<number> {
+  const conflicts = collectDuplicateSkuConflicts(rows, options);
+  return new Set(conflicts.flatMap((conflict) => [...conflict.rows]));
+}
+
+export function collectDuplicateSkuConflicts(
+  rows: readonly NormalizedProductImportRow[],
+  options: { readonly includeReorderPoint?: boolean } = {},
+): DuplicateSkuConflict[] {
   const keyOptions = {
     includeReorderPoint: options.includeReorderPoint ?? false,
   };
@@ -346,10 +368,21 @@ export function findConflictingDuplicateSkuRows(
     definitionsBySku.set(row.sku, entry);
   }
 
-  const conflicts = new Set<number>();
+  const conflicts: DuplicateSkuConflict[] = [];
   for (const entry of definitionsBySku.values()) {
     if (entry.rows.length > 1 && entry.definitions.size > 1) {
-      entry.rows.forEach((row) => conflicts.add(row));
+      const names = rows
+        .filter((row) => entry.rows.includes(row.sourceRow))
+        .map((row) => row.name.trim())
+        .filter(Boolean);
+      const firstRow = rows.find((row) => entry.rows.includes(row.sourceRow));
+      if (firstRow) {
+        conflicts.push({
+          sku: firstRow.sku,
+          rows: entry.rows,
+          names: [...new Set(names)].sort(),
+        });
+      }
     }
   }
   return conflicts;
@@ -384,20 +417,26 @@ const comparableProductValues = (
   name: product.name,
   description: product.description,
   category_id: product.category_id,
+  standard_cost: product.standard_cost,
   unit: product.unit,
   barcode: product.barcode,
   standard_price: product.standard_price,
   reorder_point: product.reorder_point,
+  primary_supplier_id: product.primary_supplier_id,
+  supplier_sku: product.supplier_sku,
   is_active: product.is_active,
   is_perishable: product.is_perishable,
   notes: product.notes,
   expected_name: values.name,
   expected_description: values.description,
   expected_category_id: values.category_id,
+  expected_standard_cost: values.standard_cost,
   expected_unit: values.unit,
   expected_barcode: values.barcode,
   expected_standard_price: values.standard_price,
   expected_reorder_point: values.reorder_point,
+  expected_primary_supplier_id: values.primary_supplier_id,
+  expected_supplier_sku: values.supplier_sku,
   expected_is_active: values.is_active,
   expected_is_perishable: values.is_perishable,
   expected_notes: values.notes,
@@ -412,10 +451,14 @@ export function productValuesMatch(
     comparison.name === comparison.expected_name &&
     comparison.description === comparison.expected_description &&
     comparison.category_id === comparison.expected_category_id &&
+    comparison.standard_cost === comparison.expected_standard_cost &&
     comparison.unit === comparison.expected_unit &&
     comparison.barcode === comparison.expected_barcode &&
     comparison.standard_price === comparison.expected_standard_price &&
     comparison.reorder_point === comparison.expected_reorder_point &&
+    comparison.primary_supplier_id ===
+      comparison.expected_primary_supplier_id &&
+    comparison.supplier_sku === comparison.expected_supplier_sku &&
     comparison.is_active === comparison.expected_is_active &&
     comparison.is_perishable === comparison.expected_is_perishable &&
     comparison.notes === comparison.expected_notes
