@@ -9,20 +9,26 @@ import {
 } from '@stocket/types/orders';
 import { Permission, Resource } from '@stocket/types/auth';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
+import { FeatureKey } from '@stocket/types/features';
 import { requirePermission } from '../../platform/auth/authorization';
 import { respondJson, respondJsonOk } from '../../platform/http/errors';
 import { AuditLogWriter } from '../../platform/audit/index';
 import { getOptionalSession } from '../../platform/http/session';
 import { makeMessageResponse } from '../../platform/observability/messages';
+import { FeaturesService } from '../features/service';
 import { OrdersService } from './service';
 
 const OrderPathParams = Schema.Struct({ id: OrderIdSchema });
+const requireOrdersFeature = Effect.flatMap(FeaturesService, (features) =>
+  features.requireFeature(FeatureKey.ORDERS),
+);
 
 export const ordersRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
     '/',
     Effect.gen(function* () {
       yield* requirePermission(Resource.ORDERS, Permission.READ);
+      yield* requireOrdersFeature;
       const query = yield* HttpServerRequest.schemaSearchParams(OrderQuerySchema);
       const ordersService = yield* OrdersService;
       return yield* respondJson(ordersService.findAllPaginated(query));
@@ -32,6 +38,7 @@ export const ordersRouter = HttpRouter.empty.pipe(
     '/:id',
     Effect.gen(function* () {
       yield* requirePermission(Resource.ORDERS, Permission.READ);
+      yield* requireOrdersFeature;
       const { id } = yield* HttpRouter.schemaPathParams(OrderPathParams);
       const ordersService = yield* OrdersService;
       return yield* respondJson(ordersService.findOne(id));
@@ -41,6 +48,7 @@ export const ordersRouter = HttpRouter.empty.pipe(
     '/',
     Effect.gen(function* () {
       yield* requirePermission(Resource.ORDERS, Permission.WRITE);
+      yield* requireOrdersFeature;
       const dto = yield* HttpServerRequest.schemaBodyJson(CreateOrderSchema);
       const session = yield* getOptionalSession;
       const ordersService = yield* OrdersService;
@@ -58,6 +66,7 @@ export const ordersRouter = HttpRouter.empty.pipe(
     '/:id',
     Effect.gen(function* () {
       yield* requirePermission(Resource.ORDERS, Permission.WRITE);
+      yield* requireOrdersFeature;
       const { id } = yield* HttpRouter.schemaPathParams(OrderPathParams);
       const dto = yield* HttpServerRequest.schemaBodyJson(UpdateOrderSchema);
       const ordersService = yield* OrdersService;
@@ -75,6 +84,7 @@ export const ordersRouter = HttpRouter.empty.pipe(
     '/:id/status',
     Effect.gen(function* () {
       yield* requirePermission(Resource.ORDERS, Permission.WRITE);
+      yield* requireOrdersFeature;
       const { id } = yield* HttpRouter.schemaPathParams(OrderPathParams);
       const dto = yield* HttpServerRequest.schemaBodyJson(
         UpdateOrderStatusSchema,
@@ -94,6 +104,7 @@ export const ordersRouter = HttpRouter.empty.pipe(
     '/:id',
     Effect.gen(function* () {
       yield* requirePermission(Resource.ORDERS, Permission.WRITE);
+      yield* requireOrdersFeature;
       const { id } = yield* HttpRouter.schemaPathParams(OrderPathParams);
       const ordersService = yield* OrdersService;
       yield* ordersService.delete(id);

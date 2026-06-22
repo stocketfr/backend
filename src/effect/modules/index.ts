@@ -30,6 +30,7 @@ export const moduleCounterparts = [
   'categories',
   'areas',
   'clients',
+  'features',
   'suppliers',
   'products',
   'photos',

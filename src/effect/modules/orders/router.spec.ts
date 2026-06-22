@@ -101,6 +101,23 @@ describe('ordersRouter', () => {
       expect(response.status).toBe(403);
     });
 
+    it('rejects when the Orders feature is disabled', async () => {
+      const findAllPaginated = vi.fn(() => Effect.succeed(paginated));
+      const { handler } = makeOrdersRouterHarness({
+        service: { findAllPaginated },
+        permissions: readOnly,
+        ordersFeatureEnabled: false,
+      });
+
+      const response = await handler(new Request('http://localhost/orders'));
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toMatchObject({
+        messageKey: 'features.notEnabled',
+      });
+      expect(findAllPaginated).not.toHaveBeenCalled();
+    });
+
     it('returns 400 when the query is malformed', async () => {
       const { handler } = makeOrdersRouterHarness({
         service: { findAllPaginated: () => Effect.succeed(paginated) },
