@@ -17,7 +17,10 @@ import * as relations from '../effect/platform/db/relations';
 import { ProductImportService } from '../effect/modules/products/import/service';
 import {
   ProductImportTypes,
+  type ProductImportAiProposalDto,
   type ProductImportApprovedPlanDto,
+  type ProductImportPreviewDto,
+  type ProductImportResultDto,
   type ProductImportType,
 } from '../effect/modules/products/import/types';
 import { getDatabaseUrl } from '../config/db-connection.utils';
@@ -190,7 +193,52 @@ function makeScriptRequestContext(options: CliOptions): RequestContext {
   };
 }
 
-function printSummary(result: Awaited<ReturnType<typeof runImport>>) {
+const databaseResource = Effect.acquireRelease(
+  Effect.sync(createDatabase),
+  ({ pool }) => Effect.promise(() => pool.end()),
+);
+
+const readTextFile = (path: string) =>
+  Effect.try({
+    try: () => fs.readFileSync(path, 'utf-8'),
+    catch: (cause) => cause,
+  });
+
+const readApprovedPlan = (
+  options: CliOptions,
+): Effect.Effect<ProductImportApprovedPlanDto | undefined, unknown> => {
+  if (!options.approvedPlanPath) return Effect.succeed(undefined);
+  return readTextFile(options.approvedPlanPath).pipe(
+    Effect.flatMap((content) =>
+      Effect.try({
+        try: () => JSON.parse(content) as ProductImportApprovedPlanDto,
+        catch: (cause) => cause,
+      }),
+    ),
+  );
+};
+
+const ensureCsvFileExists = (path: string) =>
+  Effect.try({
+    try: () => {
+      if (!fs.existsSync(path)) {
+        throw new Error(`File not found: ${path}`);
+      }
+    },
+    catch: (cause) => cause,
+  });
+
+const makeProductImportServiceLayer = (db: DrizzleDb, options: CliOptions) =>
+  ProductImportService.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.succeed(DrizzleDatabase, db),
+        Layer.succeed(CurrentRequestContext, makeScriptRequestContext(options)),
+      ),
+    ),
+  );
+
+function printSummary(result: ProductImportResultDto) {
   console.log('\nImport completed.\n');
   console.log('Summary:');
   console.log(`  - Categories created: ${result.categoriesCreated}`);
@@ -218,7 +266,7 @@ function printSummary(result: Awaited<ReturnType<typeof runImport>>) {
   }
 }
 
-function printPreview(result: Awaited<ReturnType<typeof runPreview>>) {
+function printPreview(result: ProductImportPreviewDto) {
   console.log('\nImport preview completed.\n');
   console.log(`Format: ${result.format}`);
   console.log(`Rows: ${result.importableRows}/${result.totalRows} importable`);
@@ -232,40 +280,20 @@ function printPreview(result: Awaited<ReturnType<typeof runPreview>>) {
   console.log(JSON.stringify(result, null, 2));
 }
 
-function printProposal(result: Awaited<ReturnType<typeof runPropose>>) {
+function printProposal(result: ProductImportAiProposalDto) {
   console.log('\nImport proposal completed.\n');
   console.log(JSON.stringify(result, null, 2));
 }
 
-function readApprovedPlan(
-  options: CliOptions,
-): ProductImportApprovedPlanDto | undefined {
-  if (!options.approvedPlanPath) return undefined;
-  return JSON.parse(
-    fs.readFileSync(options.approvedPlanPath, 'utf-8'),
-  ) as ProductImportApprovedPlanDto;
-}
+function runImport(options: CliOptions) {
+  return Effect.scoped(
+    Effect.gen(function* () {
+      const content = yield* readTextFile(options.csvFilePath);
+      const approvedPlan = yield* readApprovedPlan(options);
+      const { db } = yield* databaseResource;
+      const serviceLayer = makeProductImportServiceLayer(db, options);
 
-async function runImport(options: CliOptions) {
-  const { db, pool } = createDatabase();
-
-  try {
-    const content = fs.readFileSync(options.csvFilePath, 'utf-8');
-    const approvedPlan = readApprovedPlan(options);
-    const serviceLayer = ProductImportService.Default.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          Layer.succeed(DrizzleDatabase, db),
-          Layer.succeed(
-            CurrentRequestContext,
-            makeScriptRequestContext(options),
-          ),
-        ),
-      ),
-    );
-
-    return await Effect.runPromise(
-      Effect.flatMap(ProductImportService, (service) =>
+      return yield* Effect.flatMap(ProductImportService, (service) =>
         service.importFromCsvContent({
           content,
           importType: options.importType,
@@ -275,99 +303,78 @@ async function runImport(options: CliOptions) {
             options.allowCreateSuppliers ||
             approvedPlan?.allowCreateSuppliers === true,
         }),
-      ).pipe(Effect.provide(serviceLayer)),
-    );
-  } finally {
-    await pool.end();
-  }
+      ).pipe(Effect.provide(serviceLayer));
+    }),
+  );
 }
 
-async function runPreview(options: CliOptions) {
-  const { db, pool } = createDatabase();
+function runPreview(options: CliOptions) {
+  return Effect.scoped(
+    Effect.gen(function* () {
+      const content = yield* readTextFile(options.csvFilePath);
+      const { db } = yield* databaseResource;
+      const serviceLayer = makeProductImportServiceLayer(db, options);
 
-  try {
-    const content = fs.readFileSync(options.csvFilePath, 'utf-8');
-    const serviceLayer = ProductImportService.Default.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          Layer.succeed(DrizzleDatabase, db),
-          Layer.succeed(
-            CurrentRequestContext,
-            makeScriptRequestContext(options),
-          ),
-        ),
-      ),
-    );
-
-    return await Effect.runPromise(
-      Effect.flatMap(ProductImportService, (service) =>
+      return yield* Effect.flatMap(ProductImportService, (service) =>
         service.previewCsvContent({
           content,
           importType: options.importType,
         }),
-      ).pipe(Effect.provide(serviceLayer)),
-    );
-  } finally {
-    await pool.end();
-  }
+      ).pipe(Effect.provide(serviceLayer));
+    }),
+  );
 }
 
-async function runPropose(options: CliOptions) {
-  const { db, pool } = createDatabase();
+function runPropose(options: CliOptions) {
+  return Effect.scoped(
+    Effect.gen(function* () {
+      const content = yield* readTextFile(options.csvFilePath);
+      const { db } = yield* databaseResource;
+      const serviceLayer = makeProductImportServiceLayer(db, options);
 
-  try {
-    const content = fs.readFileSync(options.csvFilePath, 'utf-8');
-    const serviceLayer = ProductImportService.Default.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          Layer.succeed(DrizzleDatabase, db),
-          Layer.succeed(
-            CurrentRequestContext,
-            makeScriptRequestContext(options),
-          ),
-        ),
-      ),
-    );
-
-    return await Effect.runPromise(
-      Effect.flatMap(ProductImportService, (service) =>
+      return yield* Effect.flatMap(ProductImportService, (service) =>
         service.proposeImportPlan({
           content,
           importType: options.importType,
         }),
-      ).pipe(Effect.provide(serviceLayer)),
-    );
-  } finally {
-    await pool.end();
-  }
+      ).pipe(Effect.provide(serviceLayer));
+    }),
+  );
 }
 
-async function main() {
-  try {
-    const options = readOptions(process.argv.slice(2), process.env);
-    if (!fs.existsSync(options.csvFilePath)) {
-      throw new Error(`File not found: ${options.csvFilePath}`);
-    }
+const main = Effect.gen(function* () {
+  const options = yield* Effect.try({
+    try: () => readOptions(process.argv.slice(2), process.env),
+    catch: (cause) => cause,
+  });
+  yield* ensureCsvFileExists(options.csvFilePath);
 
+  yield* Effect.sync(() =>
     console.log(
       `Starting product import ${options.mode} (${options.importType}) for tenant ${options.tenantId}`,
-    );
-    if (options.mode === 'preview') {
-      printPreview(await runPreview(options));
-      return;
-    }
-    if (options.mode === 'propose') {
-      printProposal(await runPropose(options));
-      return;
-    }
-    printSummary(await runImport(options));
-  } catch (error) {
-    console.error(
-      `\nImport failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    usage();
-    process.exit(1);
-  }
-}
+    ),
+  );
 
-void main();
+  if (options.mode === 'preview') {
+    const result = yield* runPreview(options);
+    yield* Effect.sync(() => printPreview(result));
+    return;
+  }
+
+  if (options.mode === 'propose') {
+    const result = yield* runPropose(options);
+    yield* Effect.sync(() => printProposal(result));
+    return;
+  }
+
+  const result = yield* runImport(options);
+  yield* Effect.sync(() => printSummary(result));
+});
+
+Effect.runPromise(main).catch((error: unknown) => {
+  console.error(
+    `\nImport failed: ${error instanceof Error ? error.message : String(error)}`,
+  );
+  usage();
+  process.exit(1);
+});

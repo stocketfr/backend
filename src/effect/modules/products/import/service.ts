@@ -1069,8 +1069,8 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           const model = process.env.PRODUCT_IMPORT_AI_MODEL ?? 'gpt-4.1-mini';
 
           const proposalJson = yield* Effect.tryPromise({
-            try: async () => {
-              const response = await fetch(endpoint, {
+            try: () =>
+              fetch(endpoint, {
                 method: 'POST',
                 headers: {
                   authorization: `Bearer ${apiKey}`,
@@ -1097,28 +1097,62 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
                     },
                   ],
                 }),
-              });
-              if (!response.ok) {
-                throw new Error(
-                  `AI proposal request failed with status ${response.status}`,
-                );
-              }
-              const body = (await response.json()) as {
-                choices?: Array<{ message?: { content?: string } }>;
-              };
-              const contentText = body.choices?.[0]?.message?.content;
-              if (!contentText) {
-                throw new Error('AI proposal response did not include content');
-              }
-              return JSON.parse(contentText) as unknown;
-            },
+              }),
             catch: (cause) =>
               new ProductsInfrastructureError({
-                action: 'generate product import AI proposal',
+                action: 'send product import AI proposal request',
                 cause,
                 messageKey: 'products.repositoryFailed',
               }),
-          });
+          }).pipe(
+            Effect.flatMap((response) => {
+              if (!response.ok) {
+                return Effect.fail(
+                  new ProductsInfrastructureError({
+                    action: 'generate product import AI proposal',
+                    cause: new Error(
+                      `AI proposal request failed with status ${response.status}`,
+                    ),
+                    messageKey: 'products.repositoryFailed',
+                  }),
+                );
+              }
+              return Effect.succeed(response);
+            }),
+            Effect.flatMap((response) =>
+              Effect.tryPromise({
+                try: () =>
+                  response.json() as Promise<{
+                    choices?: Array<{ message?: { content?: string } }>;
+                  }>,
+                catch: (cause) =>
+                  new ProductsInfrastructureError({
+                    action: 'parse product import AI proposal response',
+                    cause,
+                    messageKey: 'products.repositoryFailed',
+                  }),
+              }),
+            ),
+            Effect.flatMap((body) =>
+              Effect.try({
+                try: () => {
+                  const contentText = body.choices?.[0]?.message?.content;
+                  if (!contentText) {
+                    throw new Error(
+                      'AI proposal response did not include content',
+                    );
+                  }
+                  return JSON.parse(contentText) as unknown;
+                },
+                catch: (cause) =>
+                  new ProductsInfrastructureError({
+                    action: 'parse product import AI proposal JSON',
+                    cause,
+                    messageKey: 'products.repositoryFailed',
+                  }),
+              }),
+            ),
+          );
 
           const decodedProposal = yield* Schema.decodeUnknown(
             ProductImportAiProposalSchema,
