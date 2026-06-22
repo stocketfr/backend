@@ -11,6 +11,7 @@
 - Keep feature work under `src/effect/modules/<feature>/` and follow the existing router/service/repository/schema/error split.
 - For large feature-specific workflows, prefer a subfolder under the module (for example `products/import/`) with its own `service.ts`, `repository.ts`, `types.ts`, `utils.ts`, and tests so normal module behavior stays readable.
 - Keep `service.ts` focused on orchestration. Move module-local row aliases, options, caches, DTO re-exports, and literal tuples to `types.ts`; move pure parsing, normalization, formatting, comparison, and duplicate-detection helpers to `utils.ts`.
+- Any helper utility introduced for backend methods or services should be moved to the nearest module `utils.ts` file instead of living inline in a service.
 - Before adding new row types, literal lists, parsers, or fixture blocks, search for existing equivalents and reuse or centralize them when the behavior is shared.
 - Cross-module access should normally go through services, not another module's repository.
 - Shared request/response contracts should come from `@stocket/types`, not backend-local DTO files.
