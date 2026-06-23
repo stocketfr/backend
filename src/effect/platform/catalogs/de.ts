@@ -50,6 +50,11 @@ export const deCatalog: Record<MessageKey, string> = {
   'drizzle.migrationsFailed':
     'Die Better-Auth-Migrationen konnten nicht ausgefuehrt werden.',
   'errors.internalServerError': 'Interner Serverfehler.',
+  'features.notEnabled':
+    'Diese Funktion ist fuer den aktiven Tenant nicht aktiviert.',
+  'features.repositoryFailed':
+    'Der Vorgang fuer Feature-Berechtigungen ist fehlgeschlagen.',
+  'features.tenantNotFound': 'Tenant nicht gefunden.',
   'fulfillment.infrastructureFailed':
     'Der Fulfillment-Vorgang ist fehlgeschlagen.',
   'fulfillment.insufficientInventory':

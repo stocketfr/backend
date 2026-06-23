@@ -6,7 +6,7 @@ import {
   PlanKey,
 } from '@stocket/types/features';
 import { BetterAuth, BetterAuthHeaders } from '../../platform/auth/better-auth';
-import { TenantFeaturesService } from '../../platform/tenancy/tenant-features';
+import { FeaturesService } from '../features/service';
 import { UsersRepository } from '../users/repository';
 import { SuperAdminRepository } from './repository';
 import { SuperAdminService } from './service';
@@ -95,19 +95,57 @@ describe('Effect SuperAdminService', () => {
     },
   });
 
-  const makeTenantFeatures = () => ({
-    listOverrides: vi.fn().mockReturnValue(Effect.succeed([])),
-    getEffectiveFeatures: vi
-      .fn()
-      .mockReturnValue(Effect.succeed(DEFAULT_FEATURE_STATES)),
-    getTenantFeatures: vi.fn().mockImplementation((tenantId: string) =>
+  const makeFeaturesService = () => ({
+    getFeaturesForTenant: vi.fn(() =>
       Effect.succeed({
-        tenantId,
+        tenantId: createdTenant.tenant.id,
         planKey: PlanKey.FREE,
+        source: EntitlementSource.SYSTEM,
+        features: {
+          [FeatureKey.SMART_IMPORT]: false,
+          [FeatureKey.ORDERS]: true,
+        },
+        overrides: [],
+        updated_at: null,
+        updated_by: null,
+      }),
+    ),
+    setTenantPlan: vi.fn(() =>
+      Effect.succeed({
+        tenantId: createdTenant.tenant.id,
+        planKey: PlanKey.GROWTH,
         source: EntitlementSource.MANUAL,
         features: {
-          ...DEFAULT_FEATURE_STATES,
           [FeatureKey.SMART_IMPORT]: true,
+          [FeatureKey.ORDERS]: true,
+        },
+        overrides: [],
+        updated_at: new Date('2026-01-01T00:00:00.000Z'),
+        updated_by: actor.userId,
+      }),
+    ),
+    setFeatureOverride: vi.fn(() =>
+      Effect.succeed({
+        tenantId: createdTenant.tenant.id,
+        planKey: PlanKey.FREE,
+        source: EntitlementSource.SYSTEM,
+        features: {
+          [FeatureKey.SMART_IMPORT]: true,
+          [FeatureKey.ORDERS]: true,
+        },
+        overrides: [],
+        updated_at: null,
+        updated_by: null,
+      }),
+    ),
+    clearFeatureOverride: vi.fn(() =>
+      Effect.succeed({
+        tenantId: createdTenant.tenant.id,
+        planKey: PlanKey.FREE,
+        source: EntitlementSource.SYSTEM,
+        features: {
+          [FeatureKey.SMART_IMPORT]: false,
+          [FeatureKey.ORDERS]: true,
         },
         overrides: [],
         updated_at: null,
@@ -118,13 +156,13 @@ describe('Effect SuperAdminService', () => {
 
   const makeServiceLayer = ({
     betterAuth,
+    featuresService,
     repository,
-    tenantFeatures,
     usersRepository,
   }: {
     betterAuth: unknown;
+    featuresService?: unknown;
     repository: unknown;
-    tenantFeatures: unknown;
     usersRepository: unknown;
   }) =>
     SuperAdminService.DefaultWithoutDependencies.pipe(
@@ -132,16 +170,17 @@ describe('Effect SuperAdminService', () => {
         Layer.mergeAll(
           Layer.succeed(BetterAuth, betterAuth as typeof BetterAuth.Service),
           Layer.succeed(
+            FeaturesService,
+            (featuresService ??
+              makeFeaturesService()) as typeof FeaturesService.Service,
+          ),
+          Layer.succeed(
             SuperAdminRepository,
             repository as typeof SuperAdminRepository.Service,
           ),
           Layer.succeed(
             UsersRepository,
             usersRepository as typeof UsersRepository.Service,
-          ),
-          Layer.succeed(
-            TenantFeaturesService,
-            tenantFeatures as typeof TenantFeaturesService.Service,
           ),
         ),
       ),
@@ -174,11 +213,10 @@ describe('Effect SuperAdminService', () => {
     const betterAuth = makeBetterAuth();
     const repository = makeRepository();
     const usersRepository = makeUsersRepository();
-    const tenantFeatures = makeTenantFeatures();
     const layer = makeServiceLayer({
       betterAuth,
+      featuresService: makeFeaturesService(),
       repository,
-      tenantFeatures,
       usersRepository,
     });
 
@@ -236,11 +274,10 @@ describe('Effect SuperAdminService', () => {
       }),
     );
     const usersRepository = makeUsersRepository();
-    const tenantFeatures = makeTenantFeatures();
     const layer = makeServiceLayer({
       betterAuth,
+      featuresService: makeFeaturesService(),
       repository,
-      tenantFeatures,
       usersRepository,
     });
 
@@ -259,72 +296,29 @@ describe('Effect SuperAdminService', () => {
       name: 'Existing Admin',
     });
   });
-
-  it('returns tenant features for an existing tenant', async () => {
-    const betterAuth = makeBetterAuth();
-    const repository = makeRepository();
-    const usersRepository = makeUsersRepository();
-    const tenantFeatures = makeTenantFeatures();
-    const layer = makeServiceLayer({
-      betterAuth,
-      repository,
-      tenantFeatures,
-      usersRepository,
-    });
-
-    const result = await run(
-      Effect.flatMap(SuperAdminService, (service) =>
-        service.getTenantFeatures('00000000-0000-4000-8000-000000000101'),
-      ),
-      layer,
-    );
-
-    expect(repository.findTenantById).toHaveBeenCalledWith(
-      '00000000-0000-4000-8000-000000000101',
-    );
-    expect(tenantFeatures.getTenantFeatures).toHaveBeenCalledWith(
-      '00000000-0000-4000-8000-000000000101',
-    );
-    expect(result.features[FeatureKey.SMART_IMPORT]).toBe(true);
-  });
-
-  it('fails when reading features for an unknown tenant', async () => {
-    const betterAuth = makeBetterAuth();
-    const repository = makeRepository();
-    repository.findTenantById.mockReturnValue(Effect.succeed(null));
-    const usersRepository = makeUsersRepository();
-    const tenantFeatures = makeTenantFeatures();
-    const layer = makeServiceLayer({
-      betterAuth,
-      repository,
-      tenantFeatures,
-      usersRepository,
-    });
-
-    const error = await Effect.runPromise(
-      Effect.flip(
-        Effect.flatMap(SuperAdminService, (service) =>
-          service.getTenantFeatures('00000000-0000-4000-8000-000000000999'),
-        ),
-      ).pipe(Effect.provide(layer)),
-    );
-
-    expect(error).toMatchObject({
-      _tag: 'TenantNotFound',
-      tenantId: '00000000-0000-4000-8000-000000000999',
-      statusCode: 404,
-    });
-  });
-
   it('updates tenant name and staged feature state atomically through the repository', async () => {
     const betterAuth = makeBetterAuth();
     const repository = makeRepository();
     const usersRepository = makeUsersRepository();
-    const tenantFeatures = makeTenantFeatures();
+    const featuresService = makeFeaturesService();
+    featuresService.getFeaturesForTenant.mockReturnValue(
+      Effect.succeed({
+        tenantId: createdTenant.tenant.id,
+        planKey: PlanKey.FREE,
+        source: EntitlementSource.MANUAL,
+        features: {
+          ...DEFAULT_FEATURE_STATES,
+          [FeatureKey.SMART_IMPORT]: true,
+        },
+        overrides: [],
+        updated_at: null,
+        updated_by: null,
+      }),
+    );
     const layer = makeServiceLayer({
       betterAuth,
+      featuresService,
       repository,
-      tenantFeatures,
       usersRepository,
     });
 
@@ -354,6 +348,9 @@ describe('Effect SuperAdminService', () => {
       updatedBy: 'superadmin-1',
     });
     expect(result.features[FeatureKey.SMART_IMPORT]).toBe(true);
+    expect(featuresService.getFeaturesForTenant).toHaveBeenCalledWith(
+      '00000000-0000-4000-8000-000000000101',
+    );
 
     await waitForCall(repository.recordPlatformAuditEvent);
     expect(repository.recordPlatformAuditEvent).toHaveBeenCalledWith(
@@ -369,11 +366,10 @@ describe('Effect SuperAdminService', () => {
     const repository = makeRepository();
     repository.updateTenant.mockReturnValue(Effect.succeed(null));
     const usersRepository = makeUsersRepository();
-    const tenantFeatures = makeTenantFeatures();
     const layer = makeServiceLayer({
       betterAuth,
+      featuresService: makeFeaturesService(),
       repository,
-      tenantFeatures,
       usersRepository,
     });
 
@@ -397,5 +393,71 @@ describe('Effect SuperAdminService', () => {
       tenantId: '00000000-0000-4000-8000-000000000999',
       statusCode: 404,
     });
+  });
+
+  it('delegates tenant feature reads and writes to FeaturesService', async () => {
+    const betterAuth = makeBetterAuth();
+    const repository = makeRepository();
+    const usersRepository = makeUsersRepository();
+    const featuresService = makeFeaturesService();
+    const layer = makeServiceLayer({
+      betterAuth,
+      featuresService,
+      repository,
+      usersRepository,
+    });
+
+    const tenantId = createdTenant.tenant.id;
+
+    await run(
+      Effect.flatMap(SuperAdminService, (service) =>
+        service.getTenantFeatures(tenantId),
+      ),
+      layer,
+    );
+    await run(
+      Effect.flatMap(SuperAdminService, (service) =>
+        service.updateTenantPlan(
+          tenantId,
+          { planKey: PlanKey.GROWTH },
+          actor.userId,
+        ),
+      ),
+      layer,
+    );
+    await run(
+      Effect.flatMap(SuperAdminService, (service) =>
+        service.updateTenantFeatureOverride(
+          tenantId,
+          FeatureKey.SMART_IMPORT,
+          { enabled: true, reason: 'Beta tenant', expires_at: null },
+          actor.userId,
+        ),
+      ),
+      layer,
+    );
+    await run(
+      Effect.flatMap(SuperAdminService, (service) =>
+        service.clearTenantFeatureOverride(tenantId, FeatureKey.SMART_IMPORT),
+      ),
+      layer,
+    );
+
+    expect(featuresService.getFeaturesForTenant).toHaveBeenCalledWith(tenantId);
+    expect(featuresService.setTenantPlan).toHaveBeenCalledWith(
+      tenantId,
+      { planKey: PlanKey.GROWTH },
+      actor.userId,
+    );
+    expect(featuresService.setFeatureOverride).toHaveBeenCalledWith(
+      tenantId,
+      FeatureKey.SMART_IMPORT,
+      { enabled: true, reason: 'Beta tenant', expires_at: null },
+      actor.userId,
+    );
+    expect(featuresService.clearFeatureOverride).toHaveBeenCalledWith(
+      tenantId,
+      FeatureKey.SMART_IMPORT,
+    );
   });
 });

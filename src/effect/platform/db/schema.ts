@@ -16,6 +16,11 @@ import {
 import { sql } from 'drizzle-orm';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
 import { ClientStatus } from '@stocket/types/clients';
+import {
+  EntitlementSource,
+  FeatureKey,
+  PlanKey,
+} from '@stocket/types/features';
 import { LocationType } from '@stocket/types/locations';
 import { OrderStatus } from '@stocket/types/orders';
 import { StockMovementReason } from '@stocket/types/stock-movements';
@@ -83,6 +88,23 @@ export const auditEntityTypeEnum = pgEnum('audit_logs_entity_type', [
   AuditEntityType.AREA,
   AuditEntityType.CLIENT,
   AuditEntityType.ROLE,
+]);
+
+export const tenantPlanKeyEnum = pgEnum('tenant_plan_key', [
+  PlanKey.FREE,
+  PlanKey.BASE,
+  PlanKey.GROWTH,
+  PlanKey.ENTERPRISE,
+]);
+
+export const tenantEntitlementSourceEnum = pgEnum(
+  'tenant_entitlement_source',
+  [EntitlementSource.SYSTEM, EntitlementSource.MANUAL, EntitlementSource.BILLING],
+);
+
+export const tenantFeatureKeyEnum = pgEnum('tenant_feature_key', [
+  FeatureKey.SMART_IMPORT,
+  FeatureKey.ORDERS,
 ]);
 
 // ── Tables ───────────────────────────────────────────────────────────────
@@ -255,29 +277,6 @@ export const superAdmins = pgTable('super_admins', {
     .defaultNow(),
 });
 
-export const tenantFeatureOverrides = pgTable(
-  'tenant_feature_overrides',
-  {
-    tenant_id: uuid('tenant_id')
-      .notNull()
-      .references(() => organizations.id, { onDelete: 'cascade' }),
-    feature_key: varchar('feature_key', { length: 100 }).notNull(),
-    enabled: boolean('enabled').notNull(),
-    expires_at: timestamp('expires_at', { withTimezone: true }),
-    updated_at: timestamp('updated_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updated_by: text('updated_by'),
-  },
-  (table) => [
-    primaryKey({
-      columns: [table.tenant_id, table.feature_key],
-      name: 'tenant_feature_overrides_tenant_id_feature_key_pk',
-    }),
-    index('tenant_feature_overrides_tenant_id_idx').on(table.tenant_id),
-  ],
-);
-
 export const platformAuditEvents = pgTable(
   'platform_audit_events',
   {
@@ -296,6 +295,60 @@ export const platformAuditEvents = pgTable(
   (table) => [
     index('platform_audit_events_actor_user_id_idx').on(table.actor_user_id),
     index('platform_audit_events_created_at_idx').on(table.created_at),
+  ],
+);
+
+export const tenantEntitlementProfiles = pgTable(
+  'tenant_entitlement_profiles',
+  {
+    tenant_id: uuid('tenant_id')
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    plan_key: tenantPlanKeyEnum('plan_key')
+      .notNull()
+      .default(PlanKey.FREE),
+    source: tenantEntitlementSourceEnum('source')
+      .notNull()
+      .default(EntitlementSource.SYSTEM),
+    updated_by: text('updated_by'),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('tenant_entitlement_profiles_plan_key_idx').on(table.plan_key),
+  ],
+);
+
+export const tenantFeatureOverrides = pgTable(
+  'tenant_feature_overrides',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenant_id: uuid('tenant_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    feature_key: tenantFeatureKeyEnum('feature_key').notNull(),
+    enabled: boolean('enabled').notNull(),
+    reason: text('reason'),
+    expires_at: timestamp('expires_at', { withTimezone: true }),
+    updated_by: text('updated_by'),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('tenant_feature_overrides_tenant_feature_unique').on(
+      table.tenant_id,
+      table.feature_key,
+    ),
+    index('tenant_feature_overrides_tenant_id_idx').on(table.tenant_id),
+    index('tenant_feature_overrides_expires_at_idx').on(table.expires_at),
   ],
 );
 

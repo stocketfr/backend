@@ -7,6 +7,7 @@ export type TraceModule =
   | 'auth'
   | 'categories'
   | 'clients'
+  | 'features'
   | 'health'
   | 'locations'
   | 'notifications'

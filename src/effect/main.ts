@@ -14,6 +14,7 @@ import { AuthService } from './modules/auth/service';
 import { BrandingService } from './modules/branding/service';
 import { CategoriesService } from './modules/categories/service';
 import { ClientsService } from './modules/clients/service';
+import { FeaturesService } from './modules/features/service';
 import { HealthService } from './modules/health/service';
 import { InventoryService } from './modules/inventory/service';
 import { LocationsService } from './modules/locations/service';
@@ -76,6 +77,7 @@ const withPlatform = <A, E, R>(layer: Layer.Layer<A, E, R>) =>
   layer.pipe(Layer.provide(platformLayer));
 
 const rolesApplicationLayer = withPlatform(RolesService.Default);
+const featuresApplicationLayer = withPlatform(FeaturesService.Default);
 const permissionProviderLayer = Layer.effect(
   PermissionProvider,
   Effect.map(RolesService, ({ getPermissionsForUser }) => ({
@@ -83,13 +85,13 @@ const permissionProviderLayer = Layer.effect(
   })),
 ).pipe(Layer.provide(rolesApplicationLayer));
 const authApplicationLayer = AuthService.Default.pipe(
-  Layer.provide(rolesApplicationLayer),
+  Layer.provide(Layer.mergeAll(rolesApplicationLayer, featuresApplicationLayer)),
 );
 const usersApplicationLayer = UsersService.Default.pipe(
   Layer.provide(Layer.mergeAll(platformLayer, rolesApplicationLayer)),
 );
 const superAdminApplicationLayer = SuperAdminService.Default.pipe(
-  Layer.provide(platformLayer),
+  Layer.provide(Layer.mergeAll(platformLayer, featuresApplicationLayer)),
 );
 
 const shouldRunStartupMigrations = () =>
@@ -275,6 +277,7 @@ const applicationLayer = Layer.mergeAll(
   NodePath.layer,
   TracingLive,
   startupLayer,
+  featuresApplicationLayer,
   foundationalServicesLayer,
   rolesApplicationLayer,
   permissionProviderLayer,

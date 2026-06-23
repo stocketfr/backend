@@ -3,7 +3,7 @@ import type {
   ProfileResponseDto,
   SessionClaimsResponseDto,
 } from '@stocket/types/auth';
-import type { FeatureStates, PlanKey } from '@stocket/types/features';
+import type { TenantFeaturesResponseDto } from '@stocket/types/features';
 import type { UserSession } from '../../platform/auth/user-session';
 import {
   getSessionIdFromSession,
@@ -17,10 +17,7 @@ export const toCurrentUserResponse = (
   session: UserSession,
   userPermissions: UserPermissions,
   tenant: TenantContext,
-  entitlements: {
-    readonly planKey: PlanKey;
-    readonly features: FeatureStates;
-  },
+  tenantFeatures: TenantFeaturesResponseDto,
 ): CurrentUserResponseDto => {
   const { id, name, email, image } = session.user;
 
@@ -32,8 +29,8 @@ export const toCurrentUserResponse = (
     tenantId: tenant.tenantId,
     tenantName: tenant.tenantName,
     tenantSlug: tenant.tenantSlug,
-    planKey: entitlements.planKey,
-    features: entitlements.features,
+    planKey: tenantFeatures.planKey,
+    features: tenantFeatures.features,
     roles: userPermissions.roleNames,
     permissions: userPermissions.permissions,
   };

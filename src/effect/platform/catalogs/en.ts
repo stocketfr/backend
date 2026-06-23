@@ -41,6 +41,9 @@ export const enCatalog = {
     'Failed to initialize the database connection.',
   'drizzle.migrationsFailed': 'Failed to run Better Auth migrations.',
   'errors.internalServerError': 'Internal Server Error.',
+  'features.notEnabled': 'This feature is not enabled for the active tenant.',
+  'features.repositoryFailed': 'Feature entitlement operation failed.',
+  'features.tenantNotFound': 'Tenant not found.',
   'fulfillment.infrastructureFailed': 'Fulfillment operation failed.',
   'fulfillment.insufficientInventory':
     'Insufficient inventory to fulfill the pick.',

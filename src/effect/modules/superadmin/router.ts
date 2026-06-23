@@ -8,11 +8,18 @@ import {
   CreateSuperAdminTenantSchema,
   UpdateSuperAdminTenantSchema,
 } from '@stocket/types/superadmin';
+import {
+  FeatureKeySchema,
+  UpdateTenantFeatureOverrideSchema,
+  UpdateTenantPlanSchema,
+} from '@stocket/types/features';
 import { getRequestContext } from '../../platform/http/request-context';
 import { SuperAdminService } from './service';
 
-const TenantPathParamsSchema = Schema.Struct({
+const TenantPathParams = Schema.Struct({ tenantId: Schema.UUID });
+const TenantFeaturePathParams = Schema.Struct({
   tenantId: Schema.UUID,
+  featureKey: FeatureKeySchema,
 });
 
 export const superAdminRouter = HttpRouter.empty.pipe(
@@ -61,9 +68,7 @@ export const superAdminRouter = HttpRouter.empty.pipe(
     '/tenants/:tenantId/features',
     Effect.gen(function* () {
       yield* requireSuperAdmin;
-      const { tenantId } = yield* HttpRouter.schemaPathParams(
-        TenantPathParamsSchema,
-      );
+      const { tenantId } = yield* HttpRouter.schemaPathParams(TenantPathParams);
       const superAdminService = yield* SuperAdminService;
       return yield* respondJson(superAdminService.getTenantFeatures(tenantId));
     }),
@@ -72,9 +77,7 @@ export const superAdminRouter = HttpRouter.empty.pipe(
     '/tenants/:tenantId',
     Effect.gen(function* () {
       const session = yield* requireSuperAdmin;
-      const { tenantId } = yield* HttpRouter.schemaPathParams(
-        TenantPathParamsSchema,
-      );
+      const { tenantId } = yield* HttpRouter.schemaPathParams(TenantPathParams);
       const dto = yield* HttpServerRequest.schemaBodyJson(
         UpdateSuperAdminTenantSchema,
       );
@@ -89,6 +92,54 @@ export const superAdminRouter = HttpRouter.empty.pipe(
           ipAddress: requestContext.ip,
           userAgent: typeof userAgent === 'string' ? userAgent : null,
         }),
+      );
+    }),
+  ),
+  HttpRouter.put(
+    '/tenants/:tenantId/plan',
+    Effect.gen(function* () {
+      const session = yield* requireSuperAdmin;
+      const { tenantId } = yield* HttpRouter.schemaPathParams(TenantPathParams);
+      const dto = yield* HttpServerRequest.schemaBodyJson(
+        UpdateTenantPlanSchema,
+      );
+      const superAdminService = yield* SuperAdminService;
+      return yield* respondJson(
+        superAdminService.updateTenantPlan(tenantId, dto, session.user.id),
+      );
+    }),
+  ),
+  HttpRouter.put(
+    '/tenants/:tenantId/features/:featureKey',
+    Effect.gen(function* () {
+      const session = yield* requireSuperAdmin;
+      const { tenantId, featureKey } = yield* HttpRouter.schemaPathParams(
+        TenantFeaturePathParams,
+      );
+      const dto = yield* HttpServerRequest.schemaBodyJson(
+        UpdateTenantFeatureOverrideSchema,
+      );
+      const superAdminService = yield* SuperAdminService;
+      return yield* respondJson(
+        superAdminService.updateTenantFeatureOverride(
+          tenantId,
+          featureKey,
+          dto,
+          session.user.id,
+        ),
+      );
+    }),
+  ),
+  HttpRouter.del(
+    '/tenants/:tenantId/features/:featureKey',
+    Effect.gen(function* () {
+      yield* requireSuperAdmin;
+      const { tenantId, featureKey } = yield* HttpRouter.schemaPathParams(
+        TenantFeaturePathParams,
+      );
+      const superAdminService = yield* SuperAdminService;
+      return yield* respondJson(
+        superAdminService.clearTenantFeatureOverride(tenantId, featureKey),
       );
     }),
   ),

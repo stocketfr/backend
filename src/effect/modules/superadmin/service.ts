@@ -6,15 +6,17 @@ import type {
   SuperAdminTenantListResponse,
   UpdateSuperAdminTenantInput,
 } from '@stocket/types/superadmin';
+import type {
+  FeatureKey,
+  UpdateTenantFeatureOverride,
+  UpdateTenantPlan,
+} from '@stocket/types/features';
 import {
   hostnameForTenantSlug,
   isReservedTenantSlug,
   isValidTenantSlug,
 } from '../../platform/tenancy/host';
-import {
-  normalizeFeatureStates,
-  TenantFeaturesService,
-} from '../../platform/tenancy/tenant-features';
+import { normalizeFeatureStates } from '../../platform/tenancy/tenant-features';
 import type { UserSession } from '../../platform/auth/user-session';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { makeTryAsync } from '../../platform/effect/try-async';
@@ -31,6 +33,7 @@ import {
   TenantSlugAlreadyExists,
 } from './superadmin.errors';
 import { SuperAdminRepository } from './repository';
+import { FeaturesService } from '../features/service';
 
 interface BetterAuthCreateUserResponse {
   readonly user: { readonly id: string };
@@ -97,8 +100,8 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
     effect: Effect.gen(function* () {
       const repository = yield* SuperAdminRepository;
       const usersRepository = yield* UsersRepository;
-      const tenantFeaturesService = yield* TenantFeaturesService;
       const betterAuth = yield* BetterAuth;
+      const featuresService = yield* FeaturesService;
       const trace = makeServiceTracer({
         serviceName: 'SuperAdminService',
         module: 'superadmin',
@@ -161,25 +164,6 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
         ),
       );
 
-      const getTenantFeatures = trace.traced(
-        'getTenantFeatures',
-        (tenantId: string) =>
-          Effect.gen(function* () {
-            const tenant = yield* repository.findTenantById(tenantId);
-            if (!tenant) {
-              return yield* Effect.fail(
-                new TenantNotFound({
-                  tenantId,
-                  messageKey: 'superadmin.tenantNotFound',
-                }),
-              );
-            }
-
-            return yield* tenantFeaturesService.getTenantFeatures(tenantId);
-          }),
-        (tenantId) => ({ attributes: { entityId: tenantId } }),
-      );
-
       const updateTenant = trace.traced(
         'updateTenant',
         (
@@ -228,7 +212,7 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
                 .pipe(Effect.ignore),
             );
 
-            return yield* tenantFeaturesService.getTenantFeatures(tenantId);
+            return yield* featuresService.getFeaturesForTenant(tenantId);
           }),
         (tenantId) => ({ attributes: { entityId: tenantId } }),
       );
@@ -372,18 +356,62 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
         (input) => ({ attributes: { entityId: input.slug } }),
       );
 
+      const getTenantFeatures = trace.traced(
+        'getTenantFeatures',
+        (tenantId: string) => featuresService.getFeaturesForTenant(tenantId),
+        (tenantId) => ({ attributes: { tenantId } }),
+      );
+
+      const updateTenantPlan = trace.traced(
+        'updateTenantPlan',
+        (tenantId: string, dto: UpdateTenantPlan, actorUserId: string) =>
+          featuresService.setTenantPlan(tenantId, dto, actorUserId),
+        (tenantId) => ({ attributes: { tenantId } }),
+      );
+
+      const updateTenantFeatureOverride = trace.traced(
+        'updateTenantFeatureOverride',
+        (
+          tenantId: string,
+          featureKey: FeatureKey,
+          dto: UpdateTenantFeatureOverride,
+          actorUserId: string,
+        ) =>
+          featuresService.setFeatureOverride(
+            tenantId,
+            featureKey,
+            dto,
+            actorUserId,
+          ),
+        (tenantId, featureKey) => ({
+          attributes: { tenantId, entityId: featureKey },
+        }),
+      );
+
+      const clearTenantFeatureOverride = trace.traced(
+        'clearTenantFeatureOverride',
+        (tenantId: string, featureKey: FeatureKey) =>
+          featuresService.clearFeatureOverride(tenantId, featureKey),
+        (tenantId, featureKey) => ({
+          attributes: { tenantId, entityId: featureKey },
+        }),
+      );
+
       return {
         me,
         listTenants,
-        getTenantFeatures,
         updateTenant,
         createTenant,
+        getTenantFeatures,
+        updateTenantPlan,
+        updateTenantFeatureOverride,
+        clearTenantFeatureOverride,
       };
     }),
     dependencies: [
       SuperAdminRepository.Default,
       UsersRepository.Default,
-      TenantFeaturesService.Default,
+      FeaturesService.Default,
     ],
   },
 ) {}

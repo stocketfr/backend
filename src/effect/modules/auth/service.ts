@@ -1,22 +1,21 @@
 import { Effect } from 'effect';
-import { PlanKey } from '@stocket/types/features';
 import { requireSession } from '../../platform/http/session';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { resolveTenantForSession } from '../../platform/tenancy/tenant-context';
-import { TenantFeaturesService } from '../../platform/tenancy/tenant-features';
 import { RolesService } from '../roles/service';
 import {
   toCurrentUserResponse,
   toProfileResponse,
   toSessionClaimsResponse,
 } from './mappers';
+import { FeaturesService } from '../features/service';
 
 export class AuthService extends Effect.Service<AuthService>()(
   '@stocket/effect/auth/AuthService',
   {
     effect: Effect.gen(function* () {
       const rolesService = yield* RolesService;
-      const tenantFeaturesService = yield* TenantFeaturesService;
+      const featuresService = yield* FeaturesService;
       const trace = makeServiceTracer({
         serviceName: 'AuthService',
         module: 'auth',
@@ -33,13 +32,15 @@ export class AuthService extends Effect.Service<AuthService>()(
             session.user.id,
             tenant.tenantId,
           );
-          const features = yield* tenantFeaturesService.getEffectiveFeatures(
+          const tenantFeatures = yield* featuresService.getFeaturesForTenant(
             tenant.tenantId,
           );
-          return toCurrentUserResponse(session, userPermissions, tenant, {
-            planKey: PlanKey.FREE,
-            features,
-          });
+          return toCurrentUserResponse(
+            session,
+            userPermissions,
+            tenant,
+            tenantFeatures,
+          );
         }),
       );
 
@@ -65,6 +66,6 @@ export class AuthService extends Effect.Service<AuthService>()(
         sessionClaims,
       };
     }),
-    dependencies: [RolesService.Default, TenantFeaturesService.Default],
+    dependencies: [RolesService.Default, FeaturesService.Default],
   },
 ) {}

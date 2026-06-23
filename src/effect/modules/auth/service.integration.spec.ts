@@ -22,11 +22,7 @@
 import { HttpServerRequest } from '@effect/platform';
 import { Effect, Layer, ManagedRuntime } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
-import {
-  DEFAULT_FEATURE_STATES,
-  FeatureKey,
-  PlanKey,
-} from '@stocket/types/features';
+import { FeatureKey, PlanKey } from '@stocket/types/features';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { BetterAuthService } from '../../platform/auth/better-auth';
 import type { DrizzleDb } from '../../platform/db/drizzle';
@@ -35,7 +31,6 @@ import {
   tenantFeatureOverrides,
 } from '../../platform/db/schema';
 import { DEFAULT_TENANT_ID } from '../../platform/tenancy/tenant-constants';
-import { TenantFeaturesService } from '../../platform/tenancy/tenant-features';
 import {
   makeBetterAuthTestLayer,
   makeFakeBetterAuthUser,
@@ -48,6 +43,7 @@ import {
   withTestDb,
 } from '../../testing/test-harness';
 import { RolesService } from '../roles/service';
+import { FeaturesService } from '../features/service';
 import {
   seedDefaultTenantMembership,
   seedRole,
@@ -136,6 +132,9 @@ beforeAll(() => {
 const buildRolesServiceLayer = () =>
   RolesService.Default.pipe(Layer.provide(dbLayer));
 
+const buildFeaturesServiceLayer = () =>
+  FeaturesService.Default.pipe(Layer.provide(dbLayer));
+
 const buildAuthServiceLayer = (
   userIdOrNull: string | null,
   extras: {
@@ -148,6 +147,7 @@ const buildAuthServiceLayer = (
   // those tags remain visible in the resulting layer's output context.
   const deps = Layer.mergeAll(
     dbLayer,
+    buildFeaturesServiceLayer(),
     buildBetterAuthLayer(userIdOrNull, extras.getSessionSpy),
     makeRequestLayer(extras.requestHeaders),
   );
@@ -236,8 +236,8 @@ describe('AuthService Integration', () => {
         expect(result.email).toBe('integration@example.com');
         expect(result.planKey).toBe(PlanKey.FREE);
         expect(result.features).toEqual({
-          ...DEFAULT_FEATURE_STATES,
           [FeatureKey.SMART_IMPORT]: true,
+          [FeatureKey.ORDERS]: true,
         });
         expect(result.roles).toEqual(['Integration Admin']);
         expect(result.permissions[Resource.ROLES]).toEqual(
@@ -368,7 +368,7 @@ describe('AuthService Integration', () => {
             Layer.mergeAll(
               dbLayer,
               buildRolesServiceLayer(),
-              TenantFeaturesService.Default.pipe(Layer.provide(dbLayer)),
+              buildFeaturesServiceLayer(),
               buildBetterAuthLayer(TEST_USER_ID),
               makeRequestLayer(),
             ),

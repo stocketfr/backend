@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 import { Permission, Resource } from '@stocket/types/auth';
+import { EntitlementSource, PlanKey } from '@stocket/types/features';
 import {
   areas,
   inventory,
@@ -10,6 +11,7 @@ import {
   products,
   rolePermissions,
   roles,
+  tenantEntitlementProfiles,
   tenantDomains,
   userRoles,
 } from '../../../platform/db/schema';
@@ -92,6 +94,25 @@ async function seedDefaultTenantDomain() {
       verified_at: new Date(),
     })
     .onConflictDoNothing();
+
+  await db
+    .insert(tenantEntitlementProfiles)
+    .values({
+      tenant_id: DEFAULT_TENANT_ID,
+      plan_key: PlanKey.GROWTH,
+      source: EntitlementSource.MANUAL,
+      updated_by: TEST_USER_ID,
+      updated_at: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: tenantEntitlementProfiles.tenant_id,
+      set: {
+        plan_key: PlanKey.GROWTH,
+        source: EntitlementSource.MANUAL,
+        updated_by: TEST_USER_ID,
+        updated_at: new Date(),
+      },
+    });
 }
 
 async function seedImportWriteRole(userId: string) {
