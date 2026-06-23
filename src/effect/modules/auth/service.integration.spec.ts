@@ -22,6 +22,7 @@
 import { HttpServerRequest } from '@effect/platform';
 import { Effect, Layer, ManagedRuntime } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
+import { FeatureKey, PlanKey } from '@stocket/types/features';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { BetterAuthService } from '../../platform/auth/better-auth';
 import type { DrizzleDb } from '../../platform/db/drizzle';
@@ -38,6 +39,7 @@ import {
   withTestDb,
 } from '../../testing/test-harness';
 import { RolesService } from '../roles/service';
+import { FeaturesService } from '../features/service';
 import {
   seedDefaultTenantMembership,
   seedRole,
@@ -126,6 +128,9 @@ beforeAll(() => {
 const buildRolesServiceLayer = () =>
   RolesService.Default.pipe(Layer.provide(dbLayer));
 
+const buildFeaturesServiceLayer = () =>
+  FeaturesService.Default.pipe(Layer.provide(dbLayer));
+
 const buildAuthServiceLayer = (
   userIdOrNull: string | null,
   extras: {
@@ -138,6 +143,7 @@ const buildAuthServiceLayer = (
   // those tags remain visible in the resulting layer's output context.
   const deps = Layer.mergeAll(
     dbLayer,
+    buildFeaturesServiceLayer(),
     buildBetterAuthLayer(userIdOrNull, extras.getSessionSpy),
     makeRequestLayer(extras.requestHeaders),
   );
@@ -218,6 +224,11 @@ describe('AuthService Integration', () => {
         expect(result.id).toBe(TEST_USER_ID);
         expect(result.name).toBe('Integration Test User');
         expect(result.email).toBe('integration@example.com');
+        expect(result.planKey).toBe(PlanKey.FREE);
+        expect(result.features).toEqual({
+          [FeatureKey.SMART_IMPORT]: false,
+          [FeatureKey.ORDERS]: true,
+        });
         expect(result.roles).toEqual(['Integration Admin']);
         expect(result.permissions[Resource.ROLES]).toEqual(
           expect.arrayContaining([Permission.READ, Permission.WRITE]),
@@ -347,6 +358,7 @@ describe('AuthService Integration', () => {
             Layer.mergeAll(
               dbLayer,
               buildRolesServiceLayer(),
+              buildFeaturesServiceLayer(),
               buildBetterAuthLayer(TEST_USER_ID),
               makeRequestLayer(),
             ),

@@ -45,6 +45,11 @@ export const frCatalog: Record<MessageKey, string> = {
   'drizzle.migrationsFailed':
     "Echec de l'execution des migrations Better Auth.",
   'errors.internalServerError': 'Erreur interne du serveur.',
+  'features.notEnabled':
+    "Cette fonctionnalite n'est pas activee pour le tenant actif.",
+  'features.repositoryFailed':
+    "L'operation sur les fonctionnalites a echoue.",
+  'features.tenantNotFound': 'Tenant introuvable.',
   'fulfillment.infrastructureFailed': "L'operation de preparation a echoue.",
   'fulfillment.insufficientInventory':
     'Stock insuffisant pour effectuer le prelevement.',

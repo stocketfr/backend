@@ -8,6 +8,7 @@
  */
 import { Effect } from 'effect';
 import type { Permission, Resource } from '@stocket/types/auth';
+import { FeatureKey } from '@stocket/types/features';
 import type { AuditWriteParams } from '../../../platform/audit/index';
 import {
   type makeFakeSession,
@@ -15,6 +16,8 @@ import {
   makeRouterTestHarness,
 } from '../../../testing/router-harness';
 import { ProductImportService } from '../import/service';
+import { FeatureNotEnabled } from '../../features/features.errors';
+import { FeaturesService } from '../../features/service';
 import { ProductImportUnsupportedFormat } from '../products.errors';
 import { productsRouter } from '../router';
 import { ProductsService } from '../service';
@@ -29,6 +32,7 @@ export interface ProductsRouterHarnessOptions {
   readonly auditLog?: (
     params: AuditWriteParams,
   ) => Effect.Effect<void, never, unknown>;
+  readonly smartImportFeatureEnabled?: boolean;
 }
 
 export interface ProductsRouterHarness {
@@ -52,12 +56,25 @@ export const makeProductsRouterHarness = (
         ),
     },
   );
+  const featuresLayer = makeRouterServiceLayer(FeaturesService, {
+    requireFeature: (featureKey: FeatureKey) =>
+      featureKey === FeatureKey.SMART_IMPORT &&
+      opts.smartImportFeatureEnabled === false
+        ? Effect.fail(
+            new FeatureNotEnabled({
+              featureKey,
+              messageKey: 'features.notEnabled',
+            }),
+          )
+        : Effect.void,
+  });
 
   return makeRouterTestHarness({
     router: productsRouter,
     layers: [
       makeRouterServiceLayer(ProductsService, opts.service),
       importServiceLayer,
+      featuresLayer,
     ],
     permissions: opts.permissions,
     roleNames: [],
