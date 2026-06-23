@@ -107,7 +107,9 @@ export const betterAuthUsers = pgTable(
   {
     // Better Auth still generates UUID values, but the app stores user ids as
     // text because local RBAC tables and audit logs use opaque auth ids.
-    id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: text('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     name: text('name').notNull(),
     email: text('email').notNull(),
     email_verified: boolean('email_verified').notNull().default(false),
@@ -252,6 +254,29 @@ export const superAdmins = pgTable('super_admins', {
     .notNull()
     .defaultNow(),
 });
+
+export const tenantFeatureOverrides = pgTable(
+  'tenant_feature_overrides',
+  {
+    tenant_id: uuid('tenant_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    feature_key: varchar('feature_key', { length: 100 }).notNull(),
+    enabled: boolean('enabled').notNull(),
+    expires_at: timestamp('expires_at', { withTimezone: true }),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_by: text('updated_by'),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.tenant_id, table.feature_key],
+      name: 'tenant_feature_overrides_tenant_id_feature_key_pk',
+    }),
+    index('tenant_feature_overrides_tenant_id_idx').on(table.tenant_id),
+  ],
+);
 
 export const platformAuditEvents = pgTable(
   'platform_audit_events',

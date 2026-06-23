@@ -18,6 +18,7 @@ export const enCatalog = {
   'email.welcomeRequestFailed': 'Failed to request the welcome email.',
   'tenant.membershipRejected':
     'The active tenant is not available for this user.',
+  'tenantFeatures.repositoryFailed': 'Tenant feature operation failed.',
   'tenant.notResolved': 'No active tenant could be resolved for this request.',
   'tenant.hostNotFound': 'Tenant host not found.',
   'branding.repositoryFailed': 'Branding operation failed.',
@@ -132,6 +133,7 @@ export const enCatalog = {
   'superadmin.infrastructureFailed': 'Superadmin authorization failed.',
   'superadmin.repositoryFailed': 'Superadmin operation failed.',
   'superadmin.reservedTenantSlug': 'Tenant slug is reserved.',
+  'superadmin.tenantNotFound': 'Tenant not found.',
   'superadmin.tenantHostnameAlreadyExists':
     'A tenant with this hostname already exists.',
   'superadmin.tenantSlugAlreadyExists':

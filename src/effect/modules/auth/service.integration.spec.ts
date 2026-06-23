@@ -22,10 +22,20 @@
 import { HttpServerRequest } from '@effect/platform';
 import { Effect, Layer, ManagedRuntime } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
+import {
+  DEFAULT_FEATURE_STATES,
+  FeatureKey,
+  PlanKey,
+} from '@stocket/types/features';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { BetterAuthService } from '../../platform/auth/better-auth';
 import type { DrizzleDb } from '../../platform/db/drizzle';
-import { rolePermissions } from '../../platform/db/schema';
+import {
+  rolePermissions,
+  tenantFeatureOverrides,
+} from '../../platform/db/schema';
+import { DEFAULT_TENANT_ID } from '../../platform/tenancy/tenant-constants';
+import { TenantFeaturesService } from '../../platform/tenancy/tenant-features';
 import {
   makeBetterAuthTestLayer,
   makeFakeBetterAuthUser,
@@ -208,6 +218,12 @@ describe('AuthService Integration', () => {
             { resource: Resource.DASHBOARD, permission: Permission.READ },
           ],
         });
+        await db.insert(tenantFeatureOverrides).values({
+          tenant_id: DEFAULT_TENANT_ID,
+          feature_key: FeatureKey.SMART_IMPORT,
+          enabled: true,
+          updated_by: 'superadmin-1',
+        });
 
         const layer = buildAuthServiceLayer(TEST_USER_ID);
         const result = await run(
@@ -218,6 +234,11 @@ describe('AuthService Integration', () => {
         expect(result.id).toBe(TEST_USER_ID);
         expect(result.name).toBe('Integration Test User');
         expect(result.email).toBe('integration@example.com');
+        expect(result.planKey).toBe(PlanKey.FREE);
+        expect(result.features).toEqual({
+          ...DEFAULT_FEATURE_STATES,
+          [FeatureKey.SMART_IMPORT]: true,
+        });
         expect(result.roles).toEqual(['Integration Admin']);
         expect(result.permissions[Resource.ROLES]).toEqual(
           expect.arrayContaining([Permission.READ, Permission.WRITE]),
@@ -347,6 +368,7 @@ describe('AuthService Integration', () => {
             Layer.mergeAll(
               dbLayer,
               buildRolesServiceLayer(),
+              TenantFeaturesService.Default.pipe(Layer.provide(dbLayer)),
               buildBetterAuthLayer(TEST_USER_ID),
               makeRequestLayer(),
             ),

@@ -1,7 +1,9 @@
 import { Effect } from 'effect';
+import { PlanKey } from '@stocket/types/features';
 import { requireSession } from '../../platform/http/session';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { resolveTenantForSession } from '../../platform/tenancy/tenant-context';
+import { TenantFeaturesService } from '../../platform/tenancy/tenant-features';
 import { RolesService } from '../roles/service';
 import {
   toCurrentUserResponse,
@@ -14,6 +16,7 @@ export class AuthService extends Effect.Service<AuthService>()(
   {
     effect: Effect.gen(function* () {
       const rolesService = yield* RolesService;
+      const tenantFeaturesService = yield* TenantFeaturesService;
       const trace = makeServiceTracer({
         serviceName: 'AuthService',
         module: 'auth',
@@ -30,7 +33,13 @@ export class AuthService extends Effect.Service<AuthService>()(
             session.user.id,
             tenant.tenantId,
           );
-          return toCurrentUserResponse(session, userPermissions, tenant);
+          const features = yield* tenantFeaturesService.getEffectiveFeatures(
+            tenant.tenantId,
+          );
+          return toCurrentUserResponse(session, userPermissions, tenant, {
+            planKey: PlanKey.FREE,
+            features,
+          });
         }),
       );
 
@@ -56,6 +65,6 @@ export class AuthService extends Effect.Service<AuthService>()(
         sessionClaims,
       };
     }),
-    dependencies: [RolesService.Default],
+    dependencies: [RolesService.Default, TenantFeaturesService.Default],
   },
 ) {}
