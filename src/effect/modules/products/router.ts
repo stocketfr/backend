@@ -3,6 +3,7 @@ import { HttpRouter, HttpServerRequest, Multipart } from '@effect/platform';
 import { Effect, Schema } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
+import { FeatureKey } from '@stocket/types/features';
 import {
   ProductIdSchema,
   ProductQuerySchema,
@@ -22,6 +23,7 @@ import {
   requireSession,
 } from '../../platform/http/session';
 import { makeMessageResponse } from '../../platform/observability/messages';
+import { FeaturesService } from '../features/service';
 import { ProductImportService } from './import/service';
 import {
   ProductImportTypes,
@@ -100,6 +102,9 @@ const ProductImportApprovedPlanSchema = Schema.Struct({
     Schema.Array(ProductImportLocationMappingSchema),
   ),
 });
+const requireSmartImportFeature = Effect.flatMap(FeaturesService, (features) =>
+  features.requireFeature(FeatureKey.SMART_IMPORT),
+);
 
 const IncludeDeletedQuery = Schema.Struct({
   include_deleted: Schema.optionalWith(ProductBooleanQuerySchema, {
@@ -232,6 +237,7 @@ export const productsRouter = HttpRouter.empty.pipe(
       yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
       yield* requirePermission(Resource.LOCATIONS, Permission.WRITE);
       yield* requirePermission(Resource.INVENTORY, Permission.WRITE);
+      yield* requireSmartImportFeature;
       const { file, import_type, plan } =
         yield* HttpServerRequest.schemaBodyMultipart(ProductImportUploadSchema);
       const approvedPlan = yield* parseApprovedImportPlan(plan);

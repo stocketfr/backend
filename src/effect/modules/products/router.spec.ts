@@ -434,6 +434,32 @@ describe('productsRouter', () => {
       expect(mockMultipart).not.toHaveBeenCalled();
     });
 
+    it('rejects when SmartImport is disabled', async () => {
+      const importFromCsvContent = vi.fn(() =>
+        Effect.succeed(importResult()),
+      );
+      const { handler } = makeProductsRouterHarness({
+        service: {},
+        importService: { importFromCsvContent },
+        permissions: writeAll,
+        smartImportFeatureEnabled: false,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/products/import', {
+          method: 'POST',
+          body: 'ignored',
+        }),
+      );
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toMatchObject({
+        messageKey: 'features.notEnabled',
+      });
+      expect(mockMultipart).not.toHaveBeenCalled();
+      expect(importFromCsvContent).not.toHaveBeenCalled();
+    });
+
     it('rejects without LOCATIONS and INVENTORY write permissions', async () => {
       const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
       const { handler } = makeProductsRouterHarness({

@@ -1,5 +1,11 @@
 import { Effect, Layer } from 'effect';
+import {
+  EntitlementSource,
+  FeatureKey,
+  PlanKey,
+} from '@stocket/types/features';
 import { BetterAuth, BetterAuthHeaders } from '../../platform/auth/better-auth';
+import { FeaturesService } from '../features/service';
 import { UsersRepository } from '../users/repository';
 import { SuperAdminRepository } from './repository';
 import { SuperAdminService } from './service';
@@ -67,12 +73,73 @@ describe('Effect SuperAdminService', () => {
     },
   });
 
+  const makeFeaturesService = () => ({
+    getFeaturesForTenant: vi.fn(() =>
+      Effect.succeed({
+        tenantId: createdTenant.tenant.id,
+        planKey: PlanKey.FREE,
+        source: EntitlementSource.SYSTEM,
+        features: {
+          [FeatureKey.SMART_IMPORT]: false,
+          [FeatureKey.ORDERS]: true,
+        },
+        overrides: [],
+        updated_at: null,
+        updated_by: null,
+      }),
+    ),
+    setTenantPlan: vi.fn(() =>
+      Effect.succeed({
+        tenantId: createdTenant.tenant.id,
+        planKey: PlanKey.GROWTH,
+        source: EntitlementSource.MANUAL,
+        features: {
+          [FeatureKey.SMART_IMPORT]: true,
+          [FeatureKey.ORDERS]: true,
+        },
+        overrides: [],
+        updated_at: new Date('2026-01-01T00:00:00.000Z'),
+        updated_by: actor.userId,
+      }),
+    ),
+    setFeatureOverride: vi.fn(() =>
+      Effect.succeed({
+        tenantId: createdTenant.tenant.id,
+        planKey: PlanKey.FREE,
+        source: EntitlementSource.SYSTEM,
+        features: {
+          [FeatureKey.SMART_IMPORT]: true,
+          [FeatureKey.ORDERS]: true,
+        },
+        overrides: [],
+        updated_at: null,
+        updated_by: null,
+      }),
+    ),
+    clearFeatureOverride: vi.fn(() =>
+      Effect.succeed({
+        tenantId: createdTenant.tenant.id,
+        planKey: PlanKey.FREE,
+        source: EntitlementSource.SYSTEM,
+        features: {
+          [FeatureKey.SMART_IMPORT]: false,
+          [FeatureKey.ORDERS]: true,
+        },
+        overrides: [],
+        updated_at: null,
+        updated_by: null,
+      }),
+    ),
+  });
+
   const makeServiceLayer = ({
     betterAuth,
+    featuresService,
     repository,
     usersRepository,
   }: {
     betterAuth: unknown;
+    featuresService?: unknown;
     repository: unknown;
     usersRepository: unknown;
   }) =>
@@ -80,6 +147,10 @@ describe('Effect SuperAdminService', () => {
       Layer.provide(
         Layer.mergeAll(
           Layer.succeed(BetterAuth, betterAuth as typeof BetterAuth.Service),
+          Layer.succeed(
+            FeaturesService,
+            (featuresService ?? makeFeaturesService()) as typeof FeaturesService.Service,
+          ),
           Layer.succeed(
             SuperAdminRepository,
             repository as typeof SuperAdminRepository.Service,
@@ -121,6 +192,7 @@ describe('Effect SuperAdminService', () => {
     const usersRepository = makeUsersRepository();
     const layer = makeServiceLayer({
       betterAuth,
+      featuresService: makeFeaturesService(),
       repository,
       usersRepository,
     });
@@ -180,6 +252,7 @@ describe('Effect SuperAdminService', () => {
     const usersRepository = makeUsersRepository();
     const layer = makeServiceLayer({
       betterAuth,
+      featuresService: makeFeaturesService(),
       repository,
       usersRepository,
     });
@@ -198,5 +271,71 @@ describe('Effect SuperAdminService', () => {
       email: 'existing@example.com',
       name: 'Existing Admin',
     });
+  });
+
+  it('delegates tenant feature reads and writes to FeaturesService', async () => {
+    const betterAuth = makeBetterAuth();
+    const repository = makeRepository();
+    const usersRepository = makeUsersRepository();
+    const featuresService = makeFeaturesService();
+    const layer = makeServiceLayer({
+      betterAuth,
+      featuresService,
+      repository,
+      usersRepository,
+    });
+
+    const tenantId = createdTenant.tenant.id;
+
+    await run(
+      Effect.flatMap(SuperAdminService, (service) =>
+        service.getTenantFeatures(tenantId),
+      ),
+      layer,
+    );
+    await run(
+      Effect.flatMap(SuperAdminService, (service) =>
+        service.updateTenantPlan(
+          tenantId,
+          { planKey: PlanKey.GROWTH },
+          actor.userId,
+        ),
+      ),
+      layer,
+    );
+    await run(
+      Effect.flatMap(SuperAdminService, (service) =>
+        service.updateTenantFeatureOverride(
+          tenantId,
+          FeatureKey.SMART_IMPORT,
+          { enabled: true, reason: 'Beta tenant', expires_at: null },
+          actor.userId,
+        ),
+      ),
+      layer,
+    );
+    await run(
+      Effect.flatMap(SuperAdminService, (service) =>
+        service.clearTenantFeatureOverride(tenantId, FeatureKey.SMART_IMPORT),
+      ),
+      layer,
+    );
+
+    expect(featuresService.getFeaturesForTenant).toHaveBeenCalledWith(tenantId);
+    expect(featuresService.setTenantPlan).toHaveBeenCalledWith(
+      tenantId,
+      { planKey: PlanKey.GROWTH },
+      actor.userId,
+    );
+    expect(featuresService.setFeatureOverride).toHaveBeenCalledWith(
+      tenantId,
+      FeatureKey.SMART_IMPORT,
+      { enabled: true, reason: 'Beta tenant', expires_at: null },
+      actor.userId,
+    );
+    expect(featuresService.clearFeatureOverride).toHaveBeenCalledWith(
+      tenantId,
+      FeatureKey.SMART_IMPORT,
+    );
   });
 });

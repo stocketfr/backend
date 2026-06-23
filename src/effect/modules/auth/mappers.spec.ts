@@ -3,6 +3,11 @@ import {
   toProfileResponse,
   toSessionClaimsResponse,
 } from './mappers';
+import {
+  EntitlementSource,
+  FeatureKey,
+  PlanKey,
+} from '@stocket/types/features';
 
 describe('auth mappers', () => {
   const session = {
@@ -37,6 +42,18 @@ describe('auth mappers', () => {
           tenantName: 'Stocket',
           tenantSlug: 'stocket',
         },
+        {
+          tenantId: '00000000-0000-4000-8000-000000000001',
+          planKey: PlanKey.FREE,
+          source: EntitlementSource.SYSTEM,
+          features: {
+            [FeatureKey.SMART_IMPORT]: false,
+            [FeatureKey.ORDERS]: true,
+          },
+          overrides: [],
+          updated_at: null,
+          updated_by: null,
+        },
       ),
     ).toEqual({
       id: 'user-1',
@@ -46,6 +63,11 @@ describe('auth mappers', () => {
       tenantId: '00000000-0000-4000-8000-000000000001',
       tenantName: 'Stocket',
       tenantSlug: 'stocket',
+      planKey: PlanKey.FREE,
+      features: {
+        [FeatureKey.SMART_IMPORT]: false,
+        [FeatureKey.ORDERS]: true,
+      },
       roles: ['Admin'],
       permissions: {
         roles: ['read', 'write'],
