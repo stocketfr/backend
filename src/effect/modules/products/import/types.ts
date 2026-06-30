@@ -1,11 +1,28 @@
 import type {
+  ProductImportAiProposalDto,
+  ProductImportApprovedPlanDto,
+  ProductImportDuplicateSkuConflictDto,
   ProductImportErrorDto,
+  ProductImportInventoryPreviewDto,
+  ProductImportLocationMappingDto,
+  ProductImportPreviewDto,
   ProductImportResultDto,
+  ProductImportWarningDto,
 } from '@stocket/types/products';
-import type { categories, locations } from '../../../platform/db/schema';
+import type { areas, categories, locations } from '../../../platform/db/schema';
 import type { ProductRow } from '../products.utils';
 
-export type { ProductImportErrorDto, ProductImportResultDto };
+export type {
+  ProductImportAiProposalDto,
+  ProductImportApprovedPlanDto,
+  ProductImportDuplicateSkuConflictDto,
+  ProductImportErrorDto,
+  ProductImportInventoryPreviewDto,
+  ProductImportLocationMappingDto,
+  ProductImportPreviewDto,
+  ProductImportResultDto,
+  ProductImportWarningDto,
+};
 
 export const ProductImportTypes = [
   'auto',
@@ -39,22 +56,32 @@ export interface NormalizedProductImportRow {
   readonly is_active: string;
   readonly is_perishable: string;
   readonly expiry_date: string;
+  readonly photo_urls: readonly string[];
 }
 
 export type ImportCategoryRow = typeof categories.$inferSelect;
 export type ImportLocationRow = typeof locations.$inferSelect;
+export type ImportAreaRow = typeof areas.$inferSelect;
 export type ImportProductRow = ProductRow;
 
 export interface ImportCaches {
   readonly categories: Map<string, string>;
   readonly locations: Map<string, string>;
+  readonly areas: Map<string, string>;
   readonly products: Map<string, ImportProductRow>;
+  readonly photoUrlsByProduct: Map<string, Set<string>>;
 }
 
 export interface ImportProductsFromCsvOptions {
   readonly content: string;
   readonly importType?: ProductImportType;
+  readonly approvedPlan?: ProductImportApprovedPlanDto;
   readonly userId: string;
+}
+
+export interface AnalyzeProductsFromCsvOptions {
+  readonly content: string;
+  readonly importType?: ProductImportType;
 }
 
 export interface ProductImportValues {

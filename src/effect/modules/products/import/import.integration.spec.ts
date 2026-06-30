@@ -1,15 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
+import { afterEach, vi } from 'vitest';
 import { Permission, Resource } from '@stocket/types/auth';
 import {
   EntitlementSource,
   PlanKey,
 } from '@stocket/types/features';
+import type { ProductImportApprovedPlanDto } from '@stocket/types/products';
 import {
+  areas,
   inventory,
   locations,
   members,
   organizations,
+  photos,
   products,
   rolePermissions,
   roles,
@@ -43,6 +47,7 @@ const TEST_TENANT_HOST = hostnameForTenantSlug(DEFAULT_TENANT_SLUG);
 const TEST_TENANT_ORIGIN = `http://${TEST_TENANT_HOST}`;
 const AREA_SCOPED_IMPORT_ERROR =
   'Cannot import location-level inventory while area-scoped inventory exists for this product and location.';
+const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
 
 const makeSession = (userId = TEST_USER_ID) => ({
   user: {
@@ -166,13 +171,24 @@ async function seedImportWriteRole(userId: string) {
   });
 }
 
-function makeCsvUpload(csv: string, filename: string) {
+function makeCsvUpload(
+  csv: string,
+  filename: string,
+  approvedPlan?: ProductImportApprovedPlanDto,
+) {
   const formData = new FormData();
   formData.append('file', new File([csv], filename, { type: 'text/csv' }));
+  if (approvedPlan) {
+    formData.append('plan', JSON.stringify(approvedPlan));
+  }
   return formData;
 }
 
-async function postImport(csv: string, filename = 'products.csv') {
+async function postImport(
+  csv: string,
+  filename = 'products.csv',
+  approvedPlan?: ProductImportApprovedPlanDto,
+) {
   await seedImportWriteRole(TEST_USER_ID);
   const { handler, dispose } = makeTestHttpAppHandler({
     session: makeSession(TEST_USER_ID),
@@ -182,7 +198,7 @@ async function postImport(csv: string, filename = 'products.csv') {
     const response = await handler(
       tenantRequest('/api/v1/products/import', {
         method: 'POST',
-        body: makeCsvUpload(csv, filename),
+        body: makeCsvUpload(csv, filename, approvedPlan),
       }),
     );
     const body = await response.json();
@@ -267,6 +283,10 @@ async function seedAreaScopedInventoryFixture(options: {
 withTestDb();
 beforeAll(() => {
   db = getTestDb();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('POST /api/v1/products/import integration', () => {
@@ -365,6 +385,132 @@ Item,Imported Tonic,SORT-001,Drinks,Mixers,12,Bar,can,2,1.50,,QR2,Sortly notes,2
       .limit(1);
     expect(stock).toMatchObject({ quantity: 12 });
     expect(stock!.expiry_date).toBeInstanceOf(Date);
+  });
+
+  it('imports Sortly photo URLs into product photos', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JPEG_BYTES, {
+        status: 200,
+        headers: {
+          'content-type': 'image/jpeg',
+          'content-length': String(JPEG_BYTES.length),
+        },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await postImport(
+      `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location,Photo1
+Item,Imported Tonic Photo,SORT-PHOTO-001,Drinks,12,Bar,https://lnk.sortly.co/v2/downloads/photo/photo-1
+`,
+      'sortly.csv',
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      productsCreated: 1,
+      inventoryRecordsCreated: 1,
+      photosCreated: 1,
+      photosSkipped: 0,
+      rowsSkipped: 0,
+      errors: [],
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://lnk.sortly.co/v2/downloads/photo/photo-1',
+      expect.objectContaining({ redirect: 'follow' }),
+    );
+
+    const product = await findProductBySku('SORT-PHOTO-001');
+    const photoRows = await db
+      .select()
+      .from(photos)
+      .where(eq(photos.product_id, product!.id));
+
+    expect(photoRows).toHaveLength(1);
+    expect(photoRows[0]).toMatchObject({
+      product_id: product!.id,
+      filename: 'sortly-photo-1.jpg',
+      mimetype: 'image/jpeg',
+      size: JPEG_BYTES.length,
+      display_order: 0,
+      uploaded_by: TEST_USER_ID,
+    });
+    expect(photoRows[0]!.storage_path).toMatch(
+      new RegExp(`^products/${product!.id}/photos/[0-9a-f-]+\\.jpg$`),
+    );
+  });
+
+  it('imports Sortly shelf locations as areas when an approved plan is provided', async () => {
+    const approvedPlan = {
+      defaultLocationName: 'Main Warehouse',
+      locationMappings: [
+        {
+          sourceLocation: 'Bay I - Shelf 3',
+          targetLocationName: 'Main Warehouse',
+          areaPath: 'Bay I / Shelf 3',
+          action: 'create-area',
+          confidence: 0.9,
+          rowCount: 1,
+        },
+      ],
+    } satisfies ProductImportApprovedPlanDto;
+    const response = await postImport(
+      `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location
+Item,Imported Shelf Product,SORT-AREA-001,Drinks,12,Bay I  - Shelf 3
+`,
+      'sortly.csv',
+      approvedPlan,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      locationsCreated: 1,
+      areasCreated: 2,
+      productsCreated: 1,
+      inventoryRecordsCreated: 1,
+      rowsSkipped: 0,
+      errors: [],
+    });
+
+    const product = await findProductBySku('SORT-AREA-001');
+    const [location] = await db
+      .select()
+      .from(locations)
+      .where(
+        and(
+          eq(locations.tenant_id, DEFAULT_TENANT_ID),
+          eq(locations.name, 'Main Warehouse'),
+        ),
+      )
+      .limit(1);
+    const areaRows = await db
+      .select()
+      .from(areas)
+      .where(
+        and(
+          eq(areas.tenant_id, DEFAULT_TENANT_ID),
+          eq(areas.location_id, location!.id),
+        ),
+      );
+    const bayArea = areaRows.find((area) => area.name === 'Bay I');
+    const shelfArea = areaRows.find((area) => area.name === 'Shelf 3');
+
+    expect(bayArea).toMatchObject({ parent_id: null });
+    expect(shelfArea).toMatchObject({ parent_id: bayArea!.id });
+
+    const [stock] = await db
+      .select()
+      .from(inventory)
+      .where(
+        and(
+          eq(inventory.tenant_id, DEFAULT_TENANT_ID),
+          eq(inventory.product_id, product!.id),
+          eq(inventory.location_id, location!.id),
+          eq(inventory.area_id, shelfArea!.id),
+        ),
+      )
+      .limit(1);
+    expect(stock).toMatchObject({ quantity: 12 });
   });
 
   it('does not update products from another tenant with the same SKU', async () => {

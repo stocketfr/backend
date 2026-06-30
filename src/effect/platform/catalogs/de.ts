@@ -136,8 +136,12 @@ export const deCatalog: Record<MessageKey, string> = {
   'products.deletedPermanent': 'Produkt dauerhaft geloescht.',
   'products.importAreaScopedInventoryConflict':
     'Standortbestand kann nicht importiert werden, solange fuer dieses Produkt und diesen Standort bereichsbezogener Bestand existiert.',
+  'products.importAreaLocationRequired':
+    'Ein Standardstandort ist fuer den Import von bereichsbezogenem Bestand erforderlich.',
   'products.importCsvParseFailed':
     'Die hochgeladene CSV-Datei konnte nicht geparst werden.',
+  'products.importPlanParseFailed':
+    'Der hochgeladene Produktimportplan konnte nicht geparst werden.',
   'products.importReadUploadFailed':
     'Die hochgeladene Produktimportdatei konnte nicht gelesen werden.',
   'products.importUnsupportedFormat':

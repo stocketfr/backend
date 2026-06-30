@@ -111,7 +111,11 @@ export const enCatalog = {
   'products.deletedPermanent': 'Product permanently deleted.',
   'products.importAreaScopedInventoryConflict':
     'Cannot import location-level inventory while area-scoped inventory exists for this product and location.',
+  'products.importAreaLocationRequired':
+    'A default location is required to import area-scoped inventory.',
   'products.importCsvParseFailed': 'Could not parse the uploaded CSV file.',
+  'products.importPlanParseFailed':
+    'Could not parse the uploaded product import plan.',
   'products.importReadUploadFailed':
     'Failed to read the uploaded product import file.',
   'products.importUnsupportedFormat':

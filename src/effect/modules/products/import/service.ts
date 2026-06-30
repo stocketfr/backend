@@ -1,22 +1,32 @@
 import { Effect } from 'effect';
 import { LocationType } from '@stocket/types/locations';
 import type {
+  AnalyzeProductsFromCsvOptions,
   ImportCaches,
+  ImportAreaRow,
   ImportCategoryRow,
   ImportLocationRow,
   ImportProductRow,
   ImportProductsFromCsvOptions,
   NormalizedProductImportRow,
+  ProductImportAiProposalDto,
+  ProductImportApprovedPlanDto,
+  ProductImportLocationMappingDto,
+  ProductImportPreviewDto,
   ProductImportResultDto,
   ProductImportValues,
 } from './types';
 import {
   detectProductImportFormat,
+  deriveConflictingDuplicateSkuRows,
   findConflictingDuplicateSkuRows,
   formatImportError,
+  makeProductImportPreview,
   makeEmptyProductImportResult,
   normalizeCategoryPath,
+  normalizeStorageLocationName,
   normalizeProductImportRecords,
+  isSupportedSortlyPhotoUrl,
   nullableText,
   parseBoolean,
   parseCsvContent,
@@ -31,6 +41,8 @@ import {
   ProductImportUnsupportedFormat,
   ProductsInfrastructureError,
 } from '../products.errors';
+import { ProductImportLlmProposer } from './llm-proposer';
+import { ProductImportPhotoImporter } from './photo-importer';
 import { ProductImportRepository } from './repository';
 
 export class ProductImportService extends Effect.Service<ProductImportService>()(
@@ -38,6 +50,32 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
   {
     effect: Effect.gen(function* () {
       const repository = yield* ProductImportRepository;
+      const llmProposer = yield* ProductImportLlmProposer;
+      const photoImporter = yield* ProductImportPhotoImporter;
+
+      const parseAndDetectFormat = ({
+        content,
+        importType = 'auto',
+      }: AnalyzeProductsFromCsvOptions) =>
+        Effect.gen(function* () {
+          const parsed = yield* Effect.try({
+            try: () => parseCsvContent(content),
+            catch: (cause) =>
+              new ProductImportCsvParseFailed({
+                cause,
+                messageKey: 'products.importCsvParseFailed',
+              }),
+          });
+          const format = detectProductImportFormat(parsed.headers, importType);
+          if (!format) {
+            return yield* Effect.fail(
+              new ProductImportUnsupportedFormat({
+                messageKey: 'products.importUnsupportedFormat',
+              }),
+            );
+          }
+          return { parsed, format };
+        });
 
       const getOrCreateCategoryPath = (
         categoryPath: string,
@@ -122,6 +160,165 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           return location.id;
         });
 
+      const findLocationId = (locationId: string, caches: ImportCaches) =>
+        Effect.gen(function* () {
+          const cached = caches.locations.get(locationId);
+          if (cached) return cached;
+
+          const location = yield* repository.findLocationById(locationId);
+          if (!location) {
+            return yield* Effect.fail(
+              new ProductsInfrastructureError({
+                action: 'resolve import location by id',
+                messageKey: 'products.repositoryFailed',
+              }),
+            );
+          }
+
+          caches.locations.set(location.id, location.id);
+          caches.locations.set(location.name, location.id);
+          return location.id;
+        });
+
+      const getOrCreateAreaPath = (
+        locationId: string,
+        areaPath: string,
+        caches: ImportCaches,
+        result: ProductImportResultDto,
+      ) =>
+        Effect.gen(function* () {
+          const parts = areaPath
+            .split('/')
+            .map((part) => part.trim())
+            .filter(Boolean);
+          if (parts.length === 0) return null;
+
+          let parentId: string | null = null;
+          let areaId = '';
+
+          for (const part of parts) {
+            const cacheKey = `${locationId}:${parentId ?? 'root'}:${part}`;
+            const cached = caches.areas.get(cacheKey);
+            if (cached) {
+              parentId = cached;
+              areaId = cached;
+              continue;
+            }
+
+            let area: ImportAreaRow | null =
+              yield* repository.findAreaByNameLocationAndParent(
+                locationId,
+                part,
+                parentId,
+              );
+
+            if (!area) {
+              area = yield* repository.createArea({
+                location_id: locationId,
+                parent_id: parentId,
+                name: part,
+                description: 'Imported via product import',
+                code: '',
+                is_active: true,
+              });
+              result.areasCreated = (result.areasCreated ?? 0) + 1;
+            }
+
+            caches.areas.set(cacheKey, area.id);
+            parentId = area.id;
+            areaId = area.id;
+          }
+
+          return areaId;
+        });
+
+      const findLocationMapping = (
+        row: NormalizedProductImportRow,
+        approvedPlan: ProductImportApprovedPlanDto | undefined,
+      ): ProductImportLocationMappingDto | undefined => {
+        const sourceLocation = normalizeStorageLocationName(row.location);
+        return approvedPlan?.locationMappings?.find(
+          (mapping) =>
+            normalizeStorageLocationName(mapping.sourceLocation) ===
+            sourceLocation,
+        );
+      };
+
+      const getTargetCategoryPath = (
+        row: NormalizedProductImportRow,
+        approvedPlan: ProductImportApprovedPlanDto | undefined,
+      ): string => {
+        const sourcePath = normalizeCategoryPath(row.category_path);
+        const mapping = approvedPlan?.categoryMappings?.find(
+          (candidate) =>
+            normalizeCategoryPath(candidate.sourcePath) === sourcePath,
+        );
+        return normalizeCategoryPath(mapping?.targetPath ?? sourcePath);
+      };
+
+      const resolveInventoryTarget = (
+        row: NormalizedProductImportRow,
+        caches: ImportCaches,
+        result: ProductImportResultDto,
+        approvedPlan: ProductImportApprovedPlanDto | undefined,
+      ) =>
+        Effect.gen(function* () {
+          const rawLocation = row.location.trim();
+          if (rawLocation === '') {
+            return { locationId: null, areaId: null } as const;
+          }
+
+          const mapping = findLocationMapping(row, approvedPlan);
+          if (mapping?.action === 'ignore') {
+            return { locationId: null, areaId: null } as const;
+          }
+
+          if (mapping?.action === 'create-area' && mapping.areaPath) {
+            const targetLocationName =
+              mapping.targetLocationName?.trim() ||
+              approvedPlan?.defaultLocationName?.trim() ||
+              '';
+            const locationId = mapping.targetLocationId
+              ? yield* findLocationId(mapping.targetLocationId, caches)
+              : yield* getOrCreateLocation(targetLocationName, caches, result);
+
+            if (!locationId) {
+              return yield* Effect.fail(
+                new ProductsInfrastructureError({
+                  action: 'resolve import area location',
+                  messageKey: 'products.importAreaLocationRequired',
+                }),
+              );
+            }
+
+            const areaId = yield* getOrCreateAreaPath(
+              locationId,
+              mapping.areaPath,
+              caches,
+              result,
+            );
+            return { locationId, areaId } as const;
+          }
+
+          if (mapping?.targetLocationId) {
+            const locationId = yield* findLocationId(
+              mapping.targetLocationId,
+              caches,
+            );
+            return { locationId, areaId: null } as const;
+          }
+
+          const locationName =
+            mapping?.targetLocationName?.trim() ||
+            (mapping ? normalizeStorageLocationName(row.location) : row.location);
+          const locationId = yield* getOrCreateLocation(
+            locationName,
+            caches,
+            result,
+          );
+          return { locationId, areaId: null } as const;
+        });
+
       const upsertProduct = (
         row: NormalizedProductImportRow,
         categoryId: string,
@@ -144,10 +341,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
             standard_price: parseProductImportNumber(row.standard_price),
             reorder_point: parseInteger(row.reorder_point, 0),
             is_active: parseBoolean(row.is_active, true),
-            is_perishable: parseBoolean(
-              row.is_perishable,
-              Boolean(expiryDate),
-            ),
+            is_perishable: parseBoolean(row.is_perishable, Boolean(expiryDate)),
             notes: nullableText(row.notes),
           };
 
@@ -169,10 +363,10 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
             return existing;
           }
 
-          const product = yield* repository.updateProduct(
-            existing.id,
-            { ...values, updated_by: updatedBy },
-          );
+          const product = yield* repository.updateProduct(existing.id, {
+            ...values,
+            updated_by: updatedBy,
+          });
           if (!product) {
             return yield* Effect.fail(
               new ProductsInfrastructureError({
@@ -189,6 +383,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
       const upsertInventory = (
         product: ImportProductRow,
         locationId: string | null,
+        areaId: string | null,
         row: NormalizedProductImportRow,
         result: ProductImportResultDto,
         expiryDate: Date | null,
@@ -197,40 +392,48 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           if (!locationId) return;
 
           const existing =
-            yield* repository.findRootInventoryByProductAndLocation(
+            yield* repository.findInventoryByProductLocationAndArea(
               product.id,
               locationId,
+              areaId,
             );
           const quantity = parseInteger(row.quantity, 0);
-          const hasAreaScopedInventory =
-            yield* repository.hasAreaScopedInventoryForProductAndLocation(
-              product.id,
-              locationId,
-            );
-          if (hasAreaScopedInventory) {
-            return yield* Effect.fail(
-              new ProductsInfrastructureError({
-                action: 'import root inventory with area-scoped inventory',
-                messageKey: 'products.importAreaScopedInventoryConflict',
-              }),
-            );
+          if (areaId === null) {
+            const hasAreaScopedInventory =
+              yield* repository.hasAreaScopedInventoryForProductAndLocation(
+                product.id,
+                locationId,
+              );
+            if (hasAreaScopedInventory) {
+              return yield* Effect.fail(
+                new ProductsInfrastructureError({
+                  action: 'import root inventory with area-scoped inventory',
+                  messageKey: 'products.importAreaScopedInventoryConflict',
+                }),
+              );
+            }
           }
+
+          const inventoryValues = {
+            quantity,
+            expiry_date: expiryDate,
+            area_id: areaId,
+          };
 
           if (!existing) {
             yield* repository.createInventory({
               product_id: product.id,
               location_id: locationId,
-              quantity,
-              expiry_date: expiryDate,
+              ...inventoryValues,
             });
             result.inventoryRecordsCreated++;
             return;
           }
 
-          const inventory = yield* repository.updateInventory(existing.id, {
-            quantity,
-            expiry_date: expiryDate,
-          });
+          const inventory = yield* repository.updateInventory(
+            existing.id,
+            inventoryValues,
+          );
           if (!inventory) {
             return yield* Effect.fail(
               new ProductsInfrastructureError({
@@ -242,13 +445,78 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           result.inventoryRecordsUpdated++;
         });
 
+      const pushPhotoImportError = (
+        result: ProductImportResultDto,
+        row: NormalizedProductImportRow,
+        url: string,
+        error: string,
+      ) => {
+        result.photosSkipped++;
+        result.errors.push({
+          row: row.sourceRow,
+          error: `Photo import failed for "${url}": ${error}`,
+        });
+      };
+
+      const importProductPhotos = (
+        product: ImportProductRow,
+        row: NormalizedProductImportRow,
+        caches: ImportCaches,
+        result: ProductImportResultDto,
+        userId: string,
+      ) =>
+        Effect.gen(function* () {
+          if (row.photo_urls.length === 0) return;
+
+          let importedUrls = caches.photoUrlsByProduct.get(product.id);
+          if (!importedUrls) {
+            importedUrls = new Set<string>();
+            caches.photoUrlsByProduct.set(product.id, importedUrls);
+          }
+
+          for (const [photoIndex, url] of row.photo_urls.entries()) {
+            if (importedUrls.has(url)) continue;
+            importedUrls.add(url);
+
+            if (!isSupportedSortlyPhotoUrl(url)) {
+              pushPhotoImportError(
+                result,
+                row,
+                url,
+                'Unsupported Sortly photo URL',
+              );
+              continue;
+            }
+
+            yield* photoImporter
+              .importSortlyPhoto(product.id, url, photoIndex, userId)
+              .pipe(
+                Effect.matchEffect({
+                  onFailure: (error) =>
+                    Effect.sync(() => {
+                      pushPhotoImportError(
+                        result,
+                        row,
+                        url,
+                        formatImportError(error),
+                      );
+                    }),
+                  onSuccess: () =>
+                    Effect.sync(() => {
+                      result.photosCreated++;
+                    }),
+                }),
+              );
+          }
+        });
+
       const validateRootInventoryImport = (
         row: NormalizedProductImportRow,
         caches: ImportCaches,
+        target: { readonly locationId: string | null; readonly areaId: string | null },
       ) =>
         Effect.gen(function* () {
-          const locationName = row.location.trim();
-          if (locationName === '') return;
+          if (!target.locationId || target.areaId) return;
 
           const cachedProduct = caches.products.get(row.sku);
           let product = cachedProduct ?? null;
@@ -257,17 +525,10 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           }
           if (!product) return;
 
-          let locationId = caches.locations.get(locationName) ?? null;
-          if (!locationId) {
-            const location = yield* repository.findLocationByName(locationName);
-            locationId = location?.id ?? null;
-          }
-          if (!locationId) return;
-
           const hasAreaScopedInventory =
             yield* repository.hasAreaScopedInventoryForProductAndLocation(
               product.id,
-              locationId,
+              target.locationId,
             );
           if (hasAreaScopedInventory) {
             return yield* Effect.fail(
@@ -285,11 +546,18 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
         result: ProductImportResultDto,
         expiryDate: Date | null,
         userId: string,
+        approvedPlan: ProductImportApprovedPlanDto | undefined,
       ) =>
         Effect.gen(function* () {
-          yield* validateRootInventoryImport(row, caches);
+          const inventoryTarget = yield* resolveInventoryTarget(
+            row,
+            caches,
+            result,
+            approvedPlan,
+          );
+          yield* validateRootInventoryImport(row, caches, inventoryTarget);
           const categoryId = yield* getOrCreateCategoryPath(
-            row.category_path,
+            getTargetCategoryPath(row, approvedPlan),
             caches,
             result,
           );
@@ -301,52 +569,56 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
             expiryDate,
             userId,
           );
-          const locationId = yield* getOrCreateLocation(
-            row.location,
-            caches,
+          yield* upsertInventory(
+            product,
+            inventoryTarget.locationId,
+            inventoryTarget.areaId,
+            row,
             result,
+            expiryDate,
           );
-          yield* upsertInventory(product, locationId, row, result, expiryDate);
+          yield* importProductPhotos(product, row, caches, result, userId);
         });
 
       const importFromCsvContent = ({
         content,
         importType = 'auto',
+        approvedPlan,
         userId,
       }: ImportProductsFromCsvOptions): Effect.Effect<
         ProductImportResultDto,
         ProductImportCsvParseFailed | ProductImportUnsupportedFormat
       > =>
         Effect.gen(function* () {
-          const parsed = yield* Effect.try({
-            try: () => parseCsvContent(content),
-            catch: (cause) =>
-              new ProductImportCsvParseFailed({
-                cause,
-                messageKey: 'products.importCsvParseFailed',
-              }),
+          const { parsed, format } = yield* parseAndDetectFormat({
+            content,
+            importType,
           });
-          const format = detectProductImportFormat(parsed.headers, importType);
-          if (!format) {
-            return yield* Effect.fail(
-              new ProductImportUnsupportedFormat({
-                messageKey: 'products.importUnsupportedFormat',
-              }),
-            );
-          }
 
           const result = makeEmptyProductImportResult();
           const rows = normalizeProductImportRecords(parsed.records, format);
           const duplicateConflictRows = findConflictingDuplicateSkuRows(rows, {
             includeReorderPoint: format === 'normalized-products',
           });
+          const derivedSkusByRow =
+            approvedPlan?.skuConflictPolicy === 'derive-sku'
+              ? deriveConflictingDuplicateSkuRows(rows, {
+                  includeReorderPoint: format === 'normalized-products',
+                })
+              : new Map<number, string>();
           const caches: ImportCaches = {
             categories: new Map<string, string>(),
             locations: new Map<string, string>(),
+            areas: new Map<string, string>(),
             products: new Map<string, ImportProductRow>(),
+            photoUrlsByProduct: new Map<string, Set<string>>(),
           };
 
-          for (const row of rows) {
+          for (const originalRow of rows) {
+            const derivedSku = derivedSkusByRow.get(originalRow.sourceRow);
+            const row = derivedSku
+              ? { ...originalRow, sku: derivedSku }
+              : originalRow;
             if (!row.sku || !row.name) {
               pushRowError(
                 result,
@@ -356,7 +628,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
               continue;
             }
 
-            if (duplicateConflictRows.has(row.sourceRow)) {
+            if (duplicateConflictRows.has(row.sourceRow) && !derivedSku) {
               pushRowError(
                 result,
                 row.sourceRow,
@@ -375,14 +647,17 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
               continue;
             }
 
-            yield* importRow(row, caches, result, expiryDate, userId).pipe(
+            yield* importRow(
+              row,
+              caches,
+              result,
+              expiryDate,
+              userId,
+              approvedPlan,
+            ).pipe(
               Effect.catchAll((error) =>
                 Effect.sync(() => {
-                  pushRowError(
-                    result,
-                    row.sourceRow,
-                    formatImportError(error),
-                  );
+                  pushRowError(result, row.sourceRow, formatImportError(error));
                 }),
               ),
             );
@@ -391,10 +666,39 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           return result;
         }).pipe(Effect.withSpan('ProductImportService.importFromCsvContent'));
 
+      const previewCsvContent = (
+        options: AnalyzeProductsFromCsvOptions,
+      ): Effect.Effect<
+        ProductImportPreviewDto,
+        ProductImportCsvParseFailed | ProductImportUnsupportedFormat
+      > =>
+        Effect.gen(function* () {
+          const { parsed, format } = yield* parseAndDetectFormat(options);
+          return makeProductImportPreview(parsed.records, format);
+        }).pipe(Effect.withSpan('ProductImportService.previewCsvContent'));
+
+      const proposeImportPlan = (
+        options: AnalyzeProductsFromCsvOptions,
+      ): Effect.Effect<
+        ProductImportAiProposalDto,
+        ProductImportCsvParseFailed | ProductImportUnsupportedFormat
+      > =>
+        Effect.gen(function* () {
+          const { parsed, format } = yield* parseAndDetectFormat(options);
+          const preview = makeProductImportPreview(parsed.records, format);
+          return yield* llmProposer.propose(preview);
+        }).pipe(Effect.withSpan('ProductImportService.proposeImportPlan'));
+
       return {
         importFromCsvContent,
+        previewCsvContent,
+        proposeImportPlan,
       };
     }),
-    dependencies: [ProductImportRepository.Default],
+    dependencies: [
+      ProductImportRepository.Default,
+      ProductImportLlmProposer.Default,
+      ProductImportPhotoImporter.Default,
+    ],
   },
 ) {}

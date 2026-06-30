@@ -14,6 +14,7 @@ import {
 } from '../effect/platform/tenancy/tenant-constants';
 import * as schema from '../effect/platform/db/schema';
 import * as relations from '../effect/platform/db/relations';
+import { storageLayer } from '../effect/platform/storage';
 import { ProductImportService } from '../effect/modules/products/import/service';
 import {
   ProductImportTypes,
@@ -155,6 +156,7 @@ function printSummary(result: Awaited<ReturnType<typeof runImport>>) {
   console.log('Summary:');
   console.log(`  - Categories created: ${result.categoriesCreated}`);
   console.log(`  - Locations created: ${result.locationsCreated}`);
+  console.log(`  - Areas created: ${result.areasCreated ?? 0}`);
   console.log(`  - Products created: ${result.productsCreated}`);
   console.log(`  - Products updated: ${result.productsUpdated}`);
   console.log(
@@ -163,6 +165,8 @@ function printSummary(result: Awaited<ReturnType<typeof runImport>>) {
   console.log(
     `  - Inventory records updated: ${result.inventoryRecordsUpdated}`,
   );
+  console.log(`  - Photos imported: ${result.photosCreated}`);
+  console.log(`  - Photos skipped: ${result.photosSkipped}`);
   console.log(`  - Rows skipped: ${result.rowsSkipped}`);
 
   if (result.errors.length > 0) {
@@ -189,6 +193,7 @@ async function runImport(options: CliOptions) {
             CurrentRequestContext,
             makeScriptRequestContext(options),
           ),
+          storageLayer,
         ),
       ),
     );

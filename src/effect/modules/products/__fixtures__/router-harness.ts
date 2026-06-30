@@ -54,6 +54,18 @@ export const makeProductsRouterHarness = (
             messageKey: 'products.importUnsupportedFormat',
           }),
         ),
+      previewCsvContent: () =>
+        Effect.fail(
+          new ProductImportUnsupportedFormat({
+            messageKey: 'products.importUnsupportedFormat',
+          }),
+        ),
+      proposeImportPlan: () =>
+        Effect.fail(
+          new ProductImportUnsupportedFormat({
+            messageKey: 'products.importUnsupportedFormat',
+          }),
+        ),
     },
   );
   const featuresLayer = makeRouterServiceLayer(FeaturesService, {

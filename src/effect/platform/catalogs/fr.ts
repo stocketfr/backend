@@ -129,8 +129,12 @@ export const frCatalog: Record<MessageKey, string> = {
   'products.deletedPermanent': 'Produit supprime definitivement.',
   'products.importAreaScopedInventoryConflict':
     "Impossible d'importer un stock au niveau emplacement lorsqu'un stock par zone existe deja pour ce produit et cet emplacement.",
+  'products.importAreaLocationRequired':
+    'Un emplacement par defaut est requis pour importer du stock par zone.',
   'products.importCsvParseFailed':
     "Impossible d'analyser le fichier CSV televerse.",
+  'products.importPlanParseFailed':
+    "Impossible d'analyser le plan d'import produits televerse.",
   'products.importReadUploadFailed':
     "La lecture du fichier d'import produits televerse a echoue.",
   'products.importUnsupportedFormat':
