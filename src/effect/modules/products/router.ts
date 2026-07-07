@@ -25,6 +25,7 @@ import {
 import { makeMessageResponse } from '../../platform/observability/messages';
 import { TasksService } from '../tasks/service';
 import { requireProductImportAccess } from './import/access';
+import { PRODUCT_IMPORT_PROGRESS_MESSAGES } from './import/progress';
 import { ProductImportService } from './import/service';
 import { ProductImportTypes } from './import/types';
 import {
@@ -166,7 +167,7 @@ export const productsRouter = HttpRouter.empty.pipe(
         },
         createdBy: userId,
         maxAttempts: 3,
-        progressMessage: 'Queued product import',
+        progressMessage: PRODUCT_IMPORT_PROGRESS_MESSAGES.queued,
       });
       return yield* respondJsonOk(task, {
         status: 202,

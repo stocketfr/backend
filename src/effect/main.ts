@@ -100,8 +100,6 @@ const superAdminApplicationLayer = SuperAdminService.Default.pipe(
 
 const shouldRunStartupMigrations = () =>
   !isProduction || process.env.RUN_BETTER_AUTH_MIGRATIONS === 'true';
-const shouldRunBackgroundTaskWorker = () =>
-  process.env.BACKGROUND_TASK_WORKER_ENABLED !== 'false';
 
 const runCommittedSqlMigrations = Effect.gen(function* () {
   const db = yield* DrizzleDatabase;
@@ -277,10 +275,8 @@ const startupLayer = Layer.mergeAll(
       yield* Effect.forkDaemon(
         Effect.repeat(notifications.runScan, notifications.scanInterval),
       );
-      if (shouldRunBackgroundTaskWorker()) {
-        const taskWorker = yield* TaskWorkerService;
-        yield* Effect.forkDaemon(taskWorker.runLoop);
-      }
+      const taskWorker = yield* TaskWorkerService;
+      yield* Effect.forkDaemon(taskWorker.runLoop);
     }),
   ).pipe(
     Layer.provide(

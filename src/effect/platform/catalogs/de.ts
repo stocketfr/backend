@@ -143,6 +143,11 @@ export const deCatalog: Record<MessageKey, string> = {
   'products.importCancelled': 'Der Produktimport wurde abgebrochen.',
   'products.importPlanParseFailed':
     'Der hochgeladene Produktimportplan konnte nicht geparst werden.',
+  'products.importProgressCompleted': 'Der Produktimport ist abgeschlossen.',
+  'products.importProgressQueued': 'Der Produktimport ist in der Warteschlange.',
+  'products.importProgressRowsProcessed':
+    '{processedRows} von {totalRows} Produktzeilen verarbeitet.',
+  'products.importProgressStarting': 'Der Produktimport startet.',
   'products.importReadUploadFailed':
     'Die hochgeladene Produktimportdatei konnte nicht gelesen werden.',
   'products.importUnsupportedFormat':

@@ -7,7 +7,11 @@ import {
   StorageObjectNotFound,
   type StorageError,
 } from '../../platform/storage';
-import { toPhotoResponseDto } from './photos.utils';
+import {
+  hashSourceUrl,
+  photoExtensionFromMime,
+  toPhotoResponseDto,
+} from './photos.utils';
 import {
   InvalidPhotoMimeType,
   PhotoFileNotFound,
@@ -17,6 +21,9 @@ import {
 } from './photos.errors';
 import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { PhotosRepository } from './repository';
+import type { PhotoUploadOptions, UploadedFile } from './types';
+
+export type { PhotoUploadOptions, UploadedFile } from './types';
 
 const ALLOWED_MIMETYPES = [
   'image/jpeg',
@@ -26,13 +33,6 @@ const ALLOWED_MIMETYPES = [
 ];
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
-
-const MIME_EXT_MAP: Record<string, string> = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-  'image/gif': '.gif',
-};
 
 const MAGIC_SIGNATURES: Record<string, { bytes: number[]; offset: number }[]> =
   {
@@ -54,29 +54,12 @@ function matchesMagicBytes(buffer: Buffer, declaredMime: string): boolean {
   );
 }
 
-export interface UploadedFile {
-  readonly originalname: string;
-  readonly mimetype: string;
-  readonly size: number;
-  readonly buffer: Buffer;
-}
-
-export interface PhotoUploadOptions {
-  readonly sourceUrl?: string | null;
-}
-
-const hashSourceUrl = (sourceUrl: string): string =>
-  crypto.createHash('sha256').update(sourceUrl.trim()).digest('hex');
-
 export class PhotosService extends Effect.Service<PhotosService>()(
   '@stocket/effect/photos/PhotosService',
   {
     effect: Effect.gen(function* () {
       const repository = yield* PhotosRepository;
       const storage = yield* StorageAdapter;
-
-      const getExtFromMime = (mimetype: string): string =>
-        MIME_EXT_MAP[mimetype] ?? '.bin';
 
       const findPhotoOrFail = (id: string) =>
         fromNullOr(
@@ -148,7 +131,7 @@ export class PhotosService extends Effect.Service<PhotosService>()(
           );
         }
 
-        const ext = getExtFromMime(file.mimetype);
+        const ext = photoExtensionFromMime(file.mimetype);
         const objectKey = `products/${productId}/photos/${crypto.randomUUID()}${ext}`;
         const sourceUrl = options.sourceUrl?.trim() || null;
         const sourceHash = sourceUrl ? hashSourceUrl(sourceUrl) : null;
@@ -176,7 +159,7 @@ export class PhotosService extends Effect.Service<PhotosService>()(
               storage_path: objectKey,
               display_order: existingCount,
               uploaded_by: userId ?? null,
-              source_url: sourceUrl,
+              source_url: null,
               source_hash: sourceHash,
             };
 

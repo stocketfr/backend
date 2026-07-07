@@ -6,6 +6,10 @@ import {
   type PaginationMeta,
 } from '@stocket/types/common';
 import type { ProductImportResultDto } from '@stocket/types/products';
+import type {
+  AnyMessageKey,
+  MessageArgs,
+} from '../../platform/observability/messages';
 
 export type TaskStatusDto =
   | 'queued'
@@ -30,6 +34,8 @@ export interface TaskProgressDto {
   readonly failed: number;
   readonly percent: number | null;
   readonly message: string | null;
+  readonly messageKey?: AnyMessageKey;
+  readonly messageArgs?: MessageArgs;
 }
 
 export type TaskResultDto = ProductImportResultDto | null;

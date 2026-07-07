@@ -12,6 +12,7 @@ import type {
 import type { Effect } from 'effect';
 import type { areas, categories, locations } from '../../../platform/db/schema';
 import type { ProductRow } from '../products.utils';
+import type { ProductImportProgressMessageKey } from './progress';
 
 export type {
   ProductImportAiProposalDto,
@@ -103,7 +104,7 @@ export interface ProductImportProgress {
   readonly total: number;
   readonly processed: number;
   readonly failed: number;
-  readonly message?: string | null;
+  readonly message?: ProductImportProgressMessageKey | null;
 }
 
 export interface ProductImportExecutionHooks {

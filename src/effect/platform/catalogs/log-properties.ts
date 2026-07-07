@@ -11,10 +11,12 @@ export interface LogProperties {
   readonly maxSize: number;
   readonly method: string;
   readonly path: string;
+  readonly processedRows: number;
   readonly requestId: string;
   readonly statusCode: number;
   readonly template: string;
   readonly tenantId: string;
   readonly to: string;
+  readonly totalRows: number;
   readonly userAgent: string;
 }

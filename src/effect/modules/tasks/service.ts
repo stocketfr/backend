@@ -3,8 +3,14 @@ import { toPaginatedResponse } from '@stocket/types/common';
 import { fromNullOr } from '../../platform/effect/from-null-or';
 import { TasksRepository } from './repository';
 import { TaskRegistry } from './registry';
-import { TaskNotFound } from './tasks.errors';
-import type { EnqueueTaskParams, TaskQueryDto, TaskTypeDto } from './types';
+import { TaskNotFound, TaskTerminalConflict } from './tasks.errors';
+import type {
+  EnqueueTaskParams,
+  TaskQueryDto,
+  TaskStatusDto,
+  TaskTypeDto,
+} from './types';
+import { TerminalTaskStatuses } from './types';
 import { toTaskResponseDto } from './utils';
 
 export class TasksService extends Effect.Service<TasksService>()(
@@ -55,10 +61,25 @@ export class TasksService extends Effect.Service<TasksService>()(
               new TaskNotFound({ taskId: id, messageKey: 'tasks.notFound' }),
           );
           yield* registry.authorize(task.type as TaskTypeDto, 'cancel');
+          if (
+            (TerminalTaskStatuses as readonly TaskStatusDto[]).includes(
+              task.status,
+            )
+          ) {
+            return yield* Effect.fail(
+              new TaskTerminalConflict({
+                taskId: id,
+                messageKey: 'tasks.terminalConflict',
+              }),
+            );
+          }
           const canceled = yield* fromNullOr(
             repository.cancel(id),
             () =>
-              new TaskNotFound({ taskId: id, messageKey: 'tasks.notFound' }),
+              new TaskTerminalConflict({
+                taskId: id,
+                messageKey: 'tasks.terminalConflict',
+              }),
           );
           return toTaskResponseDto(canceled);
         }).pipe(Effect.withSpan('TasksService.cancel', { attributes: { id } }));

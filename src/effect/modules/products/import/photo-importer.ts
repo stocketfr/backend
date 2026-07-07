@@ -1,26 +1,14 @@
 import { Effect } from 'effect';
 import type { PhotoResponseDto } from '@stocket/types/photos';
 import { PhotosService, type UploadedFile } from '../../photos/service';
+import { makeSortlyPhotoFilename } from '../../photos/photos.utils';
 import { isSupportedSortlyPhotoUrl } from './utils';
 
 const MAX_REMOTE_PHOTO_SIZE = 10 * 1024 * 1024;
 const PHOTO_FETCH_TIMEOUT_MS = 15_000;
 
-const MIME_EXT_MAP: Record<string, string> = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-  'image/gif': '.gif',
-};
-
 const normalizeContentType = (value: string | null): string =>
   value?.split(';')[0]?.trim().toLowerCase() ?? '';
-
-const makeSortlyPhotoFilename = (
-  photoIndex: number,
-  mimetype: string,
-): string =>
-  `sortly-photo-${photoIndex + 1}${MIME_EXT_MAP[mimetype] ?? '.bin'}`;
 
 const toError = (message: string, cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(message, { cause });

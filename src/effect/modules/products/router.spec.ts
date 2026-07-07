@@ -34,6 +34,7 @@ import {
   SkuAlreadyExists,
 } from './products.errors';
 import { makeProductsRouterHarness } from './__fixtures__/router-harness';
+import { PRODUCT_IMPORT_PROGRESS_MESSAGES } from './import/progress';
 import { ProductsService } from './service';
 
 const mockMultipart = vi.hoisted(() => vi.fn());
@@ -158,7 +159,8 @@ const taskResponse = () => ({
     processed: 0,
     failed: 0,
     percent: null,
-    message: 'Queued product import',
+    message: PRODUCT_IMPORT_PROGRESS_MESSAGES.queued,
+    messageKey: PRODUCT_IMPORT_PROGRESS_MESSAGES.queued,
   },
   cancel_requested_at: null,
   started_at: null,
@@ -615,6 +617,10 @@ describe('productsRouter', () => {
         id: TASK_ID,
         type: 'product-import',
         status: 'queued',
+        progress: {
+          message: 'Queued product import.',
+          messageKey: PRODUCT_IMPORT_PROGRESS_MESSAGES.queued,
+        },
       });
       expect(mockReadFile).toHaveBeenCalledWith('/tmp/products-import.csv');
       expect(importFromCsvContent).not.toHaveBeenCalled();
@@ -627,7 +633,7 @@ describe('productsRouter', () => {
         },
         createdBy: '00000000-0000-4000-a000-000000000001',
         maxAttempts: 3,
-        progressMessage: 'Queued product import',
+        progressMessage: PRODUCT_IMPORT_PROGRESS_MESSAGES.queued,
       });
     });
 
@@ -680,7 +686,7 @@ describe('productsRouter', () => {
         },
         createdBy: '00000000-0000-4000-a000-000000000001',
         maxAttempts: 3,
-        progressMessage: 'Queued product import',
+        progressMessage: PRODUCT_IMPORT_PROGRESS_MESSAGES.queued,
       });
     });
 

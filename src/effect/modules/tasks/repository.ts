@@ -84,6 +84,8 @@ const leaseInterval = (leaseMs: number) =>
 const retryInterval = (retryDelayMs: number) =>
   sql`${Math.ceil(retryDelayMs / 1000)} * interval '1 second'`;
 
+const activeLease = () => sql`${backgroundTasks.lease_expires_at} > now()`;
+
 export class TasksRepository extends Effect.Service<TasksRepository>()(
   '@stocket/effect/tasks/TasksRepository',
   {
@@ -220,6 +222,7 @@ export class TasksRepository extends Effect.Service<TasksRepository>()(
                 updated_at = now()
               WHERE tenant_id = ${tenantId}
                 AND id = ${id}
+                AND status IN ('queued', 'running')
               RETURNING ${publicTaskReturningSql}
             `);
             return rowsOf<TaskRow>(result)[0] ?? null;
@@ -274,6 +277,7 @@ export class TasksRepository extends Effect.Service<TasksRepository>()(
                 eq(backgroundTasks.id, id),
                 eq(backgroundTasks.lease_owner, workerId),
                 eq(backgroundTasks.status, 'running'),
+                activeLease(),
               ),
             )
             .returning({ id: backgroundTasks.id });
@@ -308,6 +312,7 @@ export class TasksRepository extends Effect.Service<TasksRepository>()(
                 eq(backgroundTasks.id, id),
                 eq(backgroundTasks.lease_owner, workerId),
                 eq(backgroundTasks.status, 'running'),
+                activeLease(),
               ),
             )
             .returning({ id: backgroundTasks.id });
@@ -329,10 +334,11 @@ export class TasksRepository extends Effect.Service<TasksRepository>()(
                 eq(backgroundTasks.id, id),
                 eq(backgroundTasks.lease_owner, workerId),
                 eq(backgroundTasks.status, 'running'),
+                activeLease(),
               ),
             )
             .limit(1);
-          return rows[0]?.cancel_requested_at !== null;
+          return rows[0]?.cancel_requested_at != null;
         });
 
       const complete = (
@@ -358,6 +364,7 @@ export class TasksRepository extends Effect.Service<TasksRepository>()(
                 eq(backgroundTasks.id, id),
                 eq(backgroundTasks.lease_owner, workerId),
                 eq(backgroundTasks.status, 'running'),
+                activeLease(),
               ),
             )
             .returning({ id: backgroundTasks.id });
@@ -387,6 +394,7 @@ export class TasksRepository extends Effect.Service<TasksRepository>()(
                 eq(backgroundTasks.id, id),
                 eq(backgroundTasks.lease_owner, workerId),
                 eq(backgroundTasks.status, 'running'),
+                activeLease(),
               ),
             )
             .returning({ id: backgroundTasks.id });
@@ -405,16 +413,21 @@ export class TasksRepository extends Effect.Service<TasksRepository>()(
             UPDATE background_tasks
             SET
               status = CASE
+                WHEN cancel_requested_at IS NOT NULL THEN 'canceled'
                 WHEN ${retryable} AND attempt_count < max_attempts THEN 'queued'
                 ELSE 'failed'
               END,
               run_after = CASE
-                WHEN ${retryable} AND attempt_count < max_attempts
+                WHEN cancel_requested_at IS NULL
+                  AND ${retryable}
+                  AND attempt_count < max_attempts
                   THEN now() + (${retryInterval(retryDelayMs)})
                 ELSE run_after
               END,
               payload = CASE
-                WHEN ${retryable} AND attempt_count < max_attempts THEN payload
+                WHEN cancel_requested_at IS NULL
+                  AND ${retryable}
+                  AND attempt_count < max_attempts THEN payload
                 ELSE NULL
               END,
               result = NULL,
@@ -422,13 +435,16 @@ export class TasksRepository extends Effect.Service<TasksRepository>()(
               lease_owner = NULL,
               lease_expires_at = NULL,
               completed_at = CASE
-                WHEN ${retryable} AND attempt_count < max_attempts THEN completed_at
+                WHEN cancel_requested_at IS NULL
+                  AND ${retryable}
+                  AND attempt_count < max_attempts THEN completed_at
                 ELSE now()
               END,
               updated_at = now()
             WHERE id = ${id}
               AND lease_owner = ${workerId}
               AND status = 'running'
+              AND lease_expires_at > now()
             RETURNING id
           `);
           return rowsOf<{ id: string }>(result).length > 0;

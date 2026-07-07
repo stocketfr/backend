@@ -11,6 +11,7 @@ import type {
   NormalizedProductImportRow,
   ProductImportAiProposalDto,
   ProductImportApprovedPlanDto,
+  ProductImportProgress,
   ProductImportLocationMappingDto,
   ProductImportPreviewDto,
   ProductImportResultDto,
@@ -44,6 +45,7 @@ import {
 } from '../products.errors';
 import { ProductImportLlmProposer } from './llm-proposer';
 import { ProductImportPhotoImporter } from './photo-importer';
+import { PRODUCT_IMPORT_PROGRESS_MESSAGES } from './progress';
 import { ProductImportRepository } from './repository';
 
 export class ProductImportService extends Effect.Service<ProductImportService>()(
@@ -609,7 +611,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           const rows = normalizeProductImportRecords(parsed.records, format);
           let processedRows = 0;
           let failedRows = 0;
-          const reportProgress = (message?: string | null) =>
+          const reportProgress = (message?: ProductImportProgress['message']) =>
             hooks?.onProgress
               ? hooks
                   .onProgress({
@@ -635,7 +637,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
               })
             : Effect.void;
 
-          yield* reportProgress('Starting product import');
+          yield* reportProgress(PRODUCT_IMPORT_PROGRESS_MESSAGES.starting);
           const duplicateConflictRows = findConflictingDuplicateSkuRows(rows, {
             includeReorderPoint: format === 'normalized-products',
           });
@@ -668,7 +670,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
               processedRows++;
               failedRows++;
               yield* reportProgress(
-                `Processed row ${processedRows} of ${rows.length}`,
+                PRODUCT_IMPORT_PROGRESS_MESSAGES.rowsProcessed,
               );
               continue;
             }
@@ -682,7 +684,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
               processedRows++;
               failedRows++;
               yield* reportProgress(
-                `Processed row ${processedRows} of ${rows.length}`,
+                PRODUCT_IMPORT_PROGRESS_MESSAGES.rowsProcessed,
               );
               continue;
             }
@@ -697,7 +699,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
               processedRows++;
               failedRows++;
               yield* reportProgress(
-                `Processed row ${processedRows} of ${rows.length}`,
+                PRODUCT_IMPORT_PROGRESS_MESSAGES.rowsProcessed,
               );
               continue;
             }
@@ -728,11 +730,11 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
               failedRows++;
             }
             yield* reportProgress(
-              `Processed row ${processedRows} of ${rows.length}`,
+              PRODUCT_IMPORT_PROGRESS_MESSAGES.rowsProcessed,
             );
           }
 
-          yield* reportProgress('Product import completed');
+          yield* reportProgress(PRODUCT_IMPORT_PROGRESS_MESSAGES.completed);
           return result;
         }).pipe(Effect.withSpan('ProductImportService.importFromCsvContent'));
 

@@ -3,7 +3,11 @@ import { eq, asc, sql, and } from 'drizzle-orm';
 import { makeTryAsync } from '../../platform/effect/try-async';
 import { TenantQuery } from '../../platform/tenancy/tenant-query';
 import { DrizzleDatabase } from '../../platform/db/drizzle';
-import { photos, products } from '../../platform/db/schema';
+import { photos } from '../../platform/db/schema';
+import {
+  assertProductBelongsToTenant,
+  productBelongsToTenantSql,
+} from '../products/ownership';
 import { PhotosInfrastructureError } from './photos.errors';
 
 const tryAsync = makeTryAsync(
@@ -22,22 +26,7 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
       const db = yield* DrizzleDatabase;
       const tenantQuery = yield* TenantQuery;
       const tenantOwnsProduct = (tenantId: string) =>
-        sql`${photos.product_id} IN (SELECT id FROM products WHERE tenant_id = ${tenantId})`;
-      const ensureTenantOwnsProduct = async (
-        tenantId: string,
-        productId: string,
-      ) => {
-        const productRows = await db
-          .select({ id: products.id })
-          .from(products)
-          .where(
-            and(eq(products.tenant_id, tenantId), eq(products.id, productId)),
-          )
-          .limit(1);
-        if (productRows.length === 0) {
-          throw new Error('Photo product does not belong to tenant');
-        }
-      };
+        productBelongsToTenantSql(photos.product_id, tenantId);
 
       const findByProductId = (productId: string) =>
         Effect.gen(function* () {
@@ -92,7 +81,7 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
         Effect.gen(function* () {
           const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('create photo', async () => {
-            await ensureTenantOwnsProduct(tenantId, data.product_id);
+            await assertProductBelongsToTenant(db, tenantId, data.product_id);
 
             const rows = await db.insert(photos).values(data).returning();
             return rows[0]!;
@@ -103,7 +92,7 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
         Effect.gen(function* () {
           const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('create idempotent photo', async () => {
-            await ensureTenantOwnsProduct(tenantId, data.product_id);
+            await assertProductBelongsToTenant(db, tenantId, data.product_id);
             const rows = await db
               .insert(photos)
               .values(data)

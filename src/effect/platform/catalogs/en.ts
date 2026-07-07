@@ -117,6 +117,11 @@ export const enCatalog = {
   'products.importCancelled': 'Product import was canceled.',
   'products.importPlanParseFailed':
     'Could not parse the uploaded product import plan.',
+  'products.importProgressCompleted': 'Product import completed.',
+  'products.importProgressQueued': 'Queued product import.',
+  'products.importProgressRowsProcessed':
+    'Processed {processedRows} of {totalRows} product rows.',
+  'products.importProgressStarting': 'Starting product import.',
   'products.importReadUploadFailed':
     'Failed to read the uploaded product import file.',
   'products.importUnsupportedFormat': 'Unsupported product import CSV headers.',

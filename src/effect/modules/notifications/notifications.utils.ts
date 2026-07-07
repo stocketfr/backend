@@ -10,7 +10,13 @@ import {
 
 export const eventCategory = (
   kind: NotificationEventKind,
-): NotificationCategory => EVENT_CATEGORY[kind]!;
+): NotificationCategory => {
+  const category = EVENT_CATEGORY[kind];
+  if (category === undefined) {
+    throw new Error(`Unsupported notification event kind: ${kind}`);
+  }
+  return category;
+};
 
 // Stable per (event identity, recipient, day) so a recurring scan does not
 // re-alert the same condition to the same person within the window.
