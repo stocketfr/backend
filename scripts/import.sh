@@ -4,11 +4,9 @@ set -eu
 usage() {
   cat <<'USAGE' >&2
 Usage:
-  sh ./scripts/import.sh sortly <sortly-export.csv>
   sh ./scripts/import.sh products <normalized-products.csv>
 
 Import types:
-  sortly    Import Sortly Item rows from a raw Sortly export; folder rows are ignored
   products  Import an already-normalized product CSV
 USAGE
 }
@@ -22,22 +20,13 @@ kind=$1
 shift
 
 case "$kind" in
-  sortly)
-    if [ "$#" -ne 1 ]; then
-      usage
-      exit 1
-    fi
-
-    infisical run --env=dev -- tsx src/scripts/import-products.ts --import-type sortly-items "$1"
-    ;;
-
   products)
     if [ "$#" -ne 1 ]; then
       usage
       exit 1
     fi
 
-    infisical run --env=dev -- tsx src/scripts/import-products.ts --import-type normalized-products "$1"
+    infisical run --env=dev -- tsx src/scripts/import-products.ts "$1"
     ;;
 
   -h|--help|help)
