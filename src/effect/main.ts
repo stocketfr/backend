@@ -49,6 +49,7 @@ import {
   type StorageConfigurationError,
   storageLayer,
 } from './platform/storage';
+import { drizzleTransactionLayer } from './platform/transaction';
 import { TracingLive } from './platform/observability/tracing';
 import { readRequiredEnv } from '@stocket/types/common';
 
@@ -70,6 +71,7 @@ if (!Number.isInteger(port) || port <= 0) {
 
 const platformLayer = Layer.mergeAll(
   drizzleLayer,
+  drizzleTransactionLayer.pipe(Layer.provide(drizzleLayer)),
   betterAuthLayer,
   storageLayer,
 );

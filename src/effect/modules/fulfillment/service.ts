@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Layer, Option } from 'effect';
+import { Effect, Layer } from 'effect';
 import type {
   OrderFulfillmentView,
   PackInput,
@@ -7,8 +7,7 @@ import type {
 import { fromNullOr } from '../../platform/effect/from-null-or';
 import { OrderStatus } from '@stocket/types/orders';
 import { StockMovementReason } from '@stocket/types/stock-movements';
-import { DrizzleDatabase, type DrizzleDb } from '../../platform/db/drizzle';
-import { CurrentRequestContext } from '../../platform/http/request-context';
+import { TransactionRunner } from '../../platform/transaction';
 import { InventoryRepository } from '../inventory/repository';
 import { OrderItemsRepository, OrdersRepository } from '../orders/repository';
 import type { Order } from '../orders/orders.utils';
@@ -29,28 +28,6 @@ const isFulfillmentError = (cause: unknown): cause is FulfillmentError =>
   cause instanceof FulfillmentNotImplemented ||
   cause instanceof FulfillmentInfrastructureError;
 
-// Thrown only for defects/interrupts inside the pick transaction. A typed
-// failure (`Cause.failureOption` is `Some`) is rethrown as-is so the outer
-// `tryPromise` catch can pattern-match it back to a FulfillmentError. The
-// pretty-printed cause keeps stack/interrupt info that `Cause.squash` would drop.
-class FulfillmentTransactionDefect extends Error {
-  constructor(public readonly cause: Cause.Cause<unknown>) {
-    super(Cause.pretty(cause));
-    this.name = 'FulfillmentTransactionDefect';
-  }
-}
-
-const runEffectAsPromise = async <A, E>(
-  effect: Effect.Effect<A, E, never>,
-): Promise<A> => {
-  const exit = await Effect.runPromiseExit(effect);
-  if (Exit.isSuccess(exit)) return exit.value;
-
-  const failure = Cause.failureOption(exit.cause);
-  if (Option.isSome(failure)) throw failure.value;
-  throw new FulfillmentTransactionDefect(exit.cause);
-};
-
 export class FulfillmentService extends Effect.Service<FulfillmentService>()(
   '@stocket/effect/fulfillment/FulfillmentService',
   {
@@ -59,10 +36,7 @@ export class FulfillmentService extends Effect.Service<FulfillmentService>()(
       const orderItemsRepository = yield* OrderItemsRepository;
       const inventoryRepository = yield* InventoryRepository;
       const stockMovementsRepository = yield* StockMovementsRepository;
-      // Pull DrizzleDatabase at construction time so a missing platform layer
-      // fails loudly during wiring rather than silently degrading pick() to a
-      // non-transactional code path at runtime.
-      const db = yield* DrizzleDatabase;
+      const transactions = yield* TransactionRunner;
 
       const wrapInfrastructureError = (action: string) => (cause: unknown) =>
         new FulfillmentInfrastructureError({
@@ -105,67 +79,41 @@ export class FulfillmentService extends Effect.Service<FulfillmentService>()(
         })),
       });
 
-      const runPickAtomically = <A, E>(
+      const runPickAtomically = <A>(
         effect: (repositories: {
           readonly ordersRepository: typeof ordersRepository;
           readonly orderItemsRepository: typeof orderItemsRepository;
           readonly inventoryRepository: typeof inventoryRepository;
           readonly stockMovementsRepository: typeof stockMovementsRepository;
-        }) => Effect.Effect<A, E, never>,
-      ) =>
-        Effect.gen(function* () {
-          const requestContext = yield* Effect.serviceOption(
-            CurrentRequestContext,
-          );
+        }) => Effect.Effect<A, FulfillmentError, never>,
+      ) => {
+        const txRepositoriesLayer = Layer.mergeAll(
+          OrdersRepository.Default,
+          OrderItemsRepository.Default,
+          InventoryRepository.Default,
+          StockMovementsRepository.Default,
+        );
 
-          return yield* Effect.tryPromise({
-            try: () =>
-              db.transaction(async (tx) => {
-                // drizzle's PgTransaction is structurally compatible with
-                // NodePgDatabase for all query methods we use, but the two are
-                // nominally distinct types — there is no clean public way to
-                // express "either".
-                const txDb = tx as unknown as DrizzleDb;
-                let txPlatformLayer: Layer.Layer<DrizzleDb> = Layer.succeed(
-                  DrizzleDatabase,
-                  txDb,
-                );
-                if (Option.isSome(requestContext)) {
-                  txPlatformLayer = Layer.merge(
-                    txPlatformLayer,
-                    Layer.succeed(CurrentRequestContext, requestContext.value),
-                  );
-                }
-                const txRepositoriesLayer = Layer.mergeAll(
-                  OrdersRepository.Default,
-                  OrderItemsRepository.Default,
-                  InventoryRepository.Default,
-                  StockMovementsRepository.Default,
-                ).pipe(Layer.provide(txPlatformLayer));
+        const txEffect = Effect.gen(function* () {
+          const txOrdersRepository = yield* OrdersRepository;
+          const txOrderItemsRepository = yield* OrderItemsRepository;
+          const txInventoryRepository = yield* InventoryRepository;
+          const txStockMovementsRepository = yield* StockMovementsRepository;
 
-                const txEffect = Effect.gen(function* () {
-                  const txOrdersRepository = yield* OrdersRepository;
-                  const txOrderItemsRepository = yield* OrderItemsRepository;
-                  const txInventoryRepository = yield* InventoryRepository;
-                  const txStockMovementsRepository =
-                    yield* StockMovementsRepository;
-
-                  return yield* effect({
-                    ordersRepository: txOrdersRepository,
-                    orderItemsRepository: txOrderItemsRepository,
-                    inventoryRepository: txInventoryRepository,
-                    stockMovementsRepository: txStockMovementsRepository,
-                  });
-                }).pipe(Effect.provide(txRepositoriesLayer));
-
-                return runEffectAsPromise(txEffect);
-              }),
-            catch: (cause) =>
-              isFulfillmentError(cause)
-                ? cause
-                : wrapInfrastructureError('pick transaction')(cause),
+          return yield* effect({
+            ordersRepository: txOrdersRepository,
+            orderItemsRepository: txOrderItemsRepository,
+            inventoryRepository: txInventoryRepository,
+            stockMovementsRepository: txStockMovementsRepository,
           });
         });
+
+        return transactions.run(txEffect, {
+          layer: txRepositoriesLayer,
+          isExpectedError: isFulfillmentError,
+          mapUnexpectedError: wrapInfrastructureError('pick transaction'),
+        });
+      };
 
       const confirm = (orderId: string, actorId: string) =>
         Effect.gen(function* () {

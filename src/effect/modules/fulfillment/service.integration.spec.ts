@@ -5,8 +5,8 @@ import {
   getTestDb,
   closeTestDb,
   truncateAll,
-  makeTestDrizzleLayer,
 } from '../../testing/integration-layer';
+import { testPlatformLayer } from '../../testing/test-harness';
 import {
   seedCategory,
   seedProduct,
@@ -27,8 +27,7 @@ let TestLayer: Layer.Layer<FulfillmentService>;
 
 beforeAll(() => {
   db = getTestDb();
-  const dbLayer = makeTestDrizzleLayer();
-  TestLayer = FulfillmentService.Default.pipe(Layer.provide(dbLayer));
+  TestLayer = FulfillmentService.Default.pipe(Layer.provide(testPlatformLayer));
 });
 
 afterAll(() => closeTestDb());

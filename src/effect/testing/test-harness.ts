@@ -2,8 +2,9 @@
  * Shared test harness for the Effect-TS backend.
  *
  * Exposes:
- *   - `testPlatformLayer`        — Drizzle + BetterAuth wired for tests, mirroring
- *                                  `platformLayer` in `src/effect/main.ts`.
+ *   - `testPlatformLayer`        — Drizzle + transactions + BetterAuth wired
+ *                                  for tests, mirroring `platformLayer` in
+ *                                  `src/effect/main.ts`.
  *   - `provideTestLayer(...)`    — convenience: `Effect.provide(Layer.mergeAll(...))`
  *                                  with the test platform pre-merged.
  *   - `runTest` / `runTestFailure` — `Effect.runPromise` wrappers that always
@@ -21,6 +22,7 @@
 import { Effect, Layer } from 'effect';
 import { DrizzleDatabase } from '../platform/db/drizzle';
 import { BetterAuth, BetterAuthHeaders } from '../platform/auth/better-auth';
+import { drizzleTransactionLayer } from '../platform/transaction';
 import {
   closeTestDb,
   getTestDb,
@@ -69,21 +71,23 @@ const betterAuthHeadersLayer = Layer.succeed(
 );
 
 /**
- * Mirrors `platformLayer` in `main.ts` (Drizzle + BetterAuth), but with
- * test-appropriate implementations. Use this with
+ * Mirrors `platformLayer` in `main.ts` (Drizzle + transactions + BetterAuth),
+ * but with test-appropriate implementations. Use this with
  * `YourService.Default.pipe(Layer.provide(testPlatformLayer))` for integration
  * tests that hit the real DB, or compose it with further mock layers.
  *
  * The Better Auth layer here is the **stubbed** one from
  * `./better-auth-test` — no network calls, no real session DB.
  */
-export const testPlatformLayer = Layer.suspend(() =>
-  Layer.mergeAll(
-    makeTestDrizzleLayer(),
+export const testPlatformLayer = Layer.suspend(() => {
+  const testDrizzleLayer = makeTestDrizzleLayer();
+  return Layer.mergeAll(
+    testDrizzleLayer,
+    drizzleTransactionLayer.pipe(Layer.provide(testDrizzleLayer)),
     makeBetterAuthTestLayer(),
     betterAuthHeadersLayer,
-  ),
-);
+  );
+});
 
 /**
  * Helper: provide the test platform + any additional layers to an Effect.

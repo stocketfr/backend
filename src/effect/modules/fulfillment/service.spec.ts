@@ -1,18 +1,15 @@
 import { type Mock } from 'vitest';
 import { Effect, Layer } from 'effect';
 import { OrderStatus } from '@stocket/types/orders';
-import { DrizzleDatabase } from '../../platform/db/drizzle';
+import { TransactionRunner } from '../../platform/transaction';
 import { InventoryRepository } from '../inventory/repository';
 import { OrderItemsRepository, OrdersRepository } from '../orders/repository';
 import { StockMovementsRepository } from '../stock-movements/repository';
 import { FulfillmentService } from './service';
 
-// Unit-test stub: the service constructor pulls DrizzleDatabase to wire the
-// pick transaction, but the unit specs deliberately exercise paths that never
-// reach `db.transaction` (status-rejection, pack/ship not-implemented, confirm
-// via mocked repositories). Providing a typed-but-unused stub keeps the unit
-// surface free of a real DB while still satisfying the requirement statically.
-const stubDrizzleLayer = Layer.succeed(DrizzleDatabase, {} as never);
+const stubTransactionLayer = Layer.succeed(TransactionRunner, {
+  run: () => Effect.die('Unexpected fulfillment transaction in unit spec'),
+} satisfies TransactionRunner);
 
 const makeOrderItemEntity = (overrides: Record<string, any> = {}) => ({
   id: 'item-1',
@@ -99,7 +96,7 @@ const buildService = (
               Layer.succeed(OrderItemsRepository, orderItemsRepository),
               Layer.succeed(InventoryRepository, inventoryRepository),
               Layer.succeed(StockMovementsRepository, stockMovementsRepository),
-              stubDrizzleLayer,
+              stubTransactionLayer,
             ),
           ),
         ),
