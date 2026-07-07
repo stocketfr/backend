@@ -708,6 +708,46 @@ describe('productsRouter', () => {
       });
       expect(importFromCsvContent).not.toHaveBeenCalled();
     });
+
+    it('returns 400 when import plan mapping fields are malformed', async () => {
+      const malformedPlans = [
+        { locationMappings: 'oops' },
+        { categoryMappings: [{ sourcePath: 'Spa' }] },
+        { supplierMappings: [{ supplierName: 'Supplier' }] },
+      ];
+
+      for (const malformedPlan of malformedPlans) {
+        mockMultipart.mockReturnValue(
+          Effect.succeed({
+            file: makePersistedFile(),
+            import_type: 'auto',
+            plan: JSON.stringify(malformedPlan),
+          }),
+        );
+        const importFromCsvContent = vi.fn(() =>
+          Effect.succeed(importResult()),
+        );
+        const { handler } = makeProductsRouterHarness({
+          service: {},
+          importService: { importFromCsvContent },
+          permissions: writeAll,
+        });
+
+        const response = await handler(
+          new Request('http://localhost/products/import', {
+            method: 'POST',
+            body: 'ignored',
+          }),
+        );
+
+        expect(response.status).toBe(400);
+        await expect(response.json()).resolves.toMatchObject({
+          statusCode: 400,
+          messageKey: 'products.importPlanParseFailed',
+        });
+        expect(importFromCsvContent).not.toHaveBeenCalled();
+      }
+    });
   });
 
   // -------------------------------------------------------------------

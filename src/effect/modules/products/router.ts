@@ -57,8 +57,39 @@ const ProductImportUploadSchema = Schema.Struct({
   plan: Schema.optional(Schema.String),
 });
 
-const isProductImportPlan = (value: unknown): value is ProductImportPlan =>
+const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const hasOptionalMappingArray = (
+  value: Record<string, unknown>,
+  key: string,
+  itemGuard: (item: unknown) => boolean,
+): boolean => {
+  const mappingValue = value[key];
+  return (
+    mappingValue === undefined ||
+    (Array.isArray(mappingValue) && mappingValue.every(itemGuard))
+  );
+};
+
+const isCategoryMapping = (value: unknown): boolean =>
+  isRecord(value) &&
+  typeof value.sourcePath === 'string' &&
+  typeof value.targetPath === 'string';
+
+const isLocationMapping = (value: unknown): boolean =>
+  isRecord(value) && typeof value.sourceLocation === 'string';
+
+const isSupplierMapping = (value: unknown): boolean =>
+  isRecord(value) &&
+  typeof value.sourcePattern === 'string' &&
+  typeof value.supplierName === 'string';
+
+const isProductImportPlan = (value: unknown): value is ProductImportPlan =>
+  isRecord(value) &&
+  hasOptionalMappingArray(value, 'categoryMappings', isCategoryMapping) &&
+  hasOptionalMappingArray(value, 'locationMappings', isLocationMapping) &&
+  hasOptionalMappingArray(value, 'supplierMappings', isSupplierMapping);
 
 const parseProductImportPlan = (plan: string | undefined) =>
   Effect.gen(function* () {
