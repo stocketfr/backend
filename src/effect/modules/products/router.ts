@@ -85,13 +85,30 @@ const isCategoryMapping = (value: unknown): boolean =>
   typeof value.sourcePath === 'string' &&
   typeof value.targetPath === 'string';
 
-const isLocationMapping = (value: unknown): boolean =>
-  isRecord(value) &&
-  typeof value.sourceLocation === 'string' &&
-  typeof value.action === 'string' &&
-  hasOptionalString(value, 'targetLocationId') &&
-  hasOptionalString(value, 'targetLocationName') &&
-  hasOptionalString(value, 'areaPath');
+const isLocationMappingAction = (value: unknown): boolean =>
+  value === 'use-existing' ||
+  value === 'create-location' ||
+  value === 'create-area' ||
+  value === 'ignore';
+
+const hasRequiredLocationAreaPath = (
+  value: Record<string, unknown>,
+): boolean =>
+  value.action !== 'create-area' ||
+  (typeof value.areaPath === 'string' && value.areaPath.trim() !== '');
+
+const isLocationMapping = (value: unknown): boolean => {
+  if (!isRecord(value)) return false;
+
+  return (
+    typeof value.sourceLocation === 'string' &&
+    isLocationMappingAction(value.action) &&
+    hasOptionalString(value, 'targetLocationId') &&
+    hasOptionalString(value, 'targetLocationName') &&
+    hasOptionalString(value, 'areaPath') &&
+    hasRequiredLocationAreaPath(value)
+  );
+};
 
 const isSupplierMapping = (value: unknown): boolean =>
   isRecord(value) &&

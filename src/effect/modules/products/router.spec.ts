@@ -721,6 +721,16 @@ describe('productsRouter', () => {
             },
           ],
         },
+        {
+          locationMappings: [
+            { sourceLocation: 'Bay I - Shelf 3', action: 'move' },
+          ],
+        },
+        {
+          locationMappings: [
+            { sourceLocation: 'Bay I - Shelf 3', action: 'create-area' },
+          ],
+        },
         { categoryMappings: [{ sourcePath: 'Spa' }] },
         { supplierMappings: [{ supplierName: 'Supplier' }] },
       ];
