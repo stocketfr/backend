@@ -171,6 +171,9 @@ export const deCatalog: Record<MessageKey, string> = {
   'superadmin.reservedTenantSlug': 'Der Tenant-Slug ist reserviert.',
   'superadmin.tenantHostnameAlreadyExists':
     'Ein Tenant mit diesem Hostnamen existiert bereits.',
+  'superadmin.tenantImportInvalid':
+    'Der Tenant-Import ist fehlgeschlagen: {details}',
+  'superadmin.tenantNotFound': 'Tenant nicht gefunden.',
   'superadmin.tenantSlugAlreadyExists':
     'Ein Tenant mit diesem Slug existiert bereits.',
   'stockMovements.destinationLocationNotFound': 'Zielstandort nicht gefunden.',

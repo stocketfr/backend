@@ -6,8 +6,10 @@ import {
 } from '@stocket/types/features';
 import { BetterAuth, BetterAuthHeaders } from '../../platform/auth/better-auth';
 import { FeaturesService } from '../features/service';
+import { ProductImportService } from '../products/import/service';
 import { UsersRepository } from '../users/repository';
 import { SuperAdminRepository } from './repository';
+import { TenantNotFound } from './superadmin.errors';
 import { SuperAdminService } from './service';
 
 vi.mock('../../platform/auth/better-auth', async () => {
@@ -57,6 +59,15 @@ describe('Effect SuperAdminService', () => {
     createTenantWithAdmin: vi
       .fn()
       .mockReturnValue(Effect.succeed(createdTenant)),
+    deleteTenant: vi.fn().mockReturnValue(
+      Effect.succeed({
+        id: createdTenant.tenant.id,
+        name: createdTenant.tenant.name,
+        slug: createdTenant.tenant.slug,
+        primaryHostname: createdTenant.tenant.hostname,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      }),
+    ),
     recordPlatformAuditEvent: vi.fn().mockReturnValue(Effect.void),
   });
 
@@ -74,6 +85,7 @@ describe('Effect SuperAdminService', () => {
   });
 
   const makeFeaturesService = () => ({
+    invalidateTenant: vi.fn(() => Effect.void),
     getFeaturesForTenant: vi.fn(() =>
       Effect.succeed({
         tenantId: createdTenant.tenant.id,
@@ -132,14 +144,59 @@ describe('Effect SuperAdminService', () => {
     ),
   });
 
+  const makeProductImportService = () => ({
+    previewCsvContent: vi.fn(() =>
+      Effect.succeed({
+        format: 'normalized-products' as const,
+        totalRows: 0,
+        itemRows: 0,
+        folderRows: 0,
+        importableRows: 0,
+        missingRequiredRows: 0,
+        duplicateSkuConflicts: [],
+        categoryMappings: [],
+        supplierMappings: [],
+        locationMappings: [],
+        inventoryPreviews: [],
+        warnings: [],
+      }),
+    ),
+    importFromCsvContent: vi.fn(() =>
+      Effect.succeed({
+        categoriesCreated: 0,
+        locationsCreated: 0,
+        productsCreated: 0,
+        inventoryRecordsCreated: 0,
+        rowsSkipped: 0,
+        errors: [],
+      }),
+    ),
+    proposeImportPlan: vi.fn(() =>
+      Effect.succeed({
+        format: 'normalized-products' as const,
+        confidence: 1,
+        productIdentity: {
+          sourceColumn: 'sku',
+          conflictPolicy: 'reject' as const,
+        },
+        categoryMappings: [],
+        supplierMappings: [],
+        locationMappings: [],
+        warnings: [],
+      }),
+    ),
+  });
+
   const makeServiceLayer = ({
     betterAuth,
     featuresService,
+    productImportService,
     repository,
     usersRepository,
   }: {
     betterAuth: unknown;
     featuresService?: unknown;
+    productImportService?: unknown;
     repository: unknown;
     usersRepository: unknown;
   }) =>
@@ -154,6 +211,11 @@ describe('Effect SuperAdminService', () => {
           Layer.succeed(
             SuperAdminRepository,
             repository as typeof SuperAdminRepository.Service,
+          ),
+          Layer.succeed(
+            ProductImportService,
+            (productImportService ??
+              makeProductImportService()) as typeof ProductImportService.Service,
           ),
           Layer.succeed(
             UsersRepository,
@@ -337,5 +399,77 @@ describe('Effect SuperAdminService', () => {
       tenantId,
       FeatureKey.SMART_IMPORT,
     );
+  });
+
+  it('deletes a tenant, invalidates feature cache, and records platform audit', async () => {
+    const betterAuth = makeBetterAuth();
+    const repository = makeRepository();
+    const usersRepository = makeUsersRepository();
+    const featuresService = makeFeaturesService();
+    const layer = makeServiceLayer({
+      betterAuth,
+      featuresService,
+      repository,
+      usersRepository,
+    });
+
+    const tenantId = createdTenant.tenant.id;
+
+    await run(
+      Effect.flatMap(SuperAdminService, (service) =>
+        service.deleteTenant(tenantId, actor),
+      ),
+      layer,
+    );
+
+    expect(repository.deleteTenant).toHaveBeenCalledWith(tenantId);
+    expect(featuresService.invalidateTenant).toHaveBeenCalledWith(tenantId);
+
+    await waitForCall(repository.recordPlatformAuditEvent);
+    expect(repository.recordPlatformAuditEvent).toHaveBeenCalledWith({
+      actorUserId: actor.userId,
+      action: 'tenant.delete',
+      entityType: 'tenant',
+      entityId: tenantId,
+      metadata: {
+        name: createdTenant.tenant.name,
+        slug: createdTenant.tenant.slug,
+        primaryHostname: createdTenant.tenant.hostname,
+      },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent,
+    });
+  });
+
+  it('fails with TenantNotFound when deleting an unknown tenant', async () => {
+    const betterAuth = makeBetterAuth();
+    const repository = makeRepository();
+    repository.deleteTenant.mockReturnValue(Effect.succeed(null));
+    const usersRepository = makeUsersRepository();
+    const featuresService = makeFeaturesService();
+    const layer = makeServiceLayer({
+      betterAuth,
+      featuresService,
+      repository,
+      usersRepository,
+    });
+
+    const tenantId = createdTenant.tenant.id;
+    const result = await Effect.runPromise(
+      Effect.flatMap(SuperAdminService, (service) =>
+        service.deleteTenant(tenantId, actor),
+      ).pipe(
+        Effect.either,
+        Effect.provideService(BetterAuthHeaders, requestHeaders),
+        Effect.provide(layer),
+      ),
+    );
+
+    expect(result._tag).toBe('Left');
+    if (result._tag === 'Left') {
+      expect(result.left).toBeInstanceOf(TenantNotFound);
+    }
+    expect(featuresService.invalidateTenant).not.toHaveBeenCalled();
+    expect(repository.recordPlatformAuditEvent).not.toHaveBeenCalled();
   });
 });

@@ -234,6 +234,150 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
           });
         });
 
+      const deleteTenant = (tenantId: string) =>
+        tryAsync('delete platform tenant', async () =>
+          db.transaction(async (tx) => {
+            const [tenant] = await tx
+              .select({
+                id: organizations.id,
+                name: organizations.name,
+                slug: organizations.slug,
+                primaryHostname: tenantDomains.hostname,
+                createdAt: organizations.created_at,
+              })
+              .from(organizations)
+              .leftJoin(
+                tenantDomains,
+                and(
+                  eq(tenantDomains.tenant_id, organizations.id),
+                  eq(tenantDomains.is_primary, true),
+                ),
+              )
+              .where(eq(organizations.id, tenantId))
+              .limit(1);
+
+            if (!tenant) {
+              return null;
+            }
+
+            const sessionActiveOrganizationColumns = rowsOf<{ exists: number }>(
+              await tx.execute(sql`
+                SELECT 1 AS exists
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'session'
+                  AND column_name = 'active_organization_id'
+                LIMIT 1
+              `),
+            );
+            if (sessionActiveOrganizationColumns.length > 0) {
+              await tx.execute(sql`
+                UPDATE "session"
+                SET active_organization_id = NULL
+                WHERE active_organization_id = ${tenantId}
+              `);
+            }
+            await tx.execute(
+              sql`DELETE FROM notifications WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM notification_preferences WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM tenant_feature_overrides WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM tenant_entitlement_profiles WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM audit_logs WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM stock_movements WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM inventory WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(sql`
+              DELETE FROM order_items
+              WHERE order_id IN (
+                SELECT id FROM orders WHERE tenant_id = ${tenantId}
+              )
+            `);
+            await tx.execute(
+              sql`DELETE FROM orders WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM supplier_products WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(sql`
+              DELETE FROM photos
+              WHERE product_id IN (
+                SELECT id FROM products WHERE tenant_id = ${tenantId}
+              )
+            `);
+            await tx.execute(
+              sql`DELETE FROM products WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM areas WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM locations WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM clients WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM suppliers WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM categories WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM user_roles WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(sql`
+              DELETE FROM role_permissions
+              WHERE role_id IN (
+                SELECT id FROM roles WHERE tenant_id = ${tenantId}
+              )
+            `);
+            await tx.execute(
+              sql`DELETE FROM roles WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM branding_settings WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM tenant_domains WHERE tenant_id = ${tenantId}`,
+            );
+            const invitationTables = rowsOf<{ exists: number }>(
+              await tx.execute(sql`
+                SELECT 1 AS exists
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name = 'invitation'
+                LIMIT 1
+              `),
+            );
+            if (invitationTables.length > 0) {
+              await tx.execute(
+                sql`DELETE FROM invitation WHERE organization_id = ${tenantId}`,
+              );
+            }
+            await tx.execute(
+              sql`DELETE FROM member WHERE organization_id = ${tenantId}`,
+            );
+
+            await tx
+              .delete(organizations)
+              .where(eq(organizations.id, tenantId));
+
+            return tenant;
+          }),
+        );
+
       const recordPlatformAuditEvent = (input: PlatformAuditEventInput) =>
         tryAsync('record platform audit event', async () => {
           await db.insert(platformAuditEvents).values({
@@ -254,6 +398,7 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
         tenantSlugExists,
         tenantHostnameExists,
         createTenantWithAdmin,
+        deleteTenant,
         recordPlatformAuditEvent,
       };
     }),

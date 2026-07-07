@@ -162,6 +162,9 @@ export const frCatalog: Record<MessageKey, string> = {
   'superadmin.reservedTenantSlug': 'Le slug tenant est reserve.',
   'superadmin.tenantHostnameAlreadyExists':
     'Un tenant avec cet hote existe deja.',
+  'superadmin.tenantImportInvalid':
+    "L'import du tenant a echoue : {details}",
+  'superadmin.tenantNotFound': 'Tenant introuvable.',
   'superadmin.tenantSlugAlreadyExists': 'Un tenant avec ce slug existe deja.',
   'stockMovements.destinationLocationNotFound':
     'Emplacement de destination introuvable.',

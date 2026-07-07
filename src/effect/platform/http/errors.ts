@@ -28,6 +28,9 @@ const STATUS_NAMES: Record<number, string> = {
 const getStatusName = (statusCode: number) =>
   STATUS_NAMES[statusCode] ?? 'Internal Server Error';
 
+const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
+  value !== null && typeof value === 'object';
+
 const withRequestIdHeader = (response: HttpServerResponse.HttpServerResponse) =>
   Effect.map(getRequestContext, ({ requestId }) =>
     HttpServerResponse.setHeader(response, 'x-request-id', requestId),
@@ -100,6 +103,17 @@ const toErrorDetails = (
       error: getStatusName(404),
       messageKey: 'http.routeNotFound',
       messageArgs: { method: error.request.method, path },
+    };
+  }
+
+  if (isRecord(error) && error._tag === 'MultipartError') {
+    return {
+      statusCode: 400,
+      error: getStatusName(400),
+      messageKey: 'http.requestError',
+      messageArgs: {
+        details: error instanceof Error ? error.message : 'Invalid multipart body',
+      },
     };
   }
 

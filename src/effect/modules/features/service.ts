@@ -145,6 +145,7 @@ export class FeaturesService extends Effect.Service<FeaturesService>()(
 
       return {
         getFeaturesForTenant,
+        invalidateTenant,
         setTenantPlan,
         setFeatureOverride,
         clearFeatureOverride,
