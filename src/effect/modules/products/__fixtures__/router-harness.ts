@@ -18,6 +18,7 @@ import {
 import { ProductImportService } from '../import/service';
 import { FeatureNotEnabled } from '../../features/features.errors';
 import { FeaturesService } from '../../features/service';
+import { TasksService } from '../../tasks/service';
 import { ProductImportUnsupportedFormat } from '../products.errors';
 import { productsRouter } from '../router';
 import { ProductsService } from '../service';
@@ -27,6 +28,7 @@ export { FAKE_USER_ID, makeFakeSession } from '../../../testing/router-harness';
 export interface ProductsRouterHarnessOptions {
   readonly service: Record<string, unknown>;
   readonly importService?: Record<string, unknown>;
+  readonly tasksService?: Record<string, unknown>;
   readonly permissions?: Partial<Record<Resource, Permission[]>>;
   readonly session?: ReturnType<typeof makeFakeSession> | null;
   readonly auditLog?: (
@@ -86,6 +88,7 @@ export const makeProductsRouterHarness = (
     layers: [
       makeRouterServiceLayer(ProductsService, opts.service),
       importServiceLayer,
+      makeRouterServiceLayer(TasksService, opts.tasksService ?? {}),
       featuresLayer,
     ],
     permissions: opts.permissions,

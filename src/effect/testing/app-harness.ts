@@ -20,6 +20,8 @@ import { RolesService } from '../modules/roles/service';
 import { StockMovementsService } from '../modules/stock-movements/service';
 import { SuperAdminService } from '../modules/superadmin/service';
 import { SuppliersService } from '../modules/suppliers/service';
+import { TasksService } from '../modules/tasks/service';
+import { TaskWorkerService } from '../modules/tasks/worker';
 import { UsersService } from '../modules/users/service';
 import { auditLayer } from '../platform/audit/index';
 import { BetterAuthHeaders } from '../platform/auth/better-auth';
@@ -97,6 +99,18 @@ export const makeTestApplicationLayer = (options: TestHttpAppOptions = {}) => {
   const productImportApplicationLayer = ProductImportService.Default.pipe(
     Layer.provide(platformLayer),
   );
+  const tasksApplicationLayer = TasksService.Default.pipe(
+    Layer.provide(Layer.mergeAll(platformLayer, productImportApplicationLayer)),
+  );
+  const taskWorkerApplicationLayer = TaskWorkerService.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        platformLayer,
+        featuresApplicationLayer,
+        productImportApplicationLayer,
+      ),
+    ),
+  );
   const workflowServicesLayer = Layer.mergeAll(
     StockMovementsService.Default.pipe(
       Layer.provide(
@@ -143,6 +157,8 @@ export const makeTestApplicationLayer = (options: TestHttpAppOptions = {}) => {
     areasApplicationLayer,
     productsApplicationLayer,
     productImportApplicationLayer,
+    tasksApplicationLayer,
+    taskWorkerApplicationLayer,
     workflowServicesLayer,
   );
 };

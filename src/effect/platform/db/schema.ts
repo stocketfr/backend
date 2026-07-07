@@ -97,10 +97,11 @@ export const tenantPlanKeyEnum = pgEnum('tenant_plan_key', [
   PlanKey.ENTERPRISE,
 ]);
 
-export const tenantEntitlementSourceEnum = pgEnum(
-  'tenant_entitlement_source',
-  [EntitlementSource.SYSTEM, EntitlementSource.MANUAL, EntitlementSource.BILLING],
-);
+export const tenantEntitlementSourceEnum = pgEnum('tenant_entitlement_source', [
+  EntitlementSource.SYSTEM,
+  EntitlementSource.MANUAL,
+  EntitlementSource.BILLING,
+]);
 
 export const tenantFeatureKeyEnum = pgEnum('tenant_feature_key', [
   FeatureKey.SMART_IMPORT,
@@ -129,7 +130,9 @@ export const betterAuthUsers = pgTable(
   {
     // Better Auth still generates UUID values, but the app stores user ids as
     // text because local RBAC tables and audit logs use opaque auth ids.
-    id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: text('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     name: text('name').notNull(),
     email: text('email').notNull(),
     email_verified: boolean('email_verified').notNull().default(false),
@@ -302,9 +305,7 @@ export const tenantEntitlementProfiles = pgTable(
     tenant_id: uuid('tenant_id')
       .primaryKey()
       .references(() => organizations.id, { onDelete: 'cascade' }),
-    plan_key: tenantPlanKeyEnum('plan_key')
-      .notNull()
-      .default(PlanKey.FREE),
+    plan_key: tenantPlanKeyEnum('plan_key').notNull().default(PlanKey.FREE),
     source: tenantEntitlementSourceEnum('source')
       .notNull()
       .default(EntitlementSource.SYSTEM),
@@ -604,11 +605,18 @@ export const photos = pgTable(
     storage_path: varchar('storage_path', { length: 500 }).notNull(),
     display_order: integer('display_order').notNull().default(0),
     uploaded_by: uuid('uploaded_by'),
+    source_url: text('source_url'),
+    source_hash: varchar('source_hash', { length: 64 }),
     created_at: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
-  (table) => [index('photos_product_id_idx').on(table.product_id)],
+  (table) => [
+    index('photos_product_id_idx').on(table.product_id),
+    uniqueIndex('photos_product_source_hash_unique')
+      .on(table.product_id, table.source_hash)
+      .where(sql`${table.source_hash} is not null`),
+  ],
 );
 
 export const supplierProducts = pgTable('supplier_products', {
@@ -950,5 +958,55 @@ export const notifications = pgTable(
     uniqueIndex('notifications_dedupe_key_unique')
       .on(table.dedupe_key)
       .where(sql`dedupe_key is not null`),
+  ],
+);
+
+export const backgroundTasks = pgTable(
+  'background_tasks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenant_id: uuid('tenant_id').default(DEFAULT_TENANT_ID).notNull(),
+    type: varchar('type', { length: 100 }).notNull(),
+    status: varchar('status', { length: 20 }).notNull().default('queued'),
+    payload: jsonb('payload'),
+    result: jsonb('result'),
+    error: text('error'),
+    created_by: text('created_by'),
+    attempt_count: integer('attempt_count').notNull().default(0),
+    max_attempts: integer('max_attempts').notNull().default(3),
+    run_after: timestamp('run_after', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lease_owner: text('lease_owner'),
+    lease_expires_at: timestamp('lease_expires_at', { withTimezone: true }),
+    progress_total: integer('progress_total'),
+    progress_processed: integer('progress_processed').notNull().default(0),
+    progress_failed: integer('progress_failed').notNull().default(0),
+    progress_message: text('progress_message'),
+    cancel_requested_at: timestamp('cancel_requested_at', {
+      withTimezone: true,
+    }),
+    started_at: timestamp('started_at', { withTimezone: true }),
+    completed_at: timestamp('completed_at', { withTimezone: true }),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('background_tasks_tenant_type_status_created_idx').on(
+      table.tenant_id,
+      table.type,
+      table.status,
+      table.created_at,
+    ),
+    index('background_tasks_queued_claim_idx')
+      .on(table.run_after, table.created_at)
+      .where(sql`${table.status} = 'queued'`),
+    index('background_tasks_expired_running_idx')
+      .on(table.lease_expires_at)
+      .where(sql`${table.status} = 'running'`),
   ],
 );

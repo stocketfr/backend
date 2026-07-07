@@ -14,7 +14,13 @@ type PhotoEntity = typeof photos.$inferSelect;
 type CreatePhotoInput = Parameters<PhotosRepository['create']>[0];
 type MockPhotosRepository = Pick<
   PhotosRepository,
-  'findByProductId' | 'findById' | 'create' | 'delete' | 'countByProductId'
+  | 'findByProductId'
+  | 'findById'
+  | 'findByProductSourceHash'
+  | 'create'
+  | 'createIdempotent'
+  | 'delete'
+  | 'countByProductId'
 >;
 
 const JPEG_HEADER = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
@@ -34,6 +40,8 @@ const makePhotoEntity = (
   storage_path: 'products/prod-1/photos/test.jpg',
   display_order: 0,
   uploaded_by: null,
+  source_url: null,
+  source_hash: null,
   created_at: new Date('2026-01-01'),
   ...overrides,
 });
@@ -55,6 +63,8 @@ const makeMockRepository = (
   const findById: MockPhotosRepository['findById'] = vi
     .fn()
     .mockReturnValue(Effect.succeed(makePhotoEntity()));
+  const findByProductSourceHash: MockPhotosRepository['findByProductSourceHash'] =
+    vi.fn().mockReturnValue(Effect.succeed(null));
   const create: MockPhotosRepository['create'] = vi.fn(
     (data: CreatePhotoInput) =>
       Effect.succeed(
@@ -64,6 +74,17 @@ const makeMockRepository = (
           created_at: new Date('2026-01-01'),
         }),
       ),
+  );
+  const createIdempotent: MockPhotosRepository['createIdempotent'] = vi.fn(
+    (data: CreatePhotoInput) =>
+      Effect.succeed({
+        photo: makePhotoEntity({
+          ...data,
+          id: 'photo-1',
+          created_at: new Date('2026-01-01'),
+        }),
+        created: true,
+      }),
   );
   const deletePhoto: MockPhotosRepository['delete'] = vi
     .fn()
@@ -75,7 +96,9 @@ const makeMockRepository = (
   return {
     findByProductId,
     findById,
+    findByProductSourceHash,
     create,
+    createIdempotent,
     delete: deletePhoto,
     countByProductId,
     ...overrides,
@@ -133,9 +156,7 @@ describe('Effect PhotosService', () => {
       if (!objectKey) {
         throw new Error('expected uploaded object key');
       }
-      expect(objectKey).toMatch(
-        /^products\/prod-1\/photos\/[0-9a-f-]+\.jpg$/,
-      );
+      expect(objectKey).toMatch(/^products\/prod-1\/photos\/[0-9a-f-]+\.jpg$/);
       expect(storage.store.get(objectKey)?.equals(JPEG_HEADER)).toBe(true);
       expect(repository.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -171,9 +192,7 @@ describe('Effect PhotosService', () => {
       if (!objectKey) {
         throw new Error('expected uploaded object key');
       }
-      expect(objectKey).toMatch(
-        /^products\/prod-1\/photos\/[0-9a-f-]+\.png$/,
-      );
+      expect(objectKey).toMatch(/^products\/prod-1\/photos\/[0-9a-f-]+\.png$/);
     });
 
     it('rejects invalid mimetype before writing storage', async () => {

@@ -140,6 +140,7 @@ export const deCatalog: Record<MessageKey, string> = {
     'Ein Standardstandort ist fuer den Import von bereichsbezogenem Bestand erforderlich.',
   'products.importCsvParseFailed':
     'Die hochgeladene CSV-Datei konnte nicht geparst werden.',
+  'products.importCancelled': 'Der Produktimport wurde abgebrochen.',
   'products.importPlanParseFailed':
     'Der hochgeladene Produktimportplan konnte nicht geparst werden.',
   'products.importReadUploadFailed':
@@ -186,6 +187,11 @@ export const deCatalog: Record<MessageKey, string> = {
   'suppliers.deleted': 'Lieferant erfolgreich geloescht.',
   'suppliers.notFound': 'Lieferant nicht gefunden.',
   'suppliers.repositoryFailed': 'Der Lieferantenvorgang ist fehlgeschlagen.',
+  'tasks.handlerNotFound': 'Task-Handler nicht gefunden.',
+  'tasks.notFound': 'Task nicht gefunden.',
+  'tasks.payloadInvalid': 'Die Task-Nutzlast ist ungueltig.',
+  'tasks.repositoryFailed': 'Der Hintergrundtask-Vorgang ist fehlgeschlagen.',
+  'tasks.terminalConflict': 'Der Task ist bereits abgeschlossen.',
   'users.infrastructureFailed': 'Der Benutzervorgang ist fehlgeschlagen.',
   'users.notFound': 'Benutzer nicht gefunden.',
   'users.repositoryFailed': 'Der Benutzervorgang ist fehlgeschlagen.',

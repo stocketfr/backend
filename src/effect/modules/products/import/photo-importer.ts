@@ -19,7 +19,8 @@ const normalizeContentType = (value: string | null): string =>
 const makeSortlyPhotoFilename = (
   photoIndex: number,
   mimetype: string,
-): string => `sortly-photo-${photoIndex + 1}${MIME_EXT_MAP[mimetype] ?? '.bin'}`;
+): string =>
+  `sortly-photo-${photoIndex + 1}${MIME_EXT_MAP[mimetype] ?? '.bin'}`;
 
 const toError = (message: string, cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(message, { cause });
@@ -61,7 +62,9 @@ const readRemotePhoto = (url: string, photoIndex: number) =>
         );
       }
 
-      const mimetype = normalizeContentType(response.headers.get('content-type'));
+      const mimetype = normalizeContentType(
+        response.headers.get('content-type'),
+      );
       return {
         originalname: makeSortlyPhotoFilename(photoIndex, mimetype),
         mimetype,
@@ -86,7 +89,9 @@ export class ProductImportPhotoImporter extends Effect.Service<ProductImportPhot
       ): Effect.Effect<PhotoResponseDto, unknown> =>
         Effect.gen(function* () {
           const file = yield* readRemotePhoto(url, photoIndex);
-          return yield* photosService.uploadPhoto(productId, file, userId);
+          return yield* photosService.uploadPhoto(productId, file, userId, {
+            sourceUrl: url,
+          });
         }).pipe(
           Effect.withSpan('ProductImportPhotoImporter.importSortlyPhoto', {
             attributes: { productId },

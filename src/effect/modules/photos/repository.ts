@@ -23,6 +23,21 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
       const tenantQuery = yield* TenantQuery;
       const tenantOwnsProduct = (tenantId: string) =>
         sql`${photos.product_id} IN (SELECT id FROM products WHERE tenant_id = ${tenantId})`;
+      const ensureTenantOwnsProduct = async (
+        tenantId: string,
+        productId: string,
+      ) => {
+        const productRows = await db
+          .select({ id: products.id })
+          .from(products)
+          .where(
+            and(eq(products.tenant_id, tenantId), eq(products.id, productId)),
+          )
+          .limit(1);
+        if (productRows.length === 0) {
+          throw new Error('Photo product does not belong to tenant');
+        }
+      };
 
       const findByProductId = (productId: string) =>
         Effect.gen(function* () {
@@ -54,26 +69,72 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
           });
         });
 
+      const findByProductSourceHash = (productId: string, sourceHash: string) =>
+        Effect.gen(function* () {
+          const tenantId = yield* tenantQuery.tenantId;
+          return yield* tryAsync('load photo by source hash', async () => {
+            const rows = await db
+              .select()
+              .from(photos)
+              .where(
+                and(
+                  eq(photos.product_id, productId),
+                  eq(photos.source_hash, sourceHash),
+                  tenantOwnsProduct(tenantId),
+                ),
+              )
+              .limit(1);
+            return rows[0] ?? null;
+          });
+        });
+
       const create = (data: typeof photos.$inferInsert) =>
         Effect.gen(function* () {
           const tenantId = yield* tenantQuery.tenantId;
           return yield* tryAsync('create photo', async () => {
-            const productRows = await db
-              .select({ id: products.id })
-              .from(products)
-              .where(
-                and(
-                  eq(products.tenant_id, tenantId),
-                  eq(products.id, data.product_id),
-                ),
-              )
-              .limit(1);
-            if (productRows.length === 0) {
-              throw new Error('Photo product does not belong to tenant');
-            }
+            await ensureTenantOwnsProduct(tenantId, data.product_id);
 
             const rows = await db.insert(photos).values(data).returning();
             return rows[0]!;
+          });
+        });
+
+      const createIdempotent = (data: typeof photos.$inferInsert) =>
+        Effect.gen(function* () {
+          const tenantId = yield* tenantQuery.tenantId;
+          return yield* tryAsync('create idempotent photo', async () => {
+            await ensureTenantOwnsProduct(tenantId, data.product_id);
+            const rows = await db
+              .insert(photos)
+              .values(data)
+              .onConflictDoNothing()
+              .returning();
+            const inserted = rows[0];
+            if (inserted) return { photo: inserted, created: true };
+
+            if (!data.source_hash) {
+              throw new Error('Photo insert conflicted without source hash');
+            }
+
+            const existing = await db
+              .select()
+              .from(photos)
+              .where(
+                and(
+                  eq(photos.product_id, data.product_id),
+                  eq(photos.source_hash, data.source_hash),
+                  tenantOwnsProduct(tenantId),
+                ),
+              )
+              .limit(1);
+
+            if (!existing[0]) {
+              throw new Error(
+                'Photo insert conflicted but existing photo was not found',
+              );
+            }
+
+            return { photo: existing[0], created: false };
           });
         });
 
@@ -107,7 +168,9 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
       return {
         findByProductId,
         findById,
+        findByProductSourceHash,
         create,
+        createIdempotent,
         delete: remove,
         countByProductId,
       };

@@ -7,6 +7,7 @@
   "packageManager": "pnpm@10.28.0",
   "scripts": {
     "build": "esbuild src/effect/main.ts --bundle --platform=node --format=cjs --target=node22 --packages=external --outfile=dist/effect/main.cjs",
+    "prepare": "./scripts/prepare-effect.sh",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "infisical run --env=dev -- tsx src/effect/main.ts",
     "start:workspace": "infisical run --env=dev -- sh -c 'NODE_ENV=development PORT=8080 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/stocket_inventory TENANT_BASE_DOMAIN=stocket.fr PLATFORM_HOST=app.stocket.fr CORS_ORIGIN=http://localhost:3000,http://localhost:3001 FRONTEND_URL=http://localhost:3000,http://localhost:3001 BETTER_AUTH_URL=http://localhost:8080 S3_ENDPOINT=http://localhost:9000 S3_REGION=us-east-1 S3_ACCESS_KEY_ID=minio S3_SECRET_ACCESS_KEY=minio123 S3_BUCKET=stocket-local S3_FORCE_PATH_STYLE=true SUPERADMIN_EMAIL=\"${SUPERADMIN_EMAIL:-admin@stocket.fr}\" SUPERADMIN_NAME=\"${SUPERADMIN_NAME:-Stocket Admin}\" SUPERADMIN_ROTATE_PASSWORD=\"${SUPERADMIN_ROTATE_PASSWORD:-true}\" exec tsx src/effect/main.ts'",

@@ -9,6 +9,7 @@ import type {
   ProductImportResultDto,
   ProductImportWarningDto,
 } from '@stocket/types/products';
+import type { Effect } from 'effect';
 import type { areas, categories, locations } from '../../../platform/db/schema';
 import type { ProductRow } from '../products.utils';
 
@@ -77,6 +78,7 @@ export interface ImportProductsFromCsvOptions {
   readonly importType?: ProductImportType;
   readonly approvedPlan?: ProductImportApprovedPlanDto;
   readonly userId: string;
+  readonly hooks?: ProductImportExecutionHooks;
 }
 
 export interface AnalyzeProductsFromCsvOptions {
@@ -95,4 +97,18 @@ export interface ProductImportValues {
   readonly is_active: boolean;
   readonly is_perishable: boolean;
   readonly notes: string | null;
+}
+
+export interface ProductImportProgress {
+  readonly total: number;
+  readonly processed: number;
+  readonly failed: number;
+  readonly message?: string | null;
+}
+
+export interface ProductImportExecutionHooks {
+  readonly onProgress?: (
+    progress: ProductImportProgress,
+  ) => Effect.Effect<void, never, never>;
+  readonly isCancelRequested?: Effect.Effect<boolean, never, never>;
 }

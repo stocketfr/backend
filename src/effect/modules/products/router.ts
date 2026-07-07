@@ -3,7 +3,6 @@ import { HttpRouter, HttpServerRequest, Multipart } from '@effect/platform';
 import { Effect, Schema } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
-import { FeatureKey } from '@stocket/types/features';
 import {
   ProductIdSchema,
   ProductQuerySchema,
@@ -24,7 +23,8 @@ import {
   requireSession,
 } from '../../platform/http/session';
 import { makeMessageResponse } from '../../platform/observability/messages';
-import { FeaturesService } from '../features/service';
+import { TasksService } from '../tasks/service';
+import { requireProductImportAccess } from './import/access';
 import { ProductImportService } from './import/service';
 import { ProductImportTypes } from './import/types';
 import {
@@ -72,16 +72,6 @@ const parseProductImportPlan = (plan: string | undefined) =>
         messageKey: 'products.importPlanParseFailed',
       }),
   });
-
-const requireSmartImportFeature = Effect.flatMap(FeaturesService, (features) =>
-  features.requireFeature(FeatureKey.SMART_IMPORT),
-);
-const requireProductImportAccess = Effect.gen(function* () {
-  yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
-  yield* requirePermission(Resource.LOCATIONS, Permission.WRITE);
-  yield* requirePermission(Resource.INVENTORY, Permission.WRITE);
-  yield* requireSmartImportFeature;
-});
 
 const readProductImportUpload = Effect.gen(function* () {
   const upload = yield* HttpServerRequest.schemaBodyMultipart(
@@ -165,14 +155,23 @@ export const productsRouter = HttpRouter.empty.pipe(
       const session = yield* requireSession;
       const userId = session.user.id;
 
-      const productImportService = yield* ProductImportService;
-      const result = yield* productImportService.importFromCsvContent({
-        content,
-        importType,
-        approvedPlan,
-        userId,
+      const tasksService = yield* TasksService;
+      const task = yield* tasksService.enqueue({
+        type: 'product-import',
+        payload: {
+          content,
+          importType,
+          ...(approvedPlan ? { approvedPlan } : {}),
+          userId,
+        },
+        createdBy: userId,
+        maxAttempts: 3,
+        progressMessage: 'Queued product import',
       });
-      return yield* respondJsonOk(result);
+      return yield* respondJsonOk(task, {
+        status: 202,
+        headers: { Location: `/api/v1/tasks/${task.id}` },
+      });
     }),
   ),
   HttpRouter.post(

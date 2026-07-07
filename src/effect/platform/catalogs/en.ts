@@ -114,12 +114,12 @@ export const enCatalog = {
   'products.importAreaLocationRequired':
     'A default location is required to import area-scoped inventory.',
   'products.importCsvParseFailed': 'Could not parse the uploaded CSV file.',
+  'products.importCancelled': 'Product import was canceled.',
   'products.importPlanParseFailed':
     'Could not parse the uploaded product import plan.',
   'products.importReadUploadFailed':
     'Failed to read the uploaded product import file.',
-  'products.importUnsupportedFormat':
-    'Unsupported product import CSV headers.',
+  'products.importUnsupportedFormat': 'Unsupported product import CSV headers.',
   'products.infrastructureFailed': 'Product operation failed.',
   'products.notDeleted': 'Product is not deleted.',
   'products.notFound': 'Product not found.',
@@ -155,6 +155,11 @@ export const enCatalog = {
   'suppliers.deleted': 'Supplier deleted successfully.',
   'suppliers.notFound': 'Supplier not found.',
   'suppliers.repositoryFailed': 'Supplier operation failed.',
+  'tasks.handlerNotFound': 'Task handler not found.',
+  'tasks.notFound': 'Task not found.',
+  'tasks.payloadInvalid': 'Task payload is invalid.',
+  'tasks.repositoryFailed': 'Background task operation failed.',
+  'tasks.terminalConflict': 'Task is already terminal.',
   'users.infrastructureFailed': 'User operation failed.',
   'users.notFound': 'User not found.',
   'users.repositoryFailed': 'User operation failed.',

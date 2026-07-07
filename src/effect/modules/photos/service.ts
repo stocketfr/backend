@@ -61,6 +61,13 @@ export interface UploadedFile {
   readonly buffer: Buffer;
 }
 
+export interface PhotoUploadOptions {
+  readonly sourceUrl?: string | null;
+}
+
+const hashSourceUrl = (sourceUrl: string): string =>
+  crypto.createHash('sha256').update(sourceUrl.trim()).digest('hex');
+
 export class PhotosService extends Effect.Service<PhotosService>()(
   '@stocket/effect/photos/PhotosService',
   {
@@ -102,6 +109,7 @@ export class PhotosService extends Effect.Service<PhotosService>()(
         productId: string,
         file: UploadedFile,
         userId?: string,
+        options: PhotoUploadOptions = {},
       ): Effect.Effect<
         PhotoResponseDto,
         | InvalidPhotoMimeType
@@ -142,15 +150,25 @@ export class PhotosService extends Effect.Service<PhotosService>()(
 
         const ext = getExtFromMime(file.mimetype);
         const objectKey = `products/${productId}/photos/${crypto.randomUUID()}${ext}`;
+        const sourceUrl = options.sourceUrl?.trim() || null;
+        const sourceHash = sourceUrl ? hashSourceUrl(sourceUrl) : null;
 
         return Effect.gen(function* () {
+          if (sourceHash) {
+            const existing = yield* repository.findByProductSourceHash(
+              productId,
+              sourceHash,
+            );
+            if (existing) return toPhotoResponseDto(existing);
+          }
+
           yield* storage
             .putObject(objectKey, file.buffer, { contentType: file.mimetype })
             .pipe(Effect.mapError(mapStorageWriteError));
 
           const photo = yield* Effect.gen(function* () {
             const existingCount = yield* repository.countByProductId(productId);
-            return yield* repository.create({
+            const insert = {
               product_id: productId,
               filename: file.originalname,
               mimetype: file.mimetype,
@@ -158,7 +176,19 @@ export class PhotosService extends Effect.Service<PhotosService>()(
               storage_path: objectKey,
               display_order: existingCount,
               uploaded_by: userId ?? null,
-            });
+              source_url: sourceUrl,
+              source_hash: sourceHash,
+            };
+
+            if (!sourceHash) {
+              return yield* repository.create(insert);
+            }
+
+            const result = yield* repository.createIdempotent(insert);
+            if (!result.created) {
+              yield* storage.deleteObject(objectKey).pipe(Effect.ignore);
+            }
+            return result.photo;
           }).pipe(
             Effect.tapError(() =>
               Effect.ignore(storage.deleteObject(objectKey)),

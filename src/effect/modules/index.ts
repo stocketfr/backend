@@ -11,6 +11,7 @@ import { clientsRouter } from './clients/router';
 import { suppliersRouter } from './suppliers/router';
 import { productsRouter } from './products/router';
 import { productPhotosRouter, photosRouter } from './photos/router';
+import { tasksRouter } from './tasks/router';
 import { notificationsRouter } from './notifications/router';
 import { stockMovementsRouter } from './stock-movements/router';
 import { inventoryRouter } from './inventory/router';
@@ -34,6 +35,7 @@ export const moduleCounterparts = [
   'suppliers',
   'products',
   'photos',
+  'tasks',
   'stock-movements',
   'inventory',
   'orders',
@@ -68,6 +70,7 @@ export const apiRouter = HttpRouter.concatAll(
   productsRouter,
   productPhotosRouter,
   photosRouter,
+  tasksRouter,
   notificationsRouter,
   stockMovementsRouter,
   inventoryRouter,

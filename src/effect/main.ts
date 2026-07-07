@@ -26,6 +26,8 @@ import { ProductsService } from './modules/products/service';
 import type { RolesInfrastructureError } from './modules/roles/roles.errors';
 import { RolesService } from './modules/roles/service';
 import { SuperAdminService } from './modules/superadmin/service';
+import { TasksService } from './modules/tasks/service';
+import { TaskWorkerService } from './modules/tasks/worker';
 import { PermissionProvider } from './platform/auth/permission-provider';
 import { StockMovementsService } from './modules/stock-movements/service';
 import { SuppliersService } from './modules/suppliers/service';
@@ -85,7 +87,9 @@ const permissionProviderLayer = Layer.effect(
   })),
 ).pipe(Layer.provide(rolesApplicationLayer));
 const authApplicationLayer = AuthService.Default.pipe(
-  Layer.provide(Layer.mergeAll(rolesApplicationLayer, featuresApplicationLayer)),
+  Layer.provide(
+    Layer.mergeAll(rolesApplicationLayer, featuresApplicationLayer),
+  ),
 );
 const usersApplicationLayer = UsersService.Default.pipe(
   Layer.provide(Layer.mergeAll(platformLayer, rolesApplicationLayer)),
@@ -96,6 +100,8 @@ const superAdminApplicationLayer = SuperAdminService.Default.pipe(
 
 const shouldRunStartupMigrations = () =>
   !isProduction || process.env.RUN_BETTER_AUTH_MIGRATIONS === 'true';
+const shouldRunBackgroundTaskWorker = () =>
+  process.env.BACKGROUND_TASK_WORKER_ENABLED !== 'false';
 
 const runCommittedSqlMigrations = Effect.gen(function* () {
   const db = yield* DrizzleDatabase;
@@ -214,6 +220,18 @@ const productsApplicationLayer = ProductsService.Default.pipe(
 const productImportApplicationLayer = ProductImportService.Default.pipe(
   Layer.provide(platformLayer),
 );
+const tasksApplicationLayer = TasksService.Default.pipe(
+  Layer.provide(Layer.mergeAll(platformLayer, productImportApplicationLayer)),
+);
+const taskWorkerApplicationLayer = TaskWorkerService.Default.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      platformLayer,
+      featuresApplicationLayer,
+      productImportApplicationLayer,
+    ),
+  ),
+);
 const workflowServicesLayer = Layer.mergeAll(
   StockMovementsService.Default.pipe(
     Layer.provide(
@@ -259,6 +277,10 @@ const startupLayer = Layer.mergeAll(
       yield* Effect.forkDaemon(
         Effect.repeat(notifications.runScan, notifications.scanInterval),
       );
+      if (shouldRunBackgroundTaskWorker()) {
+        const taskWorker = yield* TaskWorkerService;
+        yield* Effect.forkDaemon(taskWorker.runLoop);
+      }
     }),
   ).pipe(
     Layer.provide(
@@ -266,6 +288,8 @@ const startupLayer = Layer.mergeAll(
         platformLayer,
         rolesApplicationLayer,
         notificationsApplicationLayer,
+        featuresApplicationLayer,
+        taskWorkerApplicationLayer,
       ),
     ),
   ),
@@ -287,6 +311,7 @@ const applicationLayer = Layer.mergeAll(
   areasApplicationLayer,
   productsApplicationLayer,
   productImportApplicationLayer,
+  tasksApplicationLayer,
   workflowServicesLayer,
 );
 

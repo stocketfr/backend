@@ -1,11 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import { HttpApp } from '@effect/platform';
+import { Effect } from 'effect';
 import { and, eq, isNull } from 'drizzle-orm';
 import { afterEach, vi } from 'vitest';
 import { Permission, Resource } from '@stocket/types/auth';
-import {
-  EntitlementSource,
-  PlanKey,
-} from '@stocket/types/features';
+import { EntitlementSource, PlanKey } from '@stocket/types/features';
 import type { ProductImportApprovedPlanDto } from '@stocket/types/products';
 import {
   areas,
@@ -28,7 +27,8 @@ import {
   DEFAULT_TENANT_NAME,
   DEFAULT_TENANT_SLUG,
 } from '../../../platform/tenancy/tenant-constants';
-import { makeTestHttpAppHandler } from '../../../testing/app-harness';
+import { buildHttpApp } from '../../../http/app';
+import { makeTestApplicationLayer } from '../../../testing/app-harness';
 import {
   getTestDb,
   seedArea,
@@ -40,6 +40,7 @@ import {
   TEST_USER_ID,
   withTestDb,
 } from '../../../testing/test-harness';
+import { TaskWorkerService } from '../../tasks/worker';
 
 let db: DrizzleDb;
 
@@ -190,9 +191,16 @@ async function postImport(
   approvedPlan?: ProductImportApprovedPlanDto,
 ) {
   await seedImportWriteRole(TEST_USER_ID);
-  const { handler, dispose } = makeTestHttpAppHandler({
+  const applicationLayer = makeTestApplicationLayer({
     session: makeSession(TEST_USER_ID),
   });
+  const { handler, dispose } = HttpApp.toWebHandlerLayerWith(
+    applicationLayer as never,
+    {
+      toHandler: () =>
+        buildHttpApp.pipe(Effect.provide(applicationLayer)) as never,
+    },
+  );
 
   try {
     const response = await handler(
@@ -201,8 +209,27 @@ async function postImport(
         body: makeCsvUpload(csv, filename, approvedPlan),
       }),
     );
-    const body = await response.json();
-    return { status: response.status, body };
+    const enqueueBody = await response.json();
+    if (response.status !== 202) {
+      return { status: response.status, body: enqueueBody, task: null };
+    }
+
+    await Effect.runPromise(
+      TaskWorkerService.pipe(
+        Effect.flatMap((worker) => worker.drain()),
+        Effect.provide(applicationLayer),
+      ) as Effect.Effect<number, unknown, never>,
+    );
+
+    const taskResponse = await handler(
+      tenantRequest(`/api/v1/tasks/${enqueueBody.id}`),
+    );
+    const task = await taskResponse.json();
+    return {
+      status: response.status,
+      body: task.result,
+      task,
+    };
   } finally {
     await dispose();
   }
@@ -291,11 +318,13 @@ afterEach(() => {
 
 describe('POST /api/v1/products/import integration', () => {
   it('imports normalized CSV into products, categories, locations, and inventory', async () => {
-    const response = await postImport(`sku,name,category_path,reorder_point,quantity,location,unit,standard_price,barcode,description,notes,is_active,is_perishable,expiry_date
+    const response =
+      await postImport(`sku,name,category_path,reorder_point,quantity,location,unit,standard_price,barcode,description,notes,is_active,is_perishable,expiry_date
 IMP-001,Imported Gin,Beverages / Spirits,4,9,Main Warehouse,bottle,12.50,123456,Juniper gin,Top shelf,true,false,
 `);
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
+    expect(response.task).toMatchObject({ status: 'succeeded' });
     expect(response.body).toMatchObject({
       categoriesCreated: 2,
       locationsCreated: 1,
@@ -351,7 +380,8 @@ Item,Imported Tonic,SORT-001,Drinks,Mixers,12,Bar,can,2,1.50,,QR2,Sortly notes,2
       'sortly.csv',
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
+    expect(response.task).toMatchObject({ status: 'succeeded' });
     expect(response.body).toMatchObject({
       categoriesCreated: 2,
       locationsCreated: 1,
@@ -388,14 +418,15 @@ Item,Imported Tonic,SORT-001,Drinks,Mixers,12,Bar,can,2,1.50,,QR2,Sortly notes,2
   });
 
   it('imports Sortly photo URLs into product photos', async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(JPEG_BYTES, {
-        status: 200,
-        headers: {
-          'content-type': 'image/jpeg',
-          'content-length': String(JPEG_BYTES.length),
-        },
-      }),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JPEG_BYTES, {
+          status: 200,
+          headers: {
+            'content-type': 'image/jpeg',
+            'content-length': String(JPEG_BYTES.length),
+          },
+        }),
     );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -406,7 +437,8 @@ Item,Imported Tonic Photo,SORT-PHOTO-001,Drinks,12,Bar,https://lnk.sortly.co/v2/
       'sortly.csv',
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
+    expect(response.task).toMatchObject({ status: 'succeeded' });
     expect(response.body).toMatchObject({
       productsCreated: 1,
       inventoryRecordsCreated: 1,
@@ -462,7 +494,8 @@ Item,Imported Shelf Product,SORT-AREA-001,Drinks,12,Bay I  - Shelf 3
       approvedPlan,
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
+    expect(response.task).toMatchObject({ status: 'succeeded' });
     expect(response.body).toMatchObject({
       locationsCreated: 1,
       areasCreated: 2,
@@ -530,7 +563,8 @@ Item,Imported Shelf Product,SORT-AREA-001,Drinks,12,Bay I  - Shelf 3
 SHARED-SKU,Default Tenant Product,Default Category,3,Default Location
 `);
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
+    expect(response.task).toMatchObject({ status: 'succeeded' });
     expect(response.body).toMatchObject({
       productsCreated: 1,
       productsUpdated: 0,
@@ -564,11 +598,13 @@ SHARED-SKU,Default Tenant Product,Default Category,3,Default Location
       productSku: 'AREA-SKU',
     });
 
-    const response = await postImport(`sku,name,category_path,reorder_point,quantity,location
+    const response =
+      await postImport(`sku,name,category_path,reorder_point,quantity,location
 AREA-SKU,Area Product,Area Category,10,8,Area Location
 `);
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
+    expect(response.task).toMatchObject({ status: 'succeeded' });
     expect(response.body).toMatchObject({
       productsCreated: 0,
       productsUpdated: 0,
@@ -595,11 +631,13 @@ AREA-SKU,Area Product,Area Category,10,8,Area Location
       rootQuantity: 4,
     });
 
-    const response = await postImport(`sku,name,category_path,reorder_point,quantity,location
+    const response =
+      await postImport(`sku,name,category_path,reorder_point,quantity,location
 MIXED-AREA-SKU,Mixed Area Product,Mixed Area Category,10,8,Mixed Area Location
 `);
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
+    expect(response.task).toMatchObject({ status: 'succeeded' });
     expect(response.body).toMatchObject({
       productsCreated: 0,
       productsUpdated: 0,

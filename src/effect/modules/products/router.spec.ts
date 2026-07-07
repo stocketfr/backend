@@ -82,6 +82,7 @@ vi.mock('./service', async () => {
 const PRODUCT_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_PRODUCT_ID = '22222222-2222-4222-8222-222222222222';
 const CATEGORY_ID = '33333333-3333-4333-8333-333333333333';
+const TASK_ID = '44444444-4444-4444-8444-444444444444';
 
 const makeProductResponse = (overrides: Record<string, unknown> = {}) => ({
   id: PRODUCT_ID,
@@ -139,6 +140,31 @@ const importResult = () => ({
   photosSkipped: 0,
   rowsSkipped: 0,
   errors: [],
+});
+
+const taskResponse = () => ({
+  id: TASK_ID,
+  tenant_id: '55555555-5555-4555-8555-555555555555',
+  type: 'product-import',
+  status: 'queued',
+  result: null,
+  error: null,
+  created_by: '00000000-0000-4000-a000-000000000001',
+  attempt_count: 0,
+  max_attempts: 3,
+  run_after: new Date('2026-01-01T00:00:00.000Z'),
+  progress: {
+    total: null,
+    processed: 0,
+    failed: 0,
+    percent: null,
+    message: 'Queued product import',
+  },
+  cancel_requested_at: null,
+  started_at: null,
+  completed_at: null,
+  created_at: new Date('2026-01-01T00:00:00.000Z'),
+  updated_at: new Date('2026-01-01T00:00:00.000Z'),
 });
 
 const importPreview = () => ({
@@ -560,7 +586,7 @@ describe('productsRouter', () => {
       expect(importFromCsvContent).not.toHaveBeenCalled();
     });
 
-    it('calls the import service and returns ProductImportResultDto', async () => {
+    it('enqueues an import task and returns 202 with Location', async () => {
       mockMultipart.mockReturnValue(
         Effect.succeed({
           file: makePersistedFile(),
@@ -568,9 +594,11 @@ describe('productsRouter', () => {
         }),
       );
       const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
+      const enqueue = vi.fn(() => Effect.succeed(taskResponse()));
       const { handler } = makeProductsRouterHarness({
         service: {},
         importService: { importFromCsvContent },
+        tasksService: { enqueue },
         permissions: writeAll,
       });
 
@@ -581,18 +609,29 @@ describe('productsRouter', () => {
         }),
       );
 
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual(importResult());
+      expect(response.status).toBe(202);
+      expect(response.headers.get('location')).toBe(`/api/v1/tasks/${TASK_ID}`);
+      await expect(response.json()).resolves.toMatchObject({
+        id: TASK_ID,
+        type: 'product-import',
+        status: 'queued',
+      });
       expect(mockReadFile).toHaveBeenCalledWith('/tmp/products-import.csv');
-      expect(importFromCsvContent).toHaveBeenCalledWith({
-        content: 'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
-        importType: 'auto',
-        approvedPlan: undefined,
-        userId: '00000000-0000-4000-a000-000000000001',
+      expect(importFromCsvContent).not.toHaveBeenCalled();
+      expect(enqueue).toHaveBeenCalledWith({
+        type: 'product-import',
+        payload: {
+          content: 'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
+          importType: 'auto',
+          userId: '00000000-0000-4000-a000-000000000001',
+        },
+        createdBy: '00000000-0000-4000-a000-000000000001',
+        maxAttempts: 3,
+        progressMessage: 'Queued product import',
       });
     });
 
-    it('parses the approved import plan and passes it to the service', async () => {
+    it('parses the approved import plan and stores it in the queued task payload', async () => {
       const approvedPlan = {
         defaultLocationName: 'Main Warehouse',
         locationMappings: [
@@ -614,9 +653,11 @@ describe('productsRouter', () => {
         }),
       );
       const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
+      const enqueue = vi.fn(() => Effect.succeed(taskResponse()));
       const { handler } = makeProductsRouterHarness({
         service: {},
         importService: { importFromCsvContent },
+        tasksService: { enqueue },
         permissions: writeAll,
       });
 
@@ -627,12 +668,19 @@ describe('productsRouter', () => {
         }),
       );
 
-      expect(response.status).toBe(200);
-      expect(importFromCsvContent).toHaveBeenCalledWith({
-        content: 'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
-        importType: 'sortly-items',
-        approvedPlan,
-        userId: '00000000-0000-4000-a000-000000000001',
+      expect(response.status).toBe(202);
+      expect(importFromCsvContent).not.toHaveBeenCalled();
+      expect(enqueue).toHaveBeenCalledWith({
+        type: 'product-import',
+        payload: {
+          content: 'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
+          importType: 'sortly-items',
+          approvedPlan,
+          userId: '00000000-0000-4000-a000-000000000001',
+        },
+        createdBy: '00000000-0000-4000-a000-000000000001',
+        maxAttempts: 3,
+        progressMessage: 'Queued product import',
       });
     });
 

@@ -17,8 +17,7 @@ export const frCatalog: Record<MessageKey, string> = {
   'auth.permissionDenied': 'Permissions insuffisantes.',
   'auth.unauthorized': 'Non autorise.',
   'email.sendFailed': "L'envoi de l'e-mail a echoue.",
-  'email.welcomeRequestFailed':
-    "La demande d'e-mail de bienvenue a echoue.",
+  'email.welcomeRequestFailed': "La demande d'e-mail de bienvenue a echoue.",
   'tenant.membershipRejected':
     "Le tenant actif n'est pas disponible pour cet utilisateur.",
   'tenant.notResolved':
@@ -48,8 +47,7 @@ export const frCatalog: Record<MessageKey, string> = {
   'errors.internalServerError': 'Erreur interne du serveur.',
   'features.notEnabled':
     "Cette fonctionnalite n'est pas activee pour le tenant actif.",
-  'features.repositoryFailed':
-    "L'operation sur les fonctionnalites a echoue.",
+  'features.repositoryFailed': "L'operation sur les fonctionnalites a echoue.",
   'features.tenantNotFound': 'Tenant introuvable.',
   'fulfillment.infrastructureFailed': "L'operation de preparation a echoue.",
   'fulfillment.insufficientInventory':
@@ -133,6 +131,7 @@ export const frCatalog: Record<MessageKey, string> = {
     'Un emplacement par defaut est requis pour importer du stock par zone.',
   'products.importCsvParseFailed':
     "Impossible d'analyser le fichier CSV televerse.",
+  'products.importCancelled': "L'import produits a ete annule.",
   'products.importPlanParseFailed':
     "Impossible d'analyser le plan d'import produits televerse.",
   'products.importReadUploadFailed':
@@ -177,6 +176,11 @@ export const frCatalog: Record<MessageKey, string> = {
   'suppliers.deleted': 'Fournisseur supprime avec succes.',
   'suppliers.notFound': 'Fournisseur introuvable.',
   'suppliers.repositoryFailed': "L'operation sur le fournisseur a echoue.",
+  'tasks.handlerNotFound': 'Gestionnaire de tache introuvable.',
+  'tasks.notFound': 'Tache introuvable.',
+  'tasks.payloadInvalid': 'La charge utile de la tache est invalide.',
+  'tasks.repositoryFailed': "L'operation de tache en arriere-plan a echoue.",
+  'tasks.terminalConflict': 'La tache est deja terminee.',
   'users.infrastructureFailed': "L'operation sur l'utilisateur a echoue.",
   'users.notFound': 'Utilisateur introuvable.',
   'users.repositoryFailed': "L'operation sur l'utilisateur a echoue.",
