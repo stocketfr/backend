@@ -32,7 +32,7 @@ import { UsersService } from '../modules/users/service';
 import { betterAuthLayer } from '../platform/auth/better-auth';
 import { PermissionProvider } from '../platform/auth/permission-provider';
 import {
-  DrizzleInitializationError,
+  type DrizzleInitializationError,
   drizzleLayer,
 } from '../platform/db/drizzle';
 import { TracingLive } from '../platform/observability/tracing';
