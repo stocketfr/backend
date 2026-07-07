@@ -10,8 +10,8 @@ import type {
   ImportProductsFromCsvOptions,
   NormalizedProductImportRow,
   ProductImportAiProposalDto,
-  ProductImportApprovedPlanDto,
   ProductImportLocationMappingDto,
+  ProductImportPlan,
   ProductImportPreviewDto,
   ProductImportResultDto,
   ProductImportValues,
@@ -76,6 +76,43 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           }
           return { parsed, format };
         });
+
+      const readProperty = (value: object, key: string): unknown =>
+        Object.hasOwn(value, key) ? Reflect.get(value, key) : undefined;
+
+      const getSkuConflictPolicy = (
+        approvedPlan: ProductImportPlan | undefined,
+      ): 'reject' | 'derive-sku' | undefined => {
+        if (approvedPlan) {
+          const directPolicy = readProperty(approvedPlan, 'skuConflictPolicy');
+          if (directPolicy === 'reject' || directPolicy === 'derive-sku') {
+            return directPolicy;
+          }
+        }
+
+        const planValue: unknown = approvedPlan;
+        if (typeof planValue !== 'object' || planValue === null) {
+          return undefined;
+        }
+
+        const productIdentity = readProperty(planValue, 'productIdentity');
+        if (typeof productIdentity !== 'object' || productIdentity === null) {
+          return undefined;
+        }
+
+        const conflictPolicy = readProperty(productIdentity, 'conflictPolicy');
+        return conflictPolicy === 'reject' || conflictPolicy === 'derive-sku'
+          ? conflictPolicy
+          : undefined;
+      };
+
+      const getDefaultLocationName = (
+        approvedPlan: ProductImportPlan | undefined,
+      ): string => {
+        if (!approvedPlan) return '';
+        const value = readProperty(approvedPlan, 'defaultLocationName');
+        return typeof value === 'string' ? value.trim() : '';
+      };
 
       const getOrCreateCategoryPath = (
         categoryPath: string,
@@ -234,7 +271,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
 
       const findLocationMapping = (
         row: NormalizedProductImportRow,
-        approvedPlan: ProductImportApprovedPlanDto | undefined,
+        approvedPlan: ProductImportPlan | undefined,
       ): ProductImportLocationMappingDto | undefined => {
         const sourceLocation = normalizeStorageLocationName(row.location);
         return approvedPlan?.locationMappings?.find(
@@ -246,7 +283,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
 
       const getTargetCategoryPath = (
         row: NormalizedProductImportRow,
-        approvedPlan: ProductImportApprovedPlanDto | undefined,
+        approvedPlan: ProductImportPlan | undefined,
       ): string => {
         const sourcePath = normalizeCategoryPath(row.category_path);
         const mapping = approvedPlan?.categoryMappings?.find(
@@ -260,7 +297,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
         row: NormalizedProductImportRow,
         caches: ImportCaches,
         result: ProductImportResultDto,
-        approvedPlan: ProductImportApprovedPlanDto | undefined,
+        approvedPlan: ProductImportPlan | undefined,
       ) =>
         Effect.gen(function* () {
           const rawLocation = row.location.trim();
@@ -276,8 +313,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           if (mapping?.action === 'create-area' && mapping.areaPath) {
             const targetLocationName =
               mapping.targetLocationName?.trim() ||
-              approvedPlan?.defaultLocationName?.trim() ||
-              '';
+              getDefaultLocationName(approvedPlan);
             const locationId = mapping.targetLocationId
               ? yield* findLocationId(mapping.targetLocationId, caches)
               : yield* getOrCreateLocation(targetLocationName, caches, result);
@@ -546,7 +582,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
         result: ProductImportResultDto,
         expiryDate: Date | null,
         userId: string,
-        approvedPlan: ProductImportApprovedPlanDto | undefined,
+        approvedPlan: ProductImportPlan | undefined,
       ) =>
         Effect.gen(function* () {
           const inventoryTarget = yield* resolveInventoryTarget(
@@ -601,7 +637,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
             includeReorderPoint: format === 'normalized-products',
           });
           const derivedSkusByRow =
-            approvedPlan?.skuConflictPolicy === 'derive-sku'
+            getSkuConflictPolicy(approvedPlan) === 'derive-sku'
               ? deriveConflictingDuplicateSkuRows(rows, {
                   includeReorderPoint: format === 'normalized-products',
                 })

@@ -14,7 +14,6 @@ import {
   BulkUpdateStatusSchema,
   BulkDeleteSchema,
   BulkRestoreSchema,
-  type ProductImportApprovedPlanDto,
 } from '@stocket/types/products';
 import { requirePermission } from '../../platform/auth/authorization';
 import { respondJson, respondJsonOk } from '../../platform/http/errors';
@@ -26,7 +25,7 @@ import {
 import { makeMessageResponse } from '../../platform/observability/messages';
 import { FeaturesService } from '../features/service';
 import { ProductImportService } from './import/service';
-import { ProductImportTypes } from './import/types';
+import { ProductImportTypes, type ProductImportPlan } from './import/types';
 import {
   ProductImportPlanParseFailed,
   ProductsInfrastructureError,
@@ -58,19 +57,93 @@ const ProductImportUploadSchema = Schema.Struct({
   plan: Schema.optional(Schema.String),
 });
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const hasOptionalMappingArray = (
+  value: Record<string, unknown>,
+  key: string,
+  itemGuard: (item: unknown) => boolean,
+): boolean => {
+  const mappingValue = value[key];
+  return (
+    mappingValue === undefined ||
+    (Array.isArray(mappingValue) && mappingValue.every(itemGuard))
+  );
+};
+
+const hasOptionalString = (
+  value: Record<string, unknown>,
+  key: string,
+): boolean => {
+  const itemValue = value[key];
+  return itemValue === undefined || typeof itemValue === 'string';
+};
+
+const isCategoryMapping = (value: unknown): boolean =>
+  isRecord(value) &&
+  typeof value.sourcePath === 'string' &&
+  typeof value.targetPath === 'string';
+
+const isLocationMappingAction = (value: unknown): boolean =>
+  value === 'use-existing' ||
+  value === 'create-location' ||
+  value === 'create-area' ||
+  value === 'ignore';
+
+const hasRequiredLocationAreaPath = (
+  value: Record<string, unknown>,
+): boolean =>
+  value.action !== 'create-area' ||
+  (typeof value.areaPath === 'string' && value.areaPath.trim() !== '');
+
+const isLocationMapping = (value: unknown): boolean => {
+  if (!isRecord(value)) return false;
+
+  return (
+    typeof value.sourceLocation === 'string' &&
+    isLocationMappingAction(value.action) &&
+    hasOptionalString(value, 'targetLocationId') &&
+    hasOptionalString(value, 'targetLocationName') &&
+    hasOptionalString(value, 'areaPath') &&
+    hasRequiredLocationAreaPath(value)
+  );
+};
+
+const isSupplierMapping = (value: unknown): boolean =>
+  isRecord(value) &&
+  typeof value.sourcePattern === 'string' &&
+  typeof value.supplierName === 'string';
+
+const isProductImportPlan = (value: unknown): value is ProductImportPlan =>
+  isRecord(value) &&
+  hasOptionalMappingArray(value, 'categoryMappings', isCategoryMapping) &&
+  hasOptionalMappingArray(value, 'locationMappings', isLocationMapping) &&
+  hasOptionalMappingArray(value, 'supplierMappings', isSupplierMapping);
+
 const parseProductImportPlan = (plan: string | undefined) =>
-  Effect.try({
-    try: (): ProductImportApprovedPlanDto | undefined => {
-      const trimmed = plan?.trim();
-      return trimmed
-        ? (JSON.parse(trimmed) as ProductImportApprovedPlanDto)
-        : undefined;
-    },
-    catch: (cause) =>
-      new ProductImportPlanParseFailed({
-        cause,
-        messageKey: 'products.importPlanParseFailed',
-      }),
+  Effect.gen(function* () {
+    const trimmed = plan?.trim();
+    if (!trimmed) return undefined;
+
+    const parsed = yield* Effect.try({
+      try: (): unknown => JSON.parse(trimmed),
+      catch: (cause) =>
+        new ProductImportPlanParseFailed({
+          cause,
+          messageKey: 'products.importPlanParseFailed',
+        }),
+    });
+
+    return yield* Effect.filterOrFail(
+      Effect.succeed(parsed),
+      isProductImportPlan,
+      () =>
+        new ProductImportPlanParseFailed({
+          cause: 'Product import plan must be a JSON object',
+          messageKey: 'products.importPlanParseFailed',
+        }),
+    );
   });
 
 const requireSmartImportFeature = Effect.flatMap(FeaturesService, (features) =>
