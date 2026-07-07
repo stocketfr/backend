@@ -1,11 +1,13 @@
 import { Effect, Layer } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 import type {
+  ProductImportAiProposalDto,
   ProductImportApprovedPlanDto,
   ProductImportPreviewDto,
 } from '@stocket/types/products';
 import { makeTestLayer } from '../../../testing/utils';
 import { ProductImportRepository } from './repository';
+import type { ProductImportPlan } from './types';
 import {
   detectProductImportFormat,
   makeProductImportProposal,
@@ -276,7 +278,7 @@ const seedExistingProductWithRootInventory = (
 const runImport = (
   content: string,
   importType: 'auto' | 'normalized-products' | 'sortly-items' = 'auto',
-  approvedPlan?: ProductImportApprovedPlanDto,
+  approvedPlan?: ProductImportPlan,
 ) => {
   const { repo } = makeInMemoryRepository();
   const llmProposer = makeLlmProposer();
@@ -306,7 +308,7 @@ const runImportWithState = async (
   content: string,
   importType: 'auto' | 'normalized-products' | 'sortly-items' = 'auto',
   setup?: (state: ReturnType<typeof makeInMemoryRepository>) => void,
-  approvedPlan?: ProductImportApprovedPlanDto,
+  approvedPlan?: ProductImportPlan,
   photoImporter = makePhotoImporter(),
 ) => {
   const state = makeInMemoryRepository();
@@ -656,6 +658,39 @@ Item,Service Gloves Black,SORT-1,Accessories,3,Bar,2
     ).toMatchObject({ quantity: 12 });
   });
 
+  it('derives SKUs when an AI proposal is submitted as the import plan', async () => {
+    const aiProposalPlan = {
+      format: 'sortly-items',
+      confidence: 0.92,
+      productIdentity: {
+        sourceColumn: 'SID',
+        conflictPolicy: 'derive-sku',
+      },
+      categoryMappings: [],
+      supplierMappings: [],
+      locationMappings: [],
+      warnings: [],
+    } satisfies ProductImportAiProposalDto;
+    const { result, state } = await runImportWithState(
+      `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location,Min Level
+Item,Service Gloves Black,SORT-1,Accessories,6,Warehouse,2
+Item,Service Gloves White,SORT-1,Accessories,12,Warehouse,2
+`,
+      'sortly-items',
+      undefined,
+      aiProposalPlan,
+    );
+
+    expect(result.rowsSkipped).toBe(0);
+    expect(result.productsCreated).toBe(2);
+    expect(result.inventoryRecordsCreated).toBe(2);
+    expect(result.errors).toEqual([]);
+    expect([...state.productsBySku.keys()].sort()).toEqual([
+      'SORT-1-SERVICE-GLOVES-BLACK',
+      'SORT-1-SERVICE-GLOVES-WHITE',
+    ]);
+  });
+
   it('clears stale inventory expiry dates when an update row has an empty expiry date', async () => {
     const existingExpiry = new Date('2026-01-01T00:00:00.000Z');
     const { result, state } = await runImportWithState(
@@ -756,9 +791,9 @@ SKU-1,Changed Product,Drinks,Warehouse,8
       defaultLocationName: 'Main Warehouse',
       locationMappings: [
         {
-          sourceLocation: 'Bay I - Shelf 3',
+          sourceLocation: 'Bay I - Shelf 3 - Bin A',
           targetLocationName: 'Main Warehouse',
-          areaPath: 'Bay I / Shelf 3',
+          areaPath: 'Bay I / Shelf 3 / Bin A',
           action: 'create-area',
           confidence: 0.9,
           rowCount: 1,
@@ -775,7 +810,7 @@ SKU-1,Changed Product,Drinks,Warehouse,8
     } satisfies ProductImportApprovedPlanDto;
     const { result, state } = await runImportWithState(
       `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location
-Item,Imported Tonic,SORT-1,,12,Bay I  - Shelf 3
+Item,Imported Tonic,SORT-1,,12,Bay I  - Shelf 3 - Bin A
 `,
       'sortly-items',
       undefined,
@@ -789,11 +824,12 @@ Item,Imported Tonic,SORT-1,,12,Bay I  - Shelf 3
     const shelfArea = state.areas.find(
       (candidate) => candidate.name === 'Shelf 3',
     );
+    const binArea = state.areas.find((candidate) => candidate.name === 'Bin A');
 
     expect(result).toMatchObject({
       categoriesCreated: 2,
       locationsCreated: 1,
-      areasCreated: 2,
+      areasCreated: 3,
       productsCreated: 1,
       inventoryRecordsCreated: 1,
       rowsSkipped: 0,
@@ -812,14 +848,19 @@ Item,Imported Tonic,SORT-1,,12,Bay I  - Shelf 3
       parent_id: bayArea.id,
       name: 'Shelf 3',
     });
+    expect(binArea).toMatchObject({
+      location_id: location.id,
+      parent_id: shelfArea.id,
+      name: 'Bin A',
+    });
     expect(
       state.inventoryByKey.get(
-        state.inventoryKey(product.id, location.id, shelfArea.id),
+        state.inventoryKey(product.id, location.id, binArea.id),
       ),
     ).toMatchObject({
       product_id: product.id,
       location_id: location.id,
-      area_id: shelfArea.id,
+      area_id: binArea.id,
       quantity: 12,
     });
   });
@@ -956,11 +997,56 @@ Item,Nail File,SORT-2,Spa,Nails,4,,,
     );
   });
 
+  it('previews nested Sortly storage values as area paths', async () => {
+    const preview = await runPreview(
+      `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location
+Item,Body Lotion,SORT-NESTED-1,Amenities,3,Bay I - Shelf 3 - Bin A
+Item,Hand Soap,SORT-NESTED-2,Amenities,2,Bay I Shelf 4
+`,
+      'sortly-items',
+    );
+
+    expect(preview.locationMappings).toEqual(
+      expect.arrayContaining([
+        {
+          sourceLocation: 'Bay I - Shelf 3 - Bin A',
+          areaPath: 'Bay I / Shelf 3 / Bin A',
+          action: 'create-area',
+          confidence: 0.9,
+          rowCount: 1,
+        },
+        {
+          sourceLocation: 'Bay I Shelf 4',
+          areaPath: 'Bay I / Shelf 4',
+          action: 'create-area',
+          confidence: 0.9,
+          rowCount: 1,
+        },
+      ]),
+    );
+    expect(preview.inventoryPreviews).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sku: 'SORT-NESTED-1',
+          location: 'Bay I - Shelf 3 - Bin A',
+          areaPath: 'Bay I / Shelf 3 / Bin A',
+          action: 'create',
+        }),
+        expect.objectContaining({
+          sku: 'SORT-NESTED-2',
+          location: 'Bay I Shelf 4',
+          areaPath: 'Bay I / Shelf 4',
+          action: 'create',
+        }),
+      ]),
+    );
+  });
+
   it('proposes category cleanup and duplicate SKU derivation for review', async () => {
     const proposal = await runProposal(
       `Entry Type,Entry Name,SID,Primary Folder,Subfolder-level1,Quantity,Location
-Item,Toothbrush Moss,SORT-1,Accessories,Dental,1,Bay F - Shelf 2
-Item,Toothbrush White,SORT-1,Accessories,Dental,1,Bay F - Shelf 2
+Item,Toothbrush Moss,SORT-1,Accessories,Dental,1,Bay F - Shelf 2 - Bin A
+Item,Toothbrush White,SORT-1,Accessories,Dental,1,Bay F - Shelf 2 - Bin A
 Item,Shampoo,SORT-2,Bulgari,Green Tea,5,Bay C - Shelf 3
 `,
       'sortly-items',
@@ -981,8 +1067,8 @@ Item,Shampoo,SORT-2,Bulgari,Green Tea,5,Bay C - Shelf 3
     expect(proposal.locationMappings).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          sourceLocation: 'Bay F - Shelf 2',
-          areaPath: 'Bay F / Shelf 2',
+          sourceLocation: 'Bay F - Shelf 2 - Bin A',
+          areaPath: 'Bay F / Shelf 2 / Bin A',
           action: 'create-area',
         }),
       ]),
