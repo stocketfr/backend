@@ -1,5 +1,4 @@
-import type { TaskResponseDto } from '@stocket/types/tasks';
-import type { TaskRow } from './types';
+import type { TaskResponseDto, TaskRow } from './types';
 
 export const rowsOf = <A>(result: unknown): A[] =>
   ((result as { rows?: A[] }).rows ?? (result as A[])) as A[];

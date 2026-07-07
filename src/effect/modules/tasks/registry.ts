@@ -1,12 +1,11 @@
 import { Effect } from 'effect';
-import type { TaskTypeDto } from '@stocket/types/tasks';
 import {
   requireProductImportAccess,
   requireSmartImportFeature,
 } from '../products/import/access';
 import { ProductImportTaskHandler } from './product-import-handler';
 import { TaskHandlerNotFound } from './tasks.errors';
-import type { TaskHandler } from './types';
+import type { TaskHandler, TaskTypeDto } from './types';
 
 export type TaskAuthorizationAction = 'enqueue' | 'read' | 'cancel';
 

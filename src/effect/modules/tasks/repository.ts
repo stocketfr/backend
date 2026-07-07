@@ -6,7 +6,6 @@ import {
   type RepositoryPaginatedResult,
 } from '@stocket/types/common';
 import { SortOrder } from '@stocket/types/common';
-import type { TaskQueryDto } from '@stocket/types/tasks';
 import { makeTryAsync } from '../../platform/effect/try-async';
 import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { backgroundTasks } from '../../platform/db/schema';
@@ -17,6 +16,7 @@ import type {
   ClaimTaskOptions,
   EnqueueTaskParams,
   TaskProgressPatch,
+  TaskQueryDto,
   TaskRow,
 } from './types';
 import { rowsOf } from './utils';

@@ -1,11 +1,10 @@
 import { Effect } from 'effect';
 import { toPaginatedResponse } from '@stocket/types/common';
-import type { TaskQueryDto, TaskTypeDto } from '@stocket/types/tasks';
 import { fromNullOr } from '../../platform/effect/from-null-or';
 import { TasksRepository } from './repository';
 import { TaskRegistry } from './registry';
 import { TaskNotFound } from './tasks.errors';
-import type { EnqueueTaskParams } from './types';
+import type { EnqueueTaskParams, TaskQueryDto, TaskTypeDto } from './types';
 import { toTaskResponseDto } from './utils';
 
 export class TasksService extends Effect.Service<TasksService>()(

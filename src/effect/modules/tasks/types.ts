@@ -1,11 +1,62 @@
-import type {
-  TaskQueryDto,
-  TaskResponseDto,
-  TaskStatusDto,
-  TaskTypeDto,
-} from '@stocket/types/tasks';
+import { Schema } from 'effect';
+import {
+  LimitSchema,
+  PageSchema,
+  SortOrder,
+  type PaginationMeta,
+} from '@stocket/types/common';
+import type { ProductImportResultDto } from '@stocket/types/products';
 
-export type { TaskQueryDto, TaskResponseDto, TaskStatusDto, TaskTypeDto };
+export type TaskStatusDto =
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'canceled';
+
+export type TaskTypeDto = 'product-import';
+
+export interface TaskQueryDto {
+  readonly page?: number;
+  readonly limit?: number;
+  readonly type?: TaskTypeDto;
+  readonly status?: TaskStatusDto;
+  readonly sort_order?: SortOrder;
+}
+
+export interface TaskProgressDto {
+  readonly total: number | null;
+  readonly processed: number;
+  readonly failed: number;
+  readonly percent: number | null;
+  readonly message: string | null;
+}
+
+export type TaskResultDto = ProductImportResultDto | null;
+
+export interface TaskResponseDto {
+  readonly id: string;
+  readonly tenant_id: string;
+  readonly type: TaskTypeDto;
+  readonly status: TaskStatusDto;
+  readonly result: TaskResultDto;
+  readonly error: string | null;
+  readonly created_by: string | null;
+  readonly attempt_count: number;
+  readonly max_attempts: number;
+  readonly run_after: Date;
+  readonly progress: TaskProgressDto;
+  readonly cancel_requested_at: Date | null;
+  readonly started_at: Date | null;
+  readonly completed_at: Date | null;
+  readonly created_at: Date;
+  readonly updated_at: Date;
+}
+
+export interface PaginatedTasksResponseDto {
+  readonly data: TaskResponseDto[];
+  readonly meta: PaginationMeta;
+}
 
 export const TaskStatuses = [
   'queued',
@@ -24,6 +75,20 @@ export const TerminalTaskStatuses = [
   'failed',
   'canceled',
 ] as const satisfies readonly TaskStatusDto[];
+
+export const TaskIdSchema = Schema.UUID;
+
+export const TaskStatusSchema = Schema.Literal(...TaskStatuses);
+
+export const TaskTypeSchema = Schema.Literal(...TaskTypes);
+
+export const TaskQuerySchema = Schema.Struct({
+  page: Schema.optional(PageSchema),
+  limit: Schema.optional(LimitSchema),
+  type: Schema.optional(TaskTypeSchema),
+  status: Schema.optional(TaskStatusSchema),
+  sort_order: Schema.optional(Schema.Literal(SortOrder.ASC, SortOrder.DESC)),
+});
 
 export interface TaskRow {
   readonly id: string;

@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { Effect, Fiber } from 'effect';
-import type { TaskTypeDto } from '@stocket/types/tasks';
 import { DEFAULT_LOCALE } from '../../platform/observability/messages';
 import {
   CurrentRequestContext,
@@ -12,6 +11,7 @@ import type {
   ClaimedTask,
   TaskHandlerOutcome,
   TaskProgressPatch,
+  TaskTypeDto,
 } from './types';
 
 const LEASE_MS = Number(process.env.BACKGROUND_TASK_LEASE_MS ?? 60_000);

@@ -1,8 +1,8 @@
 import { HttpRouter, HttpServerRequest } from '@effect/platform';
 import { Effect, Schema } from 'effect';
-import { TaskIdSchema, TaskQuerySchema } from '@stocket/types/tasks';
 import { respondJson, respondJsonOk } from '../../platform/http/errors';
 import { TasksService } from './service';
+import { TaskIdSchema, TaskQuerySchema } from './types';
 
 const TaskPathParams = Schema.Struct({ id: TaskIdSchema });
 

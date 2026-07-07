@@ -90,12 +90,14 @@ const buildWorker = async (
     ),
   );
 
+const testFeaturesService = {
+  requireFeature: () => Effect.void,
+} as unknown as FeaturesService;
+
 const runOnce = (worker: TaskWorkerService) =>
   Effect.runPromise(
     worker.runOnce.pipe(
-      Effect.provideService(FeaturesService, {
-        requireFeature: () => Effect.void,
-      } as never),
+      Effect.provideService(FeaturesService, testFeaturesService),
     ),
   );
 
