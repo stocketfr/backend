@@ -11,6 +11,8 @@ import type {
 } from '@stocket/types/products';
 import type { areas, categories, locations } from '../../../platform/db/schema';
 import type { ProductRow } from '../products.utils';
+import type { ProductImportPhotoImporter } from './photo-importer';
+import type { ProductImportRepository } from './repository';
 
 export type {
   ProductImportAiProposalDto,
@@ -70,6 +72,30 @@ export interface ImportCaches {
   readonly areas: Map<string, string>;
   readonly products: Map<string, ImportProductRow>;
   readonly photoUrlsByProduct: Map<string, Set<string>>;
+}
+
+export interface ImportRunState {
+  readonly caches: ImportCaches;
+  readonly result: ProductImportResultDto;
+}
+
+export interface ImportInventoryTarget {
+  readonly locationId: string | null;
+  readonly areaId: string | null;
+}
+
+export interface ImportWorkflowServices {
+  readonly repository: ProductImportRepository;
+  readonly photoImporter: ProductImportPhotoImporter;
+}
+
+export interface ProcessProductImportRowOptions {
+  readonly services: ImportWorkflowServices;
+  readonly row: NormalizedProductImportRow;
+  readonly state: ImportRunState;
+  readonly expiryDate: Date | null;
+  readonly userId: string;
+  readonly approvedPlan?: ProductImportApprovedPlanDto;
 }
 
 export interface ImportProductsFromCsvOptions {
