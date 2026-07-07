@@ -6,6 +6,7 @@ import type {
 } from '@stocket/types/products';
 import { makeTestLayer } from '../../../testing/utils';
 import { ProductImportRepository } from './repository';
+import type { ProductImportExecutionHooks } from './types';
 import {
   detectProductImportFormat,
   makeProductImportProposal,
@@ -308,6 +309,7 @@ const runImportWithState = async (
   setup?: (state: ReturnType<typeof makeInMemoryRepository>) => void,
   approvedPlan?: ProductImportApprovedPlanDto,
   photoImporter = makePhotoImporter(),
+  hooks?: ProductImportExecutionHooks,
 ) => {
   const state = makeInMemoryRepository();
   const llmProposer = makeLlmProposer();
@@ -328,6 +330,7 @@ const runImportWithState = async (
         importType,
         approvedPlan,
         userId: TEST_USER_ID,
+        hooks,
       }),
     ).pipe(Effect.provide(layer)),
   );
@@ -890,6 +893,7 @@ Item,Imported Tonic,SORT-1,Drinks,12,Bar,https://example.test/photo.jpg
     const photoImporter = makePhotoImporter({
       importSortlyPhoto: vi.fn(() => Effect.fail(new Error('network down'))),
     });
+    const progress: Array<{ processed: number; failed: number }> = [];
     const { result } = await runImportWithState(
       `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location,Photo1
 Item,Imported Tonic,SORT-1,Drinks,12,Bar,https://lnk.sortly.co/v2/downloads/photo/photo-1
@@ -898,6 +902,15 @@ Item,Imported Tonic,SORT-1,Drinks,12,Bar,https://lnk.sortly.co/v2/downloads/phot
       undefined,
       undefined,
       photoImporter,
+      {
+        onProgress: (event) =>
+          Effect.sync(() => {
+            progress.push({
+              processed: event.processed,
+              failed: event.failed,
+            });
+          }),
+      },
     );
 
     expect(result.rowsSkipped).toBe(0);
@@ -911,6 +924,11 @@ Item,Imported Tonic,SORT-1,Drinks,12,Bar,https://lnk.sortly.co/v2/downloads/phot
         error:
           'Photo import failed for "https://lnk.sortly.co/v2/downloads/photo/photo-1": network down',
       },
+    ]);
+    expect(progress).toEqual([
+      { processed: 0, failed: 0 },
+      { processed: 1, failed: 0 },
+      { processed: 1, failed: 0 },
     ]);
   });
 

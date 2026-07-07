@@ -74,6 +74,11 @@ export interface ImportCaches {
   readonly photoUrlsByProduct: Map<string, Set<string>>;
 }
 
+export interface ImportInventoryTarget {
+  readonly locationId: string | null;
+  readonly areaId: string | null;
+}
+
 export interface ImportProductsFromCsvOptions {
   readonly content: string;
   readonly importType?: ProductImportType;

@@ -5,6 +5,7 @@ import type {
   ImportCaches,
   ImportAreaRow,
   ImportCategoryRow,
+  ImportInventoryTarget,
   ImportLocationRow,
   ImportProductRow,
   ImportProductsFromCsvOptions,
@@ -47,6 +48,8 @@ import { ProductImportLlmProposer } from './llm-proposer';
 import { ProductImportPhotoImporter } from './photo-importer';
 import { PRODUCT_IMPORT_PROGRESS_MESSAGES } from './progress';
 import { ProductImportRepository } from './repository';
+
+const PROGRESS_ROW_REPORT_INTERVAL = 25;
 
 export class ProductImportService extends Effect.Service<ProductImportService>()(
   '@stocket/effect/products/ProductImportService',
@@ -518,10 +521,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
       const validateRootInventoryImport = (
         row: NormalizedProductImportRow,
         caches: ImportCaches,
-        target: {
-          readonly locationId: string | null;
-          readonly areaId: string | null;
-        },
+        target: ImportInventoryTarget,
       ) =>
         Effect.gen(function* () {
           if (!target.locationId || target.areaId) return;
@@ -548,7 +548,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           }
         });
 
-      const importRow = (
+      const importCoreRow = (
         row: NormalizedProductImportRow,
         caches: ImportCaches,
         result: ProductImportResultDto,
@@ -585,7 +585,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
             result,
             expiryDate,
           );
-          yield* importProductPhotos(product, row, caches, result, userId);
+          return product;
         });
 
       const importFromCsvContent = ({
@@ -623,19 +623,31 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
                   .pipe(Effect.ignore)
               : Effect.void;
           const ensureNotCanceled = hooks?.isCancelRequested
-            ? Effect.gen(function* () {
-                const canceled = yield* hooks.isCancelRequested!.pipe(
-                  Effect.catchAll(() => Effect.succeed(false)),
-                );
-                if (canceled) {
-                  return yield* Effect.fail(
+            ? hooks.isCancelRequested.pipe(
+                Effect.filterOrFail(
+                  (canceled) => !canceled,
+                  () =>
                     new ProductImportCancelled({
                       messageKey: 'products.importCancelled',
                     }),
-                  );
-                }
-              })
+                ),
+                Effect.asVoid,
+              )
             : Effect.void;
+          const shouldReportRowProgress = () =>
+            processedRows === rows.length ||
+            processedRows % PROGRESS_ROW_REPORT_INTERVAL === 0;
+          const reportRowProgress = () =>
+            shouldReportRowProgress()
+              ? reportProgress(PRODUCT_IMPORT_PROGRESS_MESSAGES.rowsProcessed)
+              : Effect.void;
+          const skipFailedRow = (sourceRow: number, error: string) =>
+            Effect.gen(function* () {
+              pushRowError(result, sourceRow, error);
+              processedRows++;
+              failedRows++;
+              yield* reportRowProgress();
+            });
 
           yield* reportProgress(PRODUCT_IMPORT_PROGRESS_MESSAGES.starting);
           const duplicateConflictRows = findConflictingDuplicateSkuRows(rows, {
@@ -662,50 +674,32 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
               ? { ...originalRow, sku: derivedSku }
               : originalRow;
             if (!row.sku || !row.name) {
-              pushRowError(
-                result,
+              yield* skipFailedRow(
                 row.sourceRow,
                 'Cannot import product without sku and name',
-              );
-              processedRows++;
-              failedRows++;
-              yield* reportProgress(
-                PRODUCT_IMPORT_PROGRESS_MESSAGES.rowsProcessed,
               );
               continue;
             }
 
             if (duplicateConflictRows.has(row.sourceRow) && !derivedSku) {
-              pushRowError(
-                result,
+              yield* skipFailedRow(
                 row.sourceRow,
                 `Conflicting duplicate SKU "${row.sku}" has different product fields`,
-              );
-              processedRows++;
-              failedRows++;
-              yield* reportProgress(
-                PRODUCT_IMPORT_PROGRESS_MESSAGES.rowsProcessed,
               );
               continue;
             }
 
             const expiryDate = parseDate(row.expiry_date);
             if (row.expiry_date.trim() !== '' && expiryDate === null) {
-              pushRowError(
-                result,
+              yield* skipFailedRow(
                 row.sourceRow,
                 `Invalid expiry_date "${row.expiry_date}"`,
-              );
-              processedRows++;
-              failedRows++;
-              yield* reportProgress(
-                PRODUCT_IMPORT_PROGRESS_MESSAGES.rowsProcessed,
               );
               continue;
             }
 
-            const errorsBeforeRow = result.errors.length;
-            yield* importRow(
+            let coreRowFailed = false;
+            const product = yield* importCoreRow(
               row,
               caches,
               result,
@@ -721,17 +715,19 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
                   return Effect.fail(error);
                 }
                 return Effect.sync(() => {
+                  coreRowFailed = true;
                   pushRowError(result, row.sourceRow, formatImportError(error));
                 });
               }),
             );
+            if (product) {
+              yield* importProductPhotos(product, row, caches, result, userId);
+            }
             processedRows++;
-            if (result.errors.length > errorsBeforeRow) {
+            if (coreRowFailed) {
               failedRows++;
             }
-            yield* reportProgress(
-              PRODUCT_IMPORT_PROGRESS_MESSAGES.rowsProcessed,
-            );
+            yield* reportRowProgress();
           }
 
           yield* reportProgress(PRODUCT_IMPORT_PROGRESS_MESSAGES.completed);
