@@ -16,8 +16,8 @@ import { vi, type Mock } from 'vitest';
  */
 const makeUnimplementedProxy = <S extends object>(key: string, service: Partial<S>): S =>
   new Proxy(service as S, {
-    get(target, prop) {
-      if (prop in target) return (target as any)[prop];
+    get(target, prop, receiver) {
+      if (prop in target) return Reflect.get(target, prop, receiver);
       return () =>
         Effect.die(
           `${key}.${String(prop)} was called in a test but is not implemented in the test layer. Add it to makeTestLayer(${key})({...}).`,
@@ -29,6 +29,54 @@ export const makeTestLayer =
   <I, S extends object>(tag: Context.Tag<I, S>) =>
   (service: Partial<S>): Layer.Layer<I> =>
     Layer.succeed(tag, makeUnimplementedProxy(tag.key, service));
+
+/**
+ * Builds a per-test mock service object and its loud test layer together.
+ *
+ * `makeDefaults` runs for every call, so Vitest mocks are isolated per test.
+ * The returned `service` keeps the precise `vi.fn` types for assertions while
+ * `layer` is ready to pass to `makeServiceTestHarness(...).effect(...)`.
+ */
+export const makeMockServiceLayer =
+  <I, S extends object, Defaults extends Partial<S>>(
+    tag: Context.Tag<I, S>,
+    makeDefaults: () => Defaults,
+  ) =>
+  <Overrides extends Partial<S> = Record<never, never>>(
+    overrides?: Overrides,
+  ) => {
+    const service = { ...makeDefaults(), ...overrides };
+    return {
+      service,
+      layer: makeTestLayer(tag)(service),
+    };
+  };
+
+/**
+ * Harness for Effect service unit specs.
+ *
+ * It wires a module-under-test layer to a collaborator layer and yields the
+ * concrete service to the test body, avoiding per-spec run/provide helpers.
+ */
+export const makeServiceTestHarness = <I, S extends object, BuildError, RIn>(
+  tag: Context.Tag<I, S>,
+  serviceLayer: Layer.Layer<I, BuildError, RIn>,
+) => {
+  const layer = <DependencyError, RRemaining>(
+    dependencies: Layer.Layer<RIn, DependencyError, RRemaining>,
+  ) => serviceLayer.pipe(Layer.provide(dependencies));
+
+  const effect = <A, TestError, RTest, DependencyError, RRemaining>(
+    dependencies: Layer.Layer<RIn, DependencyError, RRemaining>,
+    body: (service: S) => Effect.Effect<A, TestError, RTest>,
+  ) =>
+    Effect.gen(function* () {
+      const service = yield* tag;
+      return yield* body(service);
+    }).pipe(Effect.provide(layer(dependencies)));
+
+  return { layer, effect };
+};
 
 export type ChainableMock<T> = {
   [method: string]: Mock;

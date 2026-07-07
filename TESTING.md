@@ -25,7 +25,7 @@ There is also a **duplication check** (`pnpm test:duplicates`) — not a test fl
 Decision tree, in order:
 
 1. **Is the function pure (no I/O, no Effect, no DB)?** → property test. Start with `messages.property.spec.ts` or `bulk-operation.utils.property.spec.ts` as templates.
-2. **Is it a service method whose only collaborators are repositories / other services?** → unit test using `makeTestLayer` to inject mocks. New code: prefer `it.effect`. Existing code: match the style of the neighboring `*.spec.ts`.
+2. **Is it a service method whose only collaborators are repositories / other services?** → unit test using `makeMockServiceLayer` + `makeServiceTestHarness` to inject mocks around the module under test. New code: prefer `it.effect`. Existing code: match the style of the neighboring `*.spec.ts`.
 3. **Is it a router handler?** → unit test that `vi.mock`s the service module so the router gets a fresh tag; assert the HTTP `Response`. Pattern: `modules/inventory/router.spec.ts`.
 4. **Does correctness depend on real SQL behavior** — joins, transactional rollback, `ON CONFLICT`, FK cascade, tenant isolation, sort ordering? → integration test.
 5. **Does correctness span the full app surface** — request → router → service → DB → audit log? → acceptance test using `makeTestHttpAppHandler` (see `src/effect/http/app.integration.spec.ts`).
@@ -177,33 +177,39 @@ Canonical reference: `modules/branding/service.effect.spec.ts`. Skeleton:
 
 ```ts
 import { describe, expect, it } from '@effect/vitest';
-import { Effect, Layer } from 'effect';
-import { makeTestLayer } from '../../testing/test-harness';
+import { Effect } from 'effect';
+import {
+  makeMockServiceLayer,
+  makeServiceTestHarness,
+} from '../../testing/test-harness';
 import { MyRepository } from './repository';
 import { MyService } from './service';
 
-const repoLayer = (overrides: Partial<MyRepository> = {}) =>
-  makeTestLayer(MyRepository)({
+const makeDefaultRepo = () =>
+  ({
     findById: () => Effect.succeed(null),
-    ...overrides,
-  });
+  }) satisfies Partial<MyRepository>;
+
+const makeRepo = makeMockServiceLayer(MyRepository, makeDefaultRepo);
+
+const harness = makeServiceTestHarness(
+  MyService,
+  MyService.DefaultWithoutDependencies,
+);
 
 describe('MyService', () => {
   it.effect('does the thing', () =>
-    Effect.gen(function* () {
-      const svc = yield* MyService;
-      const result = yield* svc.doTheThing('abc');
-      expect(result).toBeDefined();
-    }).pipe(
-      Effect.provide(
-        MyService.DefaultWithoutDependencies.pipe(Layer.provide(repoLayer())),
-      ),
+    harness.effect(makeRepo().layer, (svc) =>
+      Effect.gen(function* () {
+        const result = yield* svc.doTheThing('abc');
+        expect(result).toBeDefined();
+      }),
     ),
   );
 });
 ```
 
-`makeTestLayer` builds a Proxy: any method you don't list explicitly **dies loudly** when called, with a message naming the missing method. That makes scope drift visible instead of silently returning `undefined`.
+`makeMockServiceLayer` builds on `makeTestLayer`, so any method you don't list explicitly **dies loudly** when called, with a message naming the missing method. It also returns the mock service object next to the layer so assertions can inspect `vi.fn` calls without rebuilding local run helpers.
 
 Don't rewrite working `*.spec.ts` files just to migrate to `it.effect`. Use it for new code.
 

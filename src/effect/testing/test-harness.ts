@@ -4,6 +4,9 @@
  * Exposes:
  *   - `testPlatformLayer`        — Drizzle + BetterAuth wired for tests, mirroring
  *                                  `platformLayer` in `src/effect/main.ts`.
+ *   - `makeServiceTestHarness(...)` — unit-test helper for module-under-test
+ *                                  layers plus mocked collaborator layers.
+ *   - `makeMockServiceLayer(...)` — per-test mock service object + loud layer.
  *   - `provideTestLayer(...)`    — convenience: `Effect.provide(Layer.mergeAll(...))`
  *                                  with the test platform pre-merged.
  *   - `runTest` / `runTestFailure` — `Effect.runPromise` wrappers that always
@@ -15,8 +18,9 @@
  * time, one shared connection pool for the whole test run, and
  * `TRUNCATE ... CASCADE` before every test. See `./README.md`.
  *
- * Unit tests don't need the platform layer. Use `makeTestLayer(tag)({...})`
- * (re-exported below) to build typed mock layers per service.
+ * Unit tests don't need the platform layer. Use `makeMockServiceLayer(...)`
+ * plus `makeServiceTestHarness(...)` when testing a service through mocked
+ * collaborators, or `makeTestLayer(tag)({...})` for one-off mock layers.
  */
 import { Effect, Layer } from 'effect';
 import { DrizzleDatabase } from '../platform/db/drizzle';
@@ -29,7 +33,12 @@ import {
 } from './integration-layer';
 import { makeBetterAuthTestLayer } from './better-auth-test';
 
-export { makeTestLayer, createChainableMock } from './utils';
+export {
+  makeMockServiceLayer,
+  makeServiceTestHarness,
+  makeTestLayer,
+  createChainableMock,
+} from './utils';
 export {
   getTestDb,
   closeTestDb,
