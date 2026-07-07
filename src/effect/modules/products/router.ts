@@ -14,7 +14,6 @@ import {
   BulkUpdateStatusSchema,
   BulkDeleteSchema,
   BulkRestoreSchema,
-  type ProductImportApprovedPlanDto,
 } from '@stocket/types/products';
 import { requirePermission } from '../../platform/auth/authorization';
 import { respondJson, respondJsonOk } from '../../platform/http/errors';
@@ -26,7 +25,7 @@ import {
 import { makeMessageResponse } from '../../platform/observability/messages';
 import { FeaturesService } from '../features/service';
 import { ProductImportService } from './import/service';
-import { ProductImportTypes } from './import/types';
+import { ProductImportTypes, type ProductImportPlan } from './import/types';
 import {
   ProductImportPlanParseFailed,
   ProductsInfrastructureError,
@@ -58,19 +57,32 @@ const ProductImportUploadSchema = Schema.Struct({
   plan: Schema.optional(Schema.String),
 });
 
+const isProductImportPlan = (value: unknown): value is ProductImportPlan =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
 const parseProductImportPlan = (plan: string | undefined) =>
-  Effect.try({
-    try: (): ProductImportApprovedPlanDto | undefined => {
-      const trimmed = plan?.trim();
-      return trimmed
-        ? (JSON.parse(trimmed) as ProductImportApprovedPlanDto)
-        : undefined;
-    },
-    catch: (cause) =>
-      new ProductImportPlanParseFailed({
-        cause,
-        messageKey: 'products.importPlanParseFailed',
-      }),
+  Effect.gen(function* () {
+    const trimmed = plan?.trim();
+    if (!trimmed) return undefined;
+
+    const parsed = yield* Effect.try({
+      try: (): unknown => JSON.parse(trimmed),
+      catch: (cause) =>
+        new ProductImportPlanParseFailed({
+          cause,
+          messageKey: 'products.importPlanParseFailed',
+        }),
+    });
+
+    return yield* Effect.filterOrFail(
+      Effect.succeed(parsed),
+      isProductImportPlan,
+      () =>
+        new ProductImportPlanParseFailed({
+          cause: 'Product import plan must be a JSON object',
+          messageKey: 'products.importPlanParseFailed',
+        }),
+    );
   });
 
 const requireSmartImportFeature = Effect.flatMap(FeaturesService, (features) =>
