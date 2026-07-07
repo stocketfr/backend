@@ -141,6 +141,7 @@ export const enCatalog = {
   'superadmin.reservedTenantSlug': 'Tenant slug is reserved.',
   'superadmin.tenantHostnameAlreadyExists':
     'A tenant with this hostname already exists.',
+  'superadmin.tenantImportInvalid': 'Tenant import failed: {details}',
   'superadmin.tenantNotFound': 'Tenant not found.',
   'superadmin.tenantSlugAlreadyExists':
     'A tenant with this slug already exists.',

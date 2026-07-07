@@ -6,6 +6,10 @@ import type {
   SuperAdminTenantListResponse,
 } from '@stocket/types/superadmin';
 import type {
+  ProductImportPreviewDto,
+  ProductImportResultDto,
+} from '@stocket/types/products';
+import type {
   FeatureKey,
   UpdateTenantFeatureOverride,
   UpdateTenantPlan,
@@ -29,12 +33,18 @@ import {
   InvalidTenantSlug,
   ReservedTenantSlug,
   SuperAdminRepositoryError,
+  TenantImportInvalid,
   TenantHostnameAlreadyExists,
   TenantNotFound,
   TenantSlugAlreadyExists,
 } from './superadmin.errors';
 import { SuperAdminRepository } from './repository';
 import { FeaturesService } from '../features/service';
+import { ProductImportService } from '../products/import/service';
+import {
+  CurrentRequestContext,
+  type RequestContext,
+} from '../../platform/http/request-context';
 
 interface BetterAuthCreateUserResponse {
   readonly user: { readonly id: string };
@@ -45,6 +55,18 @@ interface BetterAuthCreateUserBody {
   readonly name: string;
   readonly password: string;
   readonly data?: { readonly emailVerified: boolean };
+}
+
+interface CreateTenantActor {
+  readonly userId: string;
+  readonly ipAddress?: string | null;
+  readonly userAgent?: string | null;
+  readonly requestContext?: RequestContext;
+}
+
+interface CreateTenantProductImport {
+  readonly filename: string;
+  readonly content: string;
 }
 
 const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
@@ -86,6 +108,47 @@ const mapCreateTenantError = (
   return error;
 };
 
+const makeTenantImportInvalid = (details: string, cause?: unknown) =>
+  new TenantImportInvalid({
+    details,
+    cause,
+    messageKey: 'superadmin.tenantImportInvalid',
+    messageArgs: { details },
+  });
+
+const formatImportCause = (cause: unknown): string => {
+  if (cause instanceof Error && cause.message) return cause.message;
+  if (
+    isRecord(cause) &&
+    typeof cause.message === 'string' &&
+    cause.message.trim() !== ''
+  ) {
+    return cause.message;
+  }
+  return 'Product import failed.';
+};
+
+const formatPreviewErrors = (preview: ProductImportPreviewDto) => {
+  const rowErrors = preview.inventoryPreviews
+    .filter(
+      (item) =>
+        item.reason === 'Missing SKU or name' || item.action === 'conflict',
+    )
+    .map((item) => `Row ${item.row}: ${item.reason ?? item.action}`);
+
+  if (rowErrors.length > 0) {
+    return rowErrors.join('; ');
+  }
+
+  return preview.warnings
+    .filter((warning) => warning.severity === 'error')
+    .map((warning) => warning.message)
+    .join('; ');
+};
+
+const formatImportResultErrors = (result: ProductImportResultDto) =>
+  result.errors.map((error) => `Row ${error.row}: ${error.error}`).join('; ');
+
 const tryAsync = makeTryAsync(
   (action, cause) =>
     new SuperAdminRepositoryError({
@@ -103,6 +166,7 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
       const usersRepository = yield* UsersRepository;
       const betterAuth = yield* BetterAuth;
       const featuresService = yield* FeaturesService;
+      const productImportService = yield* ProductImportService;
       const trace = makeServiceTracer({
         serviceName: 'SuperAdminService',
         module: 'superadmin',
@@ -140,6 +204,65 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
           ),
         );
 
+      const validateProductImport = (productImport: CreateTenantProductImport) =>
+        productImportService
+          .previewCsvContent({ content: productImport.content })
+          .pipe(
+            Effect.mapError((cause) =>
+              makeTenantImportInvalid(formatImportCause(cause), cause),
+            ),
+            Effect.flatMap((preview) => {
+              const details = formatPreviewErrors(preview);
+              if (details) {
+                return Effect.fail(makeTenantImportInvalid(details, preview));
+              }
+              return Effect.succeed(productImport);
+            }),
+          );
+
+      const tenantImportRequestContext = (
+        actor: CreateTenantActor,
+        created: SuperAdminCreateTenantResponse,
+      ): RequestContext => ({
+        requestId:
+          actor.requestContext?.requestId ??
+          `00000000-0000-4000-8000-${created.tenant.id.slice(-12)}`,
+        path: actor.requestContext?.path ?? '/api/v1/superadmin/tenants',
+        method: actor.requestContext?.method ?? 'POST',
+        ip: actor.ipAddress ?? actor.requestContext?.ip ?? null,
+        locale: actor.requestContext?.locale ?? 'en',
+        tenantId: created.tenant.id,
+        tenantName: created.tenant.name,
+        tenantSlug: created.tenant.slug,
+      });
+
+      const importProductsForTenant = (
+        created: SuperAdminCreateTenantResponse,
+        productImport: CreateTenantProductImport,
+        actor: CreateTenantActor,
+      ) =>
+        productImportService
+          .importFromCsvContent({
+            content: productImport.content,
+            userId: created.admin.id,
+          })
+          .pipe(
+            Effect.provideService(
+              CurrentRequestContext,
+              tenantImportRequestContext(actor, created),
+            ),
+            Effect.mapError((cause) =>
+              makeTenantImportInvalid(formatImportCause(cause), cause),
+            ),
+            Effect.flatMap((result) => {
+              const details = formatImportResultErrors(result);
+              if (details) {
+                return Effect.fail(makeTenantImportInvalid(details, result));
+              }
+              return Effect.succeed(result);
+            }),
+          );
+
       const me = trace.traced('me', (session: UserSession) =>
         Effect.succeed({
           id: session.user.id,
@@ -169,11 +292,8 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
         'createTenant',
         (
           input: CreateSuperAdminTenantInput,
-          actor: {
-            readonly userId: string;
-            readonly ipAddress?: string | null;
-            readonly userAgent?: string | null;
-          },
+          actor: CreateTenantActor,
+          productImport?: CreateTenantProductImport,
         ) =>
           Effect.gen(function* () {
             const slug = input.slug.trim().toLowerCase();
@@ -213,6 +333,10 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
                 }),
               );
             }
+
+            const validatedProductImport = productImport
+              ? yield* validateProductImport(productImport)
+              : undefined;
 
             const normalizedEmail = input.admin.email.trim().toLowerCase();
             const adminName = input.admin.name.trim();
@@ -264,6 +388,44 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
                 ),
               );
 
+            const admin = {
+              id: adminUserId,
+              email: existing?.email ?? normalizedEmail,
+              name: existing?.name ?? adminName,
+            };
+            const baseResponse = {
+              tenant: created.tenant,
+              admin,
+            } satisfies SuperAdminCreateTenantResponse;
+
+            const productImportResult = validatedProductImport
+              ? yield* importProductsForTenant(
+                  baseResponse,
+                  validatedProductImport,
+                  actor,
+                ).pipe(
+                  Effect.tapError(() =>
+                    repository.deleteTenant(created.tenant.id).pipe(
+                      Effect.tapError((cause) =>
+                        Effect.logError({
+                          messageKey: 'superadmin.repositoryFailed',
+                          action: 'rollback tenant import',
+                          cause,
+                        } satisfies LogPayload),
+                      ),
+                      Effect.ignore,
+                    ),
+                  ),
+                  Effect.tapError(() =>
+                    adminCreatedHere
+                      ? usersRepository
+                          .deleteBetterAuthUser(adminUserId)
+                          .pipe(Effect.ignore)
+                      : Effect.void,
+                  ),
+                )
+              : undefined;
+
             if (adminCreatedHere) {
               yield* Effect.forkDaemon(
                 requestTenantAdminWelcomeEmail(
@@ -285,6 +447,21 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
                     slug: created.tenant.slug,
                     hostname: created.tenant.hostname,
                     adminUserId,
+                    ...(productImportResult
+                      ? {
+                          productImport: {
+                            filename: validatedProductImport?.filename,
+                            categoriesCreated:
+                              productImportResult.categoriesCreated,
+                            locationsCreated:
+                              productImportResult.locationsCreated,
+                            productsCreated: productImportResult.productsCreated,
+                            inventoryRecordsCreated:
+                              productImportResult.inventoryRecordsCreated,
+                            rowsSkipped: productImportResult.rowsSkipped,
+                          },
+                        }
+                      : {}),
                   },
                   ipAddress: actor.ipAddress ?? null,
                   userAgent: actor.userAgent ?? null,
@@ -293,12 +470,8 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
             );
 
             return {
-              tenant: created.tenant,
-              admin: {
-                id: adminUserId,
-                email: existing?.email ?? normalizedEmail,
-                name: existing?.name ?? adminName,
-              },
+              ...baseResponse,
+              ...(productImportResult ? { productImport: productImportResult } : {}),
             } satisfies SuperAdminCreateTenantResponse;
           }),
         (input) => ({ attributes: { entityId: input.slug } }),
@@ -403,6 +576,7 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
       SuperAdminRepository.Default,
       UsersRepository.Default,
       FeaturesService.Default,
+      ProductImportService.Default,
     ],
   },
 ) {}

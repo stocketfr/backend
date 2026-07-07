@@ -6,6 +6,7 @@ import {
 } from '@stocket/types/features';
 import { BetterAuth, BetterAuthHeaders } from '../../platform/auth/better-auth';
 import { FeaturesService } from '../features/service';
+import { ProductImportService } from '../products/import/service';
 import { UsersRepository } from '../users/repository';
 import { SuperAdminRepository } from './repository';
 import { TenantNotFound } from './superadmin.errors';
@@ -143,14 +144,59 @@ describe('Effect SuperAdminService', () => {
     ),
   });
 
+  const makeProductImportService = () => ({
+    previewCsvContent: vi.fn(() =>
+      Effect.succeed({
+        format: 'normalized-products' as const,
+        totalRows: 0,
+        itemRows: 0,
+        folderRows: 0,
+        importableRows: 0,
+        missingRequiredRows: 0,
+        duplicateSkuConflicts: [],
+        categoryMappings: [],
+        supplierMappings: [],
+        locationMappings: [],
+        inventoryPreviews: [],
+        warnings: [],
+      }),
+    ),
+    importFromCsvContent: vi.fn(() =>
+      Effect.succeed({
+        categoriesCreated: 0,
+        locationsCreated: 0,
+        productsCreated: 0,
+        inventoryRecordsCreated: 0,
+        rowsSkipped: 0,
+        errors: [],
+      }),
+    ),
+    proposeImportPlan: vi.fn(() =>
+      Effect.succeed({
+        format: 'normalized-products' as const,
+        confidence: 1,
+        productIdentity: {
+          sourceColumn: 'sku',
+          conflictPolicy: 'reject' as const,
+        },
+        categoryMappings: [],
+        supplierMappings: [],
+        locationMappings: [],
+        warnings: [],
+      }),
+    ),
+  });
+
   const makeServiceLayer = ({
     betterAuth,
     featuresService,
+    productImportService,
     repository,
     usersRepository,
   }: {
     betterAuth: unknown;
     featuresService?: unknown;
+    productImportService?: unknown;
     repository: unknown;
     usersRepository: unknown;
   }) =>
@@ -165,6 +211,11 @@ describe('Effect SuperAdminService', () => {
           Layer.succeed(
             SuperAdminRepository,
             repository as typeof SuperAdminRepository.Service,
+          ),
+          Layer.succeed(
+            ProductImportService,
+            (productImportService ??
+              makeProductImportService()) as typeof ProductImportService.Service,
           ),
           Layer.succeed(
             UsersRepository,

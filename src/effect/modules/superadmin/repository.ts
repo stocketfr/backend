@@ -260,16 +260,34 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
               return null;
             }
 
-            await tx.execute(sql`
-              UPDATE "session"
-              SET active_organization_id = NULL
-              WHERE active_organization_id = ${tenantId}
-            `);
+            const sessionActiveOrganizationColumns = rowsOf<{ exists: number }>(
+              await tx.execute(sql`
+                SELECT 1 AS exists
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'session'
+                  AND column_name = 'active_organization_id'
+                LIMIT 1
+              `),
+            );
+            if (sessionActiveOrganizationColumns.length > 0) {
+              await tx.execute(sql`
+                UPDATE "session"
+                SET active_organization_id = NULL
+                WHERE active_organization_id = ${tenantId}
+              `);
+            }
             await tx.execute(
               sql`DELETE FROM notifications WHERE tenant_id = ${tenantId}`,
             );
             await tx.execute(
               sql`DELETE FROM notification_preferences WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM tenant_feature_overrides WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM tenant_entitlement_profiles WHERE tenant_id = ${tenantId}`,
             );
             await tx.execute(
               sql`DELETE FROM audit_logs WHERE tenant_id = ${tenantId}`,
@@ -330,6 +348,26 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
             );
             await tx.execute(
               sql`DELETE FROM branding_settings WHERE tenant_id = ${tenantId}`,
+            );
+            await tx.execute(
+              sql`DELETE FROM tenant_domains WHERE tenant_id = ${tenantId}`,
+            );
+            const invitationTables = rowsOf<{ exists: number }>(
+              await tx.execute(sql`
+                SELECT 1 AS exists
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name = 'invitation'
+                LIMIT 1
+              `),
+            );
+            if (invitationTables.length > 0) {
+              await tx.execute(
+                sql`DELETE FROM invitation WHERE organization_id = ${tenantId}`,
+              );
+            }
+            await tx.execute(
+              sql`DELETE FROM member WHERE organization_id = ${tenantId}`,
             );
 
             await tx

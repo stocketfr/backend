@@ -29,6 +29,13 @@ export class TenantNotFound extends NotFoundError('TenantNotFound')<{
   readonly tenantId: string;
 }> {}
 
+export class TenantImportInvalid extends BadRequestError(
+  'TenantImportInvalid',
+)<{
+  readonly details: string;
+  readonly cause?: unknown;
+}> {}
+
 export class SuperAdminRepositoryError extends InternalError(
   'SuperAdminRepositoryError',
 )<{
