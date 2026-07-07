@@ -8,6 +8,7 @@ import type {
 } from '@stocket/types/inventory';
 import { toPaginatedResponse } from '@stocket/types/common';
 import { makeGetOrFail } from '../../platform/effect/from-null-or';
+import { makeReferenceExistsValidator } from '../../platform/reference-data-service';
 import { AreaNotFound, AreasInfrastructureError } from '../areas/areas.errors';
 import { AreasService } from '../areas/service';
 import { LocationsService } from '../locations/service';
@@ -47,31 +48,43 @@ export class InventoryService extends Effect.Service<InventoryService>()(
         (id) => new InventoryNotFound({ id, messageKey: 'inventory.notFound' }),
       );
 
-      const ensureProductExists = (productId: string) =>
-        productsService.existsById(productId).pipe(
-          Effect.filterOrFail(
-            Boolean,
-            () =>
-              new InvalidInventoryProduct({
-                productId,
-                messageKey: 'inventory.productNotFound',
-              }),
-          ),
-          Effect.asVoid,
-        );
+      const ensureProductExists = makeReferenceExistsValidator({
+        existsById: (productId: string) => productsService.existsById(productId),
+        makeNotFound: (productId) =>
+          new InvalidInventoryProduct({
+            productId,
+            messageKey: 'inventory.productNotFound',
+          }),
+      });
 
-      const ensureLocationExists = (locationId: string) =>
-        locationsService.existsById(locationId).pipe(
-          Effect.filterOrFail(
-            Boolean,
-            () =>
-              new InvalidInventoryLocation({
-                locationId,
-                messageKey: 'inventory.locationNotFound',
-              }),
-          ),
-          Effect.asVoid,
-        );
+      const ensureLocationExists = makeReferenceExistsValidator({
+        existsById: (locationId: string) =>
+          locationsService.existsById(locationId),
+        makeNotFound: (locationId) =>
+          new InvalidInventoryLocation({
+            locationId,
+            messageKey: 'inventory.locationNotFound',
+          }),
+      });
+
+      const ensureProductCanBeQueried = makeReferenceExistsValidator({
+        existsById: (productId: string) => productsService.existsById(productId),
+        makeNotFound: (productId) =>
+          new InventoryProductNotFound({
+            productId,
+            messageKey: 'inventory.productNotFound',
+          }),
+      });
+
+      const ensureLocationCanBeQueried = makeReferenceExistsValidator({
+        existsById: (locationId: string) =>
+          locationsService.existsById(locationId),
+        makeNotFound: (locationId) =>
+          new InventoryLocationNotFound({
+            locationId,
+            messageKey: 'inventory.locationNotFound',
+          }),
+      });
 
       const getAreaForLocation = (
         areaId: string,
@@ -131,16 +144,7 @@ export class InventoryService extends Effect.Service<InventoryService>()(
 
       const findByProduct = (productId: string) =>
         Effect.gen(function* () {
-          yield* productsService.existsById(productId).pipe(
-            Effect.filterOrFail(
-              Boolean,
-              () =>
-                new InventoryProductNotFound({
-                  productId,
-                  messageKey: 'inventory.productNotFound',
-                }),
-            ),
-          );
+          yield* ensureProductCanBeQueried(productId);
 
           const inventoryItems = yield* repository.findByProductId(productId);
           return inventoryItems.map(toInventoryResponseDto);
@@ -157,16 +161,7 @@ export class InventoryService extends Effect.Service<InventoryService>()(
 
       const findByLocation = (locationId: string) =>
         Effect.gen(function* () {
-          yield* locationsService.existsById(locationId).pipe(
-            Effect.filterOrFail(
-              Boolean,
-              () =>
-                new InventoryLocationNotFound({
-                  locationId,
-                  messageKey: 'inventory.locationNotFound',
-                }),
-            ),
-          );
+          yield* ensureLocationCanBeQueried(locationId);
 
           const inventoryItems = yield* repository.findByLocationId(locationId);
           return inventoryItems.map(toInventoryResponseDto);

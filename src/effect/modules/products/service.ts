@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import type { Schema } from 'effect';
 import { fromNullOr } from '../../platform/effect/from-null-or';
+import { makeReferenceExistsValidator } from '../../platform/reference-data-service';
 import {
   createBulkResultBuilder,
   findDuplicates,
@@ -59,31 +60,25 @@ export class ProductsService extends Effect.Service<ProductsService>()(
             }),
         );
 
-      const checkCategoryExists = (categoryId: string) =>
-        categoriesService.existsById(categoryId).pipe(
-          Effect.filterOrFail(
-            Boolean,
-            () =>
-              new CategoryNotFound({
-                categoryId,
-                messageKey: 'products.categoryNotFound',
-              }),
-          ),
-          Effect.asVoid,
-        );
+      const checkCategoryExists = makeReferenceExistsValidator({
+        existsById: (categoryId: string) =>
+          categoriesService.existsById(categoryId),
+        makeNotFound: (categoryId) =>
+          new CategoryNotFound({
+            categoryId,
+            messageKey: 'products.categoryNotFound',
+          }),
+      });
 
-      const checkSupplierExists = (supplierId: string) =>
-        suppliersService.existsById(supplierId).pipe(
-          Effect.filterOrFail(
-            Boolean,
-            () =>
-              new SupplierNotFound({
-                id: supplierId,
-                messageKey: 'suppliers.notFound',
-              }),
-          ),
-          Effect.asVoid,
-        );
+      const checkSupplierExists = makeReferenceExistsValidator({
+        existsById: (supplierId: string) =>
+          suppliersService.existsById(supplierId),
+        makeNotFound: (supplierId) =>
+          new SupplierNotFound({
+            id: supplierId,
+            messageKey: 'suppliers.notFound',
+          }),
+      });
 
       const validateProductTenantReferences = (
         dto: Pick<

@@ -6,6 +6,7 @@ import { toPaginatedResponse } from '@stocket/types/common';
 import type { Schema } from 'effect';
 import { Effect } from 'effect';
 import { makeGetOrFail } from '../../platform/effect/from-null-or';
+import { makeReferenceExistsValidator } from '../../platform/reference-data-service';
 import { LocationsService } from '../locations/service';
 import { ProductsService } from '../products/service';
 import { StockMovementsRepository } from './repository';
@@ -41,6 +42,63 @@ export class StockMovementsService extends Effect.Service<StockMovementsService>
           }),
       );
 
+      const ensureProductCanBeQueried = makeReferenceExistsValidator({
+        existsById: (productId: string) => productsService.existsById(productId),
+        makeNotFound: (productId) =>
+          new StockMovementProductNotFound({
+            productId,
+            messageKey: 'stockMovements.productNotFound',
+          }),
+      });
+
+      const ensureLocationCanBeQueried = makeReferenceExistsValidator({
+        existsById: (locationId: string) =>
+          locationsService.existsById(locationId),
+        makeNotFound: (locationId) =>
+          new StockMovementLocationNotFound({
+            locationId,
+            messageKey: 'stockMovements.locationNotFound',
+          }),
+      });
+
+      const ensureProductExists = makeReferenceExistsValidator({
+        existsById: (productId: string) => productsService.existsById(productId),
+        makeNotFound: (productId) =>
+          new InvalidStockMovementProduct({
+            productId,
+            messageKey: 'stockMovements.productNotFound',
+          }),
+      });
+
+      const ensureSourceLocationExists = makeReferenceExistsValidator({
+        existsById: (locationId: string) =>
+          locationsService.existsById(locationId),
+        makeNotFound: (locationId) =>
+          new InvalidSourceLocation({
+            locationId,
+            messageKey: 'stockMovements.sourceLocationNotFound',
+          }),
+      });
+
+      const ensureDestinationLocationExists = makeReferenceExistsValidator({
+        existsById: (locationId: string) =>
+          locationsService.existsById(locationId),
+        makeNotFound: (locationId) =>
+          new InvalidDestinationLocation({
+            locationId,
+            messageKey: 'stockMovements.destinationLocationNotFound',
+          }),
+      });
+
+      const ensureOrderExists = makeReferenceExistsValidator({
+        existsById: (orderId: string) => repository.orderExistsById(orderId),
+        makeNotFound: (orderId) =>
+          new InvalidStockMovementOrder({
+            orderId,
+            messageKey: 'stockMovements.orderNotFound',
+          }),
+      });
+
       const findAllPaginated = (query: StockMovementQueryDto) =>
         Effect.map(repository.findAllPaginated(query), (result) =>
           toPaginatedResponse(result, toStockMovementResponseDto),
@@ -55,16 +113,7 @@ export class StockMovementsService extends Effect.Service<StockMovementsService>
 
       const findByProduct = (productId: string) =>
         Effect.gen(function* () {
-          yield* productsService.existsById(productId).pipe(
-            Effect.filterOrFail(
-              Boolean,
-              () =>
-                new StockMovementProductNotFound({
-                  productId,
-                  messageKey: 'stockMovements.productNotFound',
-                }),
-            ),
-          );
+          yield* ensureProductCanBeQueried(productId);
 
           const stockMovements = yield* repository.findByProductId(productId);
           return stockMovements.map(toStockMovementResponseDto);
@@ -76,16 +125,7 @@ export class StockMovementsService extends Effect.Service<StockMovementsService>
 
       const findByLocation = (locationId: string) =>
         Effect.gen(function* () {
-          yield* locationsService.existsById(locationId).pipe(
-            Effect.filterOrFail(
-              Boolean,
-              () =>
-                new StockMovementLocationNotFound({
-                  locationId,
-                  messageKey: 'stockMovements.locationNotFound',
-                }),
-            ),
-          );
+          yield* ensureLocationCanBeQueried(locationId);
 
           const stockMovements = yield* repository.findByLocationId(locationId);
           return stockMovements.map(toStockMovementResponseDto);
@@ -97,57 +137,18 @@ export class StockMovementsService extends Effect.Service<StockMovementsService>
 
       const create = (dto: CreateStockMovementDto, userId: string) =>
         Effect.gen(function* () {
-          yield* productsService.existsById(dto.product_id).pipe(
-            Effect.filterOrFail(
-              Boolean,
-              () =>
-                new InvalidStockMovementProduct({
-                  productId: dto.product_id,
-                  messageKey: 'stockMovements.productNotFound',
-                }),
-            ),
-          );
+          yield* ensureProductExists(dto.product_id);
 
           if (dto.from_location_id) {
-            const fromLocationId = dto.from_location_id;
-            yield* locationsService.existsById(fromLocationId).pipe(
-              Effect.filterOrFail(
-                Boolean,
-                () =>
-                  new InvalidSourceLocation({
-                    locationId: fromLocationId,
-                    messageKey: 'stockMovements.sourceLocationNotFound',
-                  }),
-              ),
-            );
+            yield* ensureSourceLocationExists(dto.from_location_id);
           }
 
           if (dto.to_location_id) {
-            const toLocationId = dto.to_location_id;
-            yield* locationsService.existsById(toLocationId).pipe(
-              Effect.filterOrFail(
-                Boolean,
-                () =>
-                  new InvalidDestinationLocation({
-                    locationId: toLocationId,
-                    messageKey: 'stockMovements.destinationLocationNotFound',
-                  }),
-              ),
-            );
+            yield* ensureDestinationLocationExists(dto.to_location_id);
           }
 
           if (dto.order_id) {
-            const orderId = dto.order_id;
-            yield* repository.orderExistsById(orderId).pipe(
-              Effect.filterOrFail(
-                Boolean,
-                () =>
-                  new InvalidStockMovementOrder({
-                    orderId,
-                    messageKey: 'stockMovements.orderNotFound',
-                  }),
-              ),
-            );
+            yield* ensureOrderExists(dto.order_id);
           }
 
           const stockMovement = yield* repository.create({

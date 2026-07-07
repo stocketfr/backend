@@ -10,6 +10,7 @@ import {
   type UpdateOrderStatusSchema,
 } from '@stocket/types/orders';
 import { fromNullOr } from '../../platform/effect/from-null-or';
+import { makeReferenceExistsValidator } from '../../platform/reference-data-service';
 import { ProductNotFound } from '../products/products.errors';
 import { ClientsService } from '../clients/service';
 import { ProductsService } from '../products/service';
@@ -48,6 +49,24 @@ export class OrdersService extends Effect.Service<OrdersService>()(
         fromNullOr(ordersRepository.findById(id), () =>
           new OrderNotFound({ id, messageKey: 'orders.notFound' }),
         );
+
+      const ensureClientExists = makeReferenceExistsValidator({
+        existsById: (clientId: string) => clientsService.existsById(clientId),
+        makeNotFound: (clientId) =>
+          new ClientNotFound({
+            clientId,
+            messageKey: 'orders.clientNotFound',
+          }),
+      });
+
+      const ensureProductExists = makeReferenceExistsValidator({
+        existsById: (productId: string) => productsService.existsById(productId),
+        makeNotFound: (productId) =>
+          new ProductNotFound({
+            productId,
+            messageKey: 'orders.productNotFound',
+          }),
+      });
 
       const validateStatusTransition = (
         order: Order,
@@ -99,28 +118,10 @@ export class OrdersService extends Effect.Service<OrdersService>()(
 
       const create = (dto: CreateOrderDto, userId: string) =>
         Effect.gen(function* () {
-          const clientExists = yield* clientsService.existsById(dto.client_id);
-          if (!clientExists) {
-            return yield* Effect.fail(
-              new ClientNotFound({
-                clientId: dto.client_id,
-                messageKey: 'orders.clientNotFound',
-              }),
-            );
-          }
+          yield* ensureClientExists(dto.client_id);
 
           yield* Effect.forEach(dto.items, (item) =>
-            Effect.gen(function* () {
-              const productExists = yield* productsService.existsById(item.product_id);
-              if (!productExists) {
-                return yield* Effect.fail(
-                  new ProductNotFound({
-                    productId: item.product_id,
-                    messageKey: 'orders.productNotFound',
-                  }),
-                );
-              }
-            }),
+            ensureProductExists(item.product_id),
           );
 
           const total_amount = dto.items.reduce(

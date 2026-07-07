@@ -23,6 +23,31 @@ export interface ReferenceEntityOperationsOptions<
   readonly toResponse: (entity: NonNullable<Entity>) => Response;
 }
 
+export interface ReferenceExistsValidatorOptions<
+  NotFound,
+  LookupError,
+  LookupContext,
+> {
+  readonly existsById: (
+    id: string,
+  ) => Effect.Effect<boolean, LookupError, LookupContext>;
+  readonly makeNotFound: (id: string) => NotFound;
+}
+
+export const makeReferenceExistsValidator =
+  <NotFound, LookupError, LookupContext>(
+    options: ReferenceExistsValidatorOptions<
+      NotFound,
+      LookupError,
+      LookupContext
+    >,
+  ) =>
+  (id: string): Effect.Effect<void, NotFound | LookupError, LookupContext> =>
+    options.existsById(id).pipe(
+      Effect.filterOrFail(Boolean, () => options.makeNotFound(id)),
+      Effect.asVoid,
+    );
+
 export const makeReferenceEntityOperations = <
   Entity,
   Response,
@@ -43,6 +68,10 @@ export const makeReferenceEntityOperations = <
   >,
 ) => {
   const getOrFail = makeGetOrFail(options.findById, options.makeNotFound);
+  const ensureExists = makeReferenceExistsValidator({
+    existsById: options.existsById,
+    makeNotFound: options.makeNotFound,
+  });
 
   const findOne = (id: string) =>
     Effect.map(getOrFail(id), options.toResponse);
@@ -58,5 +87,6 @@ export const makeReferenceEntityOperations = <
     findOne,
     remove,
     existsById: options.existsById,
+    ensureExists,
   };
 };
