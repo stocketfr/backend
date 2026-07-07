@@ -30,6 +30,7 @@ import {
   ReservedTenantSlug,
   SuperAdminRepositoryError,
   TenantHostnameAlreadyExists,
+  TenantNotFound,
   TenantSlugAlreadyExists,
 } from './superadmin.errors';
 import { SuperAdminRepository } from './repository';
@@ -309,6 +310,49 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
         (tenantId) => ({ attributes: { tenantId } }),
       );
 
+      const deleteTenant = trace.traced(
+        'deleteTenant',
+        (
+          tenantId: string,
+          actor: {
+            readonly userId: string;
+            readonly ipAddress?: string | null;
+            readonly userAgent?: string | null;
+          },
+        ) =>
+          Effect.gen(function* () {
+            const deleted = yield* repository.deleteTenant(tenantId);
+            if (!deleted) {
+              return yield* Effect.fail(
+                new TenantNotFound({
+                  tenantId,
+                  messageKey: 'superadmin.tenantNotFound',
+                }),
+              );
+            }
+
+            yield* featuresService.invalidateTenant(tenantId);
+            yield* Effect.forkDaemon(
+              repository
+                .recordPlatformAuditEvent({
+                  actorUserId: actor.userId,
+                  action: 'tenant.delete',
+                  entityType: 'tenant',
+                  entityId: deleted.id,
+                  metadata: {
+                    name: deleted.name,
+                    slug: deleted.slug,
+                    primaryHostname: deleted.primaryHostname,
+                  },
+                  ipAddress: actor.ipAddress ?? null,
+                  userAgent: actor.userAgent ?? null,
+                })
+                .pipe(Effect.ignore),
+            );
+          }),
+        (tenantId) => ({ attributes: { tenantId } }),
+      );
+
       const updateTenantPlan = trace.traced(
         'updateTenantPlan',
         (tenantId: string, dto: UpdateTenantPlan, actorUserId: string) =>
@@ -349,6 +393,7 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
         listTenants,
         createTenant,
         getTenantFeatures,
+        deleteTenant,
         updateTenantPlan,
         updateTenantFeatureOverride,
         clearTenantFeatureOverride,

@@ -2,6 +2,7 @@ import {
   BadRequestError,
   ConflictError,
   InternalError,
+  NotFoundError,
 } from '../../platform/effect/domain-errors';
 
 export class InvalidTenantSlug extends BadRequestError('InvalidTenantSlug')<{
@@ -22,6 +23,10 @@ export class TenantHostnameAlreadyExists extends ConflictError(
   'TenantHostnameAlreadyExists',
 )<{
   readonly hostname: string;
+}> {}
+
+export class TenantNotFound extends NotFoundError('TenantNotFound')<{
+  readonly tenantId: string;
 }> {}
 
 export class SuperAdminRepositoryError extends InternalError(

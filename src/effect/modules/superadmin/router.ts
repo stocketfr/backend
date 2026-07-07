@@ -2,7 +2,7 @@ import { HttpRouter, HttpServerRequest } from '@effect/platform';
 import { Effect, Schema } from 'effect';
 import { requireSuperAdmin } from '../../platform/auth/authorization';
 import { BetterAuthHeaders } from '../../platform/auth/better-auth';
-import { respondJson } from '../../platform/http/errors';
+import { respondEmpty, respondJson } from '../../platform/http/errors';
 import { getRequestHeaders } from '../../platform/http/session';
 import { CreateSuperAdminTenantSchema } from '@stocket/types/superadmin';
 import {
@@ -68,6 +68,26 @@ export const superAdminRouter = HttpRouter.empty.pipe(
       const { tenantId } = yield* HttpRouter.schemaPathParams(TenantPathParams);
       const superAdminService = yield* SuperAdminService;
       return yield* respondJson(superAdminService.getTenantFeatures(tenantId));
+    }),
+  ),
+  HttpRouter.del(
+    '/tenants/:tenantId',
+    Effect.gen(function* () {
+      const session = yield* requireSuperAdmin;
+      const { tenantId } = yield* HttpRouter.schemaPathParams(TenantPathParams);
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const requestContext = yield* getRequestContext;
+      const superAdminService = yield* SuperAdminService;
+      const userAgent = request.headers['user-agent'];
+
+      return yield* respondEmpty(
+        superAdminService.deleteTenant(tenantId, {
+          userId: session.user.id,
+          ipAddress: requestContext.ip,
+          userAgent: typeof userAgent === 'string' ? userAgent : null,
+        }),
+        { status: 200 },
+      );
     }),
   ),
   HttpRouter.put(
