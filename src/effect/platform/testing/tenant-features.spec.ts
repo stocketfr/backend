@@ -1,5 +1,8 @@
-import { DEFAULT_FEATURE_STATES, FeatureKey } from '@stocket/types/features';
-import { resolveFeatureStates } from '../tenancy/tenant-features';
+import { FeatureKey } from '@stocket/types/features';
+import {
+  DEFAULT_FEATURE_STATES,
+  resolveFeatureStates,
+} from '../tenancy/tenant-features';
 
 describe('tenant feature resolution', () => {
   it('returns shared defaults with no overrides', () => {

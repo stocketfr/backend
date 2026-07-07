@@ -1,7 +1,6 @@
 import { Effect } from 'effect';
 import { desc, eq } from 'drizzle-orm';
 import {
-  DEFAULT_FEATURE_STATES,
   EntitlementSource,
   FeatureKey,
   PlanKey,
@@ -29,6 +28,10 @@ export interface TenantFeatureOverrideRow {
 }
 
 export const FEATURE_KEYS = Object.values(FeatureKey) as FeatureKey[];
+export const DEFAULT_FEATURE_STATES: FeatureStates = {
+  [FeatureKey.SMART_IMPORT]: false,
+  [FeatureKey.ORDERS]: true,
+};
 
 const isFeatureKey = (value: string): value is FeatureKey =>
   FEATURE_KEYS.includes(value as FeatureKey);
