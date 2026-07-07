@@ -72,13 +72,26 @@ const hasOptionalMappingArray = (
   );
 };
 
+const hasOptionalString = (
+  value: Record<string, unknown>,
+  key: string,
+): boolean => {
+  const itemValue = value[key];
+  return itemValue === undefined || typeof itemValue === 'string';
+};
+
 const isCategoryMapping = (value: unknown): boolean =>
   isRecord(value) &&
   typeof value.sourcePath === 'string' &&
   typeof value.targetPath === 'string';
 
 const isLocationMapping = (value: unknown): boolean =>
-  isRecord(value) && typeof value.sourceLocation === 'string';
+  isRecord(value) &&
+  typeof value.sourceLocation === 'string' &&
+  typeof value.action === 'string' &&
+  hasOptionalString(value, 'targetLocationId') &&
+  hasOptionalString(value, 'targetLocationName') &&
+  hasOptionalString(value, 'areaPath');
 
 const isSupplierMapping = (value: unknown): boolean =>
   isRecord(value) &&

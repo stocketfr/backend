@@ -14,6 +14,15 @@ describe('storage location parser factory', () => {
     );
   });
 
+  it('reuses parser instances per product import format', () => {
+    expect(createStorageLocationParser('sortly-items')).toBe(
+      createStorageLocationParser('sortly-items'),
+    );
+    expect(createStorageLocationParser('normalized-products')).toBe(
+      createStorageLocationParser('normalized-products'),
+    );
+  });
+
   it('parses Sortly bay, shelf, and bin values as nested areas', () => {
     expect(
       suggestLocationMapping('Bay I - Shelf 3 - Bin A', 'sortly-items'),

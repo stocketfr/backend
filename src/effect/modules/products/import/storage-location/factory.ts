@@ -12,9 +12,21 @@ const storageLocationParserFactories = {
   'sortly-items': () => new SortlyStorageLocationParser(),
 } satisfies Record<ProductImportFormat, StorageLocationParserFactory>;
 
+const storageLocationParsers = new Map<
+  ProductImportFormat,
+  StorageLocationParser
+>();
+
 export const createStorageLocationParser = (
   format: ProductImportFormat,
-): StorageLocationParser => storageLocationParserFactories[format]();
+): StorageLocationParser => {
+  const cached = storageLocationParsers.get(format);
+  if (cached) return cached;
+
+  const parser = storageLocationParserFactories[format]();
+  storageLocationParsers.set(format, parser);
+  return parser;
+};
 
 export const suggestLocationMapping = (
   sourceLocation: string,

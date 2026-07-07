@@ -712,6 +712,15 @@ describe('productsRouter', () => {
     it('returns 400 when import plan mapping fields are malformed', async () => {
       const malformedPlans = [
         { locationMappings: 'oops' },
+        {
+          locationMappings: [
+            {
+              sourceLocation: 'Bay I - Shelf 3',
+              action: 'create-area',
+              targetLocationId: {},
+            },
+          ],
+        },
         { categoryMappings: [{ sourcePath: 'Spa' }] },
         { supplierMappings: [{ supplierName: 'Supplier' }] },
       ];
