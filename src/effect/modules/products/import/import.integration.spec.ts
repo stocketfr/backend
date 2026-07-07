@@ -6,7 +6,6 @@ import {
   EntitlementSource,
   PlanKey,
 } from '@stocket/types/features';
-import type { ProductImportApprovedPlanDto } from '@stocket/types/products';
 import {
   areas,
   inventory,
@@ -40,6 +39,11 @@ import {
   TEST_USER_ID,
   withTestDb,
 } from '../../../testing/test-harness';
+import type {
+  ProductImportAiProposalDto,
+  ProductImportApprovedPlanDto,
+  ProductImportPlan,
+} from './types';
 
 let db: DrizzleDb;
 
@@ -174,7 +178,7 @@ async function seedImportWriteRole(userId: string) {
 function makeCsvUpload(
   csv: string,
   filename: string,
-  approvedPlan?: ProductImportApprovedPlanDto,
+  approvedPlan?: ProductImportPlan,
 ) {
   const formData = new FormData();
   formData.append('file', new File([csv], filename, { type: 'text/csv' }));
@@ -187,7 +191,7 @@ function makeCsvUpload(
 async function postImport(
   csv: string,
   filename = 'products.csv',
-  approvedPlan?: ProductImportApprovedPlanDto,
+  approvedPlan?: ProductImportPlan,
 ) {
   await seedImportWriteRole(TEST_USER_ID);
   const { handler, dispose } = makeTestHttpAppHandler({
@@ -440,14 +444,14 @@ Item,Imported Tonic Photo,SORT-PHOTO-001,Drinks,12,Bar,https://lnk.sortly.co/v2/
     );
   });
 
-  it('imports Sortly shelf locations as areas when an approved plan is provided', async () => {
+  it('imports nested Sortly storage locations as areas when an approved plan is provided', async () => {
     const approvedPlan = {
       defaultLocationName: 'Main Warehouse',
       locationMappings: [
         {
-          sourceLocation: 'Bay I - Shelf 3',
+          sourceLocation: 'Bay I - Shelf 3 - Bin A',
           targetLocationName: 'Main Warehouse',
-          areaPath: 'Bay I / Shelf 3',
+          areaPath: 'Bay I / Shelf 3 / Bin A',
           action: 'create-area',
           confidence: 0.9,
           rowCount: 1,
@@ -456,7 +460,7 @@ Item,Imported Tonic Photo,SORT-PHOTO-001,Drinks,12,Bar,https://lnk.sortly.co/v2/
     } satisfies ProductImportApprovedPlanDto;
     const response = await postImport(
       `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location
-Item,Imported Shelf Product,SORT-AREA-001,Drinks,12,Bay I  - Shelf 3
+Item,Imported Shelf Product,SORT-AREA-001,Drinks,12,Bay I  - Shelf 3 - Bin A
 `,
       'sortly.csv',
       approvedPlan,
@@ -465,7 +469,7 @@ Item,Imported Shelf Product,SORT-AREA-001,Drinks,12,Bay I  - Shelf 3
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       locationsCreated: 1,
-      areasCreated: 2,
+      areasCreated: 3,
       productsCreated: 1,
       inventoryRecordsCreated: 1,
       rowsSkipped: 0,
@@ -494,9 +498,11 @@ Item,Imported Shelf Product,SORT-AREA-001,Drinks,12,Bay I  - Shelf 3
       );
     const bayArea = areaRows.find((area) => area.name === 'Bay I');
     const shelfArea = areaRows.find((area) => area.name === 'Shelf 3');
+    const binArea = areaRows.find((area) => area.name === 'Bin A');
 
     expect(bayArea).toMatchObject({ parent_id: null });
     expect(shelfArea).toMatchObject({ parent_id: bayArea!.id });
+    expect(binArea).toMatchObject({ parent_id: shelfArea!.id });
 
     const [stock] = await db
       .select()
@@ -506,11 +512,56 @@ Item,Imported Shelf Product,SORT-AREA-001,Drinks,12,Bay I  - Shelf 3
           eq(inventory.tenant_id, DEFAULT_TENANT_ID),
           eq(inventory.product_id, product!.id),
           eq(inventory.location_id, location!.id),
-          eq(inventory.area_id, shelfArea!.id),
+          eq(inventory.area_id, binArea!.id),
         ),
       )
       .limit(1);
     expect(stock).toMatchObject({ quantity: 12 });
+  });
+
+  it('imports duplicate Sortly SIDs when the UI submits an AI proposal plan', async () => {
+    const aiProposalPlan = {
+      format: 'sortly-items',
+      confidence: 0.91,
+      productIdentity: {
+        sourceColumn: 'SID',
+        conflictPolicy: 'derive-sku',
+      },
+      categoryMappings: [],
+      supplierMappings: [],
+      locationMappings: [],
+      warnings: [],
+    } satisfies ProductImportAiProposalDto;
+    const response = await postImport(
+      `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location,Min Level
+Item,Service Gloves Black,SORT-DUP-001,Accessories,6,Warehouse,2
+Item,Service Gloves White,SORT-DUP-001,Accessories,12,Warehouse,2
+`,
+      'sortly.csv',
+      aiProposalPlan,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      productsCreated: 2,
+      inventoryRecordsCreated: 2,
+      rowsSkipped: 0,
+      errors: [],
+    });
+
+    const blackProduct = await findProductBySku(
+      'SORT-DUP-001-SERVICE-GLOVES-BLACK',
+    );
+    const whiteProduct = await findProductBySku(
+      'SORT-DUP-001-SERVICE-GLOVES-WHITE',
+    );
+
+    expect(blackProduct).toMatchObject({
+      name: 'Service Gloves Black',
+    });
+    expect(whiteProduct).toMatchObject({
+      name: 'Service Gloves White',
+    });
   });
 
   it('does not update products from another tenant with the same SKU', async () => {

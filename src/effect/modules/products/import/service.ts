@@ -11,6 +11,7 @@ import {
   deriveConflictingDuplicateSkuRows,
   findConflictingDuplicateSkuRows,
   formatImportError,
+  getImportPlanSkuConflictPolicy,
   makeProductImportPreview,
   normalizeProductImportRecords,
   parseCsvContent,
@@ -80,7 +81,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
             includeReorderPoint: format === 'normalized-products',
           });
           const derivedSkusByRow =
-            approvedPlan?.skuConflictPolicy === 'derive-sku'
+            getImportPlanSkuConflictPolicy(approvedPlan) === 'derive-sku'
               ? deriveConflictingDuplicateSkuRows(rows, {
                   includeReorderPoint: format === 'normalized-products',
                 })

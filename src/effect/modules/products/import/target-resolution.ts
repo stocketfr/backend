@@ -9,11 +9,15 @@ import type {
   ImportInventoryTarget,
   ImportLocationRow,
   NormalizedProductImportRow,
-  ProductImportApprovedPlanDto,
   ProductImportLocationMappingDto,
+  ProductImportPlan,
   ProductImportResultDto,
 } from './types';
-import { normalizeCategoryPath, normalizeStorageLocationName } from './utils';
+import {
+  getImportPlanDefaultLocationName,
+  normalizeCategoryPath,
+  normalizeStorageLocationName,
+} from './utils';
 
 const emptyInventoryTarget = (): ImportInventoryTarget => ({
   locationId: null,
@@ -184,7 +188,7 @@ const getOrCreateAreaPath = (
 
 const findLocationMapping = (
   row: NormalizedProductImportRow,
-  approvedPlan: ProductImportApprovedPlanDto | undefined,
+  approvedPlan: ProductImportPlan | undefined,
 ): ProductImportLocationMappingDto | undefined => {
   const sourceLocation = normalizeStorageLocationName(row.location);
   return approvedPlan?.locationMappings?.find(
@@ -195,7 +199,7 @@ const findLocationMapping = (
 
 export const getTargetCategoryPath = (
   row: NormalizedProductImportRow,
-  approvedPlan: ProductImportApprovedPlanDto | undefined,
+  approvedPlan: ProductImportPlan | undefined,
 ): string => {
   const sourcePath = normalizeCategoryPath(row.category_path);
   const mapping = approvedPlan?.categoryMappings?.find(
@@ -209,7 +213,7 @@ export const resolveInventoryTarget = (
   row: NormalizedProductImportRow,
   caches: ImportCaches,
   result: ProductImportResultDto,
-  approvedPlan: ProductImportApprovedPlanDto | undefined,
+  approvedPlan: ProductImportPlan | undefined,
 ) =>
   Effect.gen(function* () {
     const rawLocation = row.location.trim();
@@ -221,8 +225,7 @@ export const resolveInventoryTarget = (
     if (mapping?.action === 'create-area' && mapping.areaPath) {
       const targetLocationName =
         mapping.targetLocationName?.trim() ||
-        approvedPlan?.defaultLocationName?.trim() ||
-        '';
+        getImportPlanDefaultLocationName(approvedPlan);
       const locationId = mapping.targetLocationId
         ? yield* findLocationId(repository, mapping.targetLocationId, caches)
         : yield* getOrCreateLocation(

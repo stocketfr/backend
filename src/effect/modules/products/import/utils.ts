@@ -9,12 +9,17 @@ import type {
   ProductImportErrorDto,
   ProductImportFormat,
   ProductImportInventoryPreviewDto,
+  ProductImportPlan,
   ProductImportPreviewDto,
   ProductImportResultDto,
   ProductImportType,
   ProductImportValues,
   ProductImportWarningDto,
 } from './types';
+import { suggestLocationMapping } from './storage-location/factory';
+import { normalizeStorageLocationName } from './storage-location/utils';
+
+export { normalizeStorageLocationName } from './storage-location/utils';
 
 const normalizedRequiredHeaders = ['sku', 'name', 'category_path'] as const;
 const sortlyFolderHeaders = [
@@ -36,6 +41,46 @@ const sortlyPhotoHeaders = [
   'Photo8',
 ] as const;
 const supportedSortlyPhotoHosts = new Set(['lnk.sortly.co']);
+
+const readImportPlanProperty = (value: object, key: string): unknown =>
+  Object.hasOwn(value, key) ? Reflect.get(value, key) : undefined;
+
+const isSkuConflictPolicy = (
+  value: unknown,
+): value is 'reject' | 'derive-sku' =>
+  value === 'reject' || value === 'derive-sku';
+
+export const getImportPlanSkuConflictPolicy = (
+  approvedPlan: ProductImportPlan | undefined,
+): 'reject' | 'derive-sku' | undefined => {
+  if (!approvedPlan) return undefined;
+
+  const directPolicy = readImportPlanProperty(approvedPlan, 'skuConflictPolicy');
+  if (isSkuConflictPolicy(directPolicy)) return directPolicy;
+
+  const productIdentity = readImportPlanProperty(
+    approvedPlan,
+    'productIdentity',
+  );
+  if (typeof productIdentity !== 'object' || productIdentity === null) {
+    return undefined;
+  }
+
+  const conflictPolicy = readImportPlanProperty(
+    productIdentity,
+    'conflictPolicy',
+  );
+  return isSkuConflictPolicy(conflictPolicy) ? conflictPolicy : undefined;
+};
+
+export const getImportPlanDefaultLocationName = (
+  approvedPlan: ProductImportPlan | undefined,
+): string => {
+  if (!approvedPlan) return '';
+
+  const value = readImportPlanProperty(approvedPlan, 'defaultLocationName');
+  return typeof value === 'string' ? value.trim() : '';
+};
 
 export const makeEmptyProductImportResult = (): ProductImportResultDto => ({
   categoriesCreated: 0,
@@ -563,62 +608,6 @@ const makeWarning = (
   ...(options.field === undefined ? {} : { field: options.field }),
 });
 
-export function normalizeStorageLocationName(value: string): string {
-  return value
-    .trim()
-    .replace(/\s+/g, ' ')
-    .replace(/\s*-\s*/g, ' - ');
-}
-
-const normalizeAreaSegment = (label: string, value: string): string => {
-  const trimmed = value.trim().replace(/\s+/g, ' ');
-  return `${label} ${trimmed.toUpperCase()}`;
-};
-
-export function suggestLocationMapping(sourceLocation: string): {
-  readonly sourceLocation: string;
-  readonly targetLocationName?: string;
-  readonly areaPath?: string;
-  readonly action: 'create-location' | 'create-area';
-  readonly confidence: number;
-} {
-  const normalized = normalizeStorageLocationName(sourceLocation);
-  const bayShelfMatch = normalized.match(/^Bay\s+(.+?)\s+-\s+Shelf\s+(.+)$/i);
-  if (bayShelfMatch?.[1] && bayShelfMatch[2]) {
-    return {
-      sourceLocation: normalized,
-      areaPath: `${normalizeAreaSegment('Bay', bayShelfMatch[1])} / Shelf ${bayShelfMatch[2].trim()}`,
-      action: 'create-area',
-      confidence: 0.9,
-    };
-  }
-
-  const roomRackBinMatch = normalized.match(
-    /^Room\s+(.+?)\s+-\s+Rack\s+(.+?)(?:\s+-\s+Bin\s+(.+))?$/i,
-  );
-  if (roomRackBinMatch?.[1] && roomRackBinMatch[2]) {
-    return {
-      sourceLocation: normalized,
-      areaPath: [
-        `Room ${roomRackBinMatch[1].trim()}`,
-        `Rack ${roomRackBinMatch[2].trim()}`,
-        roomRackBinMatch[3] ? `Bin ${roomRackBinMatch[3].trim()}` : '',
-      ]
-        .filter(Boolean)
-        .join(' / '),
-      action: 'create-area',
-      confidence: 0.8,
-    };
-  }
-
-  return {
-    sourceLocation: normalized,
-    targetLocationName: normalized,
-    action: 'create-location',
-    confidence: 0.65,
-  };
-}
-
 const inferTargetCategoryPath = (sourcePath: string): string => {
   const normalized = normalizeCategoryPath(sourcePath);
   const lower = normalized.toLowerCase();
@@ -707,14 +696,14 @@ export function makeProductImportPreview(
   );
   const locationMappings = sortedCountEntries(normalizedLocationCounts).map(
     ([sourceLocation, rowCount]) => ({
-      ...suggestLocationMapping(sourceLocation),
+      ...suggestLocationMapping(sourceLocation, format),
       rowCount,
     }),
   );
   const inventoryPreviews: ProductImportInventoryPreviewDto[] = rows.map(
     (row) => {
       const locationMapping = row.location
-        ? suggestLocationMapping(row.location)
+        ? suggestLocationMapping(row.location, format)
         : null;
       const quantity = parseInteger(row.quantity, 0);
 

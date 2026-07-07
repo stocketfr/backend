@@ -34,6 +34,9 @@ export const ProductImportTypes = [
 
 export type ProductImportType = (typeof ProductImportTypes)[number];
 export type ProductImportFormat = Exclude<ProductImportType, 'auto'>;
+export type ProductImportPlan =
+  | ProductImportApprovedPlanDto
+  | ProductImportAiProposalDto;
 
 export interface CsvParseResult {
   readonly headers: readonly string[];
@@ -95,13 +98,13 @@ export interface ProcessProductImportRowOptions {
   readonly state: ImportRunState;
   readonly expiryDate: Date | null;
   readonly userId: string;
-  readonly approvedPlan?: ProductImportApprovedPlanDto;
+  readonly approvedPlan?: ProductImportPlan;
 }
 
 export interface ImportProductsFromCsvOptions {
   readonly content: string;
   readonly importType?: ProductImportType;
-  readonly approvedPlan?: ProductImportApprovedPlanDto;
+  readonly approvedPlan?: ProductImportPlan;
   readonly userId: string;
 }
 
