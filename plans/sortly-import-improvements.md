@@ -7,7 +7,7 @@ The current product CSV importer can ingest normalized product CSVs and Sortly i
 ## Current State
 
 - Maintained importer: `src/effect/modules/products/import/*`.
-- CLI entrypoint: `src/scripts/import-products.ts`, wrapped by `scripts/import.sh`.
+- Sortly entrypoint: API/UI flow only; `src/scripts/import-products.ts` is limited to normalized product CSVs.
 - API entrypoint: `POST /api/v1/products/import`.
 - Supported formats:
   - `normalized-products`
@@ -212,8 +212,6 @@ Backend:
 - Add `ProductImportPreviewService` or extend the import service with `previewCsvContent`.
 - Reuse `parseCsvContent`, `detectProductImportFormat`, and row normalization.
 - Return detected format, row counts, proposed categories, locations, duplicate SKU conflicts, missing fields, and inventory actions.
-- Add CLI command:
-  - `pnpm import:sortly -- --preview <file>` or a separate script option, depending on current script ergonomics.
 - Add API endpoint:
   - `POST /api/v1/products/import/preview`.
 

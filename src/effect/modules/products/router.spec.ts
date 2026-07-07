@@ -636,6 +636,49 @@ describe('productsRouter', () => {
       });
     });
 
+    it('passes an AI proposal plan from the UI review flow to the import service', async () => {
+      const aiProposalPlan = {
+        format: 'sortly-items',
+        confidence: 0.91,
+        productIdentity: {
+          sourceColumn: 'SID',
+          conflictPolicy: 'derive-sku',
+        },
+        categoryMappings: [],
+        supplierMappings: [],
+        locationMappings: [],
+        warnings: [],
+      };
+      mockMultipart.mockReturnValue(
+        Effect.succeed({
+          file: makePersistedFile(),
+          import_type: 'sortly-items',
+          plan: JSON.stringify(aiProposalPlan),
+        }),
+      );
+      const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
+      const { handler } = makeProductsRouterHarness({
+        service: {},
+        importService: { importFromCsvContent },
+        permissions: writeAll,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/products/import', {
+          method: 'POST',
+          body: 'ignored',
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(importFromCsvContent).toHaveBeenCalledWith({
+        content: 'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
+        importType: 'sortly-items',
+        approvedPlan: aiProposalPlan,
+        userId: '00000000-0000-4000-a000-000000000001',
+      });
+    });
+
     it('returns 400 when the approved import plan is malformed JSON', async () => {
       mockMultipart.mockReturnValue(
         Effect.succeed({
@@ -664,6 +707,65 @@ describe('productsRouter', () => {
         messageKey: 'products.importPlanParseFailed',
       });
       expect(importFromCsvContent).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when import plan mapping fields are malformed', async () => {
+      const malformedPlans = [
+        { locationMappings: 'oops' },
+        {
+          locationMappings: [
+            {
+              sourceLocation: 'Bay I - Shelf 3',
+              action: 'create-area',
+              targetLocationId: {},
+            },
+          ],
+        },
+        {
+          locationMappings: [
+            { sourceLocation: 'Bay I - Shelf 3', action: 'move' },
+          ],
+        },
+        {
+          locationMappings: [
+            { sourceLocation: 'Bay I - Shelf 3', action: 'create-area' },
+          ],
+        },
+        { categoryMappings: [{ sourcePath: 'Spa' }] },
+        { supplierMappings: [{ supplierName: 'Supplier' }] },
+      ];
+
+      for (const malformedPlan of malformedPlans) {
+        mockMultipart.mockReturnValue(
+          Effect.succeed({
+            file: makePersistedFile(),
+            import_type: 'auto',
+            plan: JSON.stringify(malformedPlan),
+          }),
+        );
+        const importFromCsvContent = vi.fn(() =>
+          Effect.succeed(importResult()),
+        );
+        const { handler } = makeProductsRouterHarness({
+          service: {},
+          importService: { importFromCsvContent },
+          permissions: writeAll,
+        });
+
+        const response = await handler(
+          new Request('http://localhost/products/import', {
+            method: 'POST',
+            body: 'ignored',
+          }),
+        );
+
+        expect(response.status).toBe(400);
+        await expect(response.json()).resolves.toMatchObject({
+          statusCode: 400,
+          messageKey: 'products.importPlanParseFailed',
+        });
+        expect(importFromCsvContent).not.toHaveBeenCalled();
+      }
     });
   });
 

@@ -16,15 +16,10 @@ import * as schema from '../effect/platform/db/schema';
 import * as relations from '../effect/platform/db/relations';
 import { storageLayer } from '../effect/platform/storage';
 import { ProductImportService } from '../effect/modules/products/import/service';
-import {
-  ProductImportTypes,
-  type ProductImportType,
-} from '../effect/modules/products/import/types';
 import { getDatabaseUrl } from '../config/db-connection.utils';
 
 interface CliOptions {
   readonly csvFilePath: string;
-  readonly importType: ProductImportType;
   readonly tenantId: string;
   readonly tenantName: string;
   readonly tenantSlug: string;
@@ -33,7 +28,7 @@ interface CliOptions {
 
 const usage = () => {
   console.error(`Usage:
-  tsx src/scripts/import-products.ts [--import-type auto|normalized-products|sortly-items] [--tenant-id <uuid>] <csv-file>
+  tsx src/scripts/import-products.ts [--tenant-id <uuid>] <normalized-products.csv>
 
 Environment:
   IMPORT_USER_ID      Required user id to attribute created/updated products to.
@@ -41,9 +36,6 @@ Environment:
   IMPORT_TENANT_NAME  Optional tenant display name for the script request context.
   IMPORT_TENANT_SLUG  Optional tenant slug for the script request context.`);
 };
-
-const isImportType = (value: string): value is ProductImportType =>
-  ProductImportTypes.includes(value as ProductImportType);
 
 const takeValue = (args: string[], index: number, flag: string): string => {
   const value = args[index + 1];
@@ -54,7 +46,6 @@ const takeValue = (args: string[], index: number, flag: string): string => {
 };
 
 function readOptions(args: string[], env: NodeJS.ProcessEnv): CliOptions {
-  let importType: ProductImportType = 'auto';
   let tenantId = env.IMPORT_TENANT_ID ?? DEFAULT_TENANT_ID;
   let csvFilePath: string | undefined;
 
@@ -64,25 +55,6 @@ function readOptions(args: string[], env: NodeJS.ProcessEnv): CliOptions {
     if (arg === '-h' || arg === '--help' || arg === 'help') {
       usage();
       process.exit(0);
-    }
-
-    if (arg === '--import-type') {
-      const value = takeValue(args, i, arg);
-      if (!isImportType(value)) {
-        throw new Error(`Unknown import type: ${value}`);
-      }
-      importType = value;
-      i++;
-      continue;
-    }
-
-    if (arg.startsWith('--import-type=')) {
-      const value = arg.slice('--import-type='.length);
-      if (!isImportType(value)) {
-        throw new Error(`Unknown import type: ${value}`);
-      }
-      importType = value;
-      continue;
     }
 
     if (arg === '--tenant-id') {
@@ -116,7 +88,6 @@ function readOptions(args: string[], env: NodeJS.ProcessEnv): CliOptions {
 
   return {
     csvFilePath,
-    importType,
     tenantId,
     tenantName:
       env.IMPORT_TENANT_NAME ??
@@ -202,7 +173,7 @@ async function runImport(options: CliOptions) {
       Effect.flatMap(ProductImportService, (service) =>
         service.importFromCsvContent({
           content,
-          importType: options.importType,
+          importType: 'normalized-products',
           userId: options.userId,
         }),
       ).pipe(Effect.provide(serviceLayer)),
@@ -220,7 +191,7 @@ async function main() {
     }
 
     console.log(
-      `Starting product import (${options.importType}) for tenant ${options.tenantId}`,
+      `Starting product import (normalized-products) for tenant ${options.tenantId}`,
     );
     const result = await runImport(options);
     printSummary(result);
