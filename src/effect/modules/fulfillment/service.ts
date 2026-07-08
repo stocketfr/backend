@@ -309,7 +309,7 @@ export class FulfillmentService extends Effect.Service<FulfillmentService>()(
                   );
 
                 const inv = yield* repositories.inventoryRepository
-                  .findById(p.inventoryId)
+                  .findByIdWithRelations(p.inventoryId)
                   .pipe(
                     Effect.mapError(wrapInfrastructureError('load inventory')),
                   );

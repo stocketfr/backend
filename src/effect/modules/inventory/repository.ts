@@ -145,6 +145,7 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
   {
     effect: makeTenantCrud(inventory, {
       entity: { singular: 'inventory item', plural: 'inventory items' },
+      reads: false,
       onError: (action, cause) =>
         new InventoryInfrastructureError({
           action,

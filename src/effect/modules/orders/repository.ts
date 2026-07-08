@@ -97,6 +97,7 @@ export class OrdersRepository extends Effect.Service<OrdersRepository>()(
         const findAllPaginatedWithRelations = (query: OrderQueryDto) =>
           Effect.gen(function* () {
             const where = yield* scopedWhere(...buildOrderFilters(query));
+            const scope = yield* tenantScope;
             return yield* tryAsync('list orders paginated', async () => {
               const { page, limit, skip } = resolvePaginationWindow(
                 query.page,
@@ -113,7 +114,7 @@ export class OrdersRepository extends Effect.Service<OrdersRepository>()(
                       clients,
                       and(
                         eq(orders.client_id, clients.id),
-                        eq(orders.tenant_id, clients.tenant_id),
+                        scope.tenantPredicate(clients),
                       ),
                     )
                     .where(where)
@@ -127,7 +128,7 @@ export class OrdersRepository extends Effect.Service<OrdersRepository>()(
                   clients,
                   and(
                     eq(orders.client_id, clients.id),
-                    eq(orders.tenant_id, clients.tenant_id),
+                    scope.tenantPredicate(clients),
                   ),
                 )
                 .where(where)
@@ -175,7 +176,7 @@ export class OrdersRepository extends Effect.Service<OrdersRepository>()(
                   clients,
                   and(
                     eq(orders.client_id, clients.id),
-                    eq(orders.tenant_id, clients.tenant_id),
+                    scope.tenantPredicate(clients),
                   ),
                 )
                 .where(where)
@@ -328,6 +329,8 @@ export class OrderItemsRepository extends Effect.Service<OrderItemsRepository>()
 
       const findByIds = (ids: string[]) =>
         Effect.gen(function* () {
+          if (ids.length === 0) return [];
+
           const tenantScope = yield* currentTenantScope;
           return yield* tryAsync('find order items by ids', async () => {
             const rows = await db
