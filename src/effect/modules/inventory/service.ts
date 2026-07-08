@@ -7,8 +7,13 @@ import type {
   UpdateInventorySchema,
 } from '@stocket/types/inventory';
 import { toPaginatedResponse } from '@stocket/types/common';
+import { makeEnsureExistsById } from '../../platform/effect/existence';
 import { makeGetOrFail } from '../../platform/effect/from-null-or';
-import { AreaNotFound, AreasInfrastructureError } from '../areas/areas.errors';
+import {
+  hasDefinedPatchValues,
+  pickDefined,
+} from '../../platform/effect/pick-defined';
+import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { AreasService } from '../areas/service';
 import { LocationsService } from '../locations/service';
 import { ProductsService } from '../products/service';
@@ -41,37 +46,52 @@ export class InventoryService extends Effect.Service<InventoryService>()(
       const productsService = yield* ProductsService;
       const locationsService = yield* LocationsService;
       const areasService = yield* AreasService;
+      const trace = makeServiceTracer({
+        serviceName: 'InventoryService',
+        module: 'inventory',
+        layer: 'service',
+      });
 
       const getInventoryOrFail = makeGetOrFail(
-        (id: string) => repository.findById(id),
+        (id: string) => repository.findByIdWithRelations(id),
         (id) => new InventoryNotFound({ id, messageKey: 'inventory.notFound' }),
       );
 
-      const ensureProductExists = (productId: string) =>
-        productsService.existsById(productId).pipe(
-          Effect.filterOrFail(
-            Boolean,
-            () =>
-              new InvalidInventoryProduct({
-                productId,
-                messageKey: 'inventory.productNotFound',
-              }),
-          ),
-          Effect.asVoid,
+      const ensureProductExists = makeEnsureExistsById(
+        productsService.existsById,
+        (productId) =>
+          new InvalidInventoryProduct({
+            productId,
+            messageKey: 'inventory.productNotFound',
+          }),
         );
 
-      const ensureLocationExists = (locationId: string) =>
-        locationsService.existsById(locationId).pipe(
-          Effect.filterOrFail(
-            Boolean,
-            () =>
-              new InvalidInventoryLocation({
-                locationId,
-                messageKey: 'inventory.locationNotFound',
-              }),
-          ),
-          Effect.asVoid,
+      const ensureLocationExists = makeEnsureExistsById(
+        locationsService.existsById,
+        (locationId) =>
+          new InvalidInventoryLocation({
+            locationId,
+            messageKey: 'inventory.locationNotFound',
+          }),
         );
+
+      const ensureProductForLookup = makeEnsureExistsById(
+        productsService.existsById,
+        (productId) =>
+          new InventoryProductNotFound({
+            productId,
+            messageKey: 'inventory.productNotFound',
+          }),
+      );
+
+      const ensureLocationForLookup = makeEnsureExistsById(
+        locationsService.existsById,
+        (locationId) =>
+          new InventoryLocationNotFound({
+            locationId,
+            messageKey: 'inventory.locationNotFound',
+          }),
+      );
 
       const getAreaForLocation = (
         areaId: string,
@@ -83,95 +103,77 @@ export class InventoryService extends Effect.Service<InventoryService>()(
         | InventoryInfrastructureError
         | TenantNotResolved
       > =>
-        Effect.flatMap(areasService.findById(areaId), (area) =>
-          area.location_id === locationId
-            ? Effect.succeed(area)
-            : Effect.fail(
-                new InventoryAreaLocationMismatch({
-                  areaId,
-                  locationId,
-                  messageKey: 'inventory.areaLocationMismatch',
-                }),
-              ),
-        ).pipe(
-          Effect.mapError((error) => {
-            if (error instanceof AreaNotFound) {
-              return new InvalidInventoryArea({
+        areasService.findById(areaId).pipe(
+          Effect.catchTag('AreaNotFound', () =>
+            Effect.fail(
+              new InvalidInventoryArea({
                 areaId,
                 messageKey: 'inventory.areaNotFound',
-              });
-            }
-
-            if (error instanceof AreasInfrastructureError) {
-              return new InventoryInfrastructureError({
+              }),
+            ),
+          ),
+          Effect.catchTag('AreasInfrastructureError', (error) =>
+            Effect.fail(
+              new InventoryInfrastructureError({
                 action: 'load inventory area',
                 cause: error,
                 messageKey: 'inventory.infrastructureFailed',
-              });
-            }
-
-            return error;
-          }),
+              }),
+            ),
+          ),
+          Effect.flatMap((area) =>
+            area.location_id === locationId
+              ? Effect.succeed(area)
+              : Effect.fail(
+                  new InventoryAreaLocationMismatch({
+                    areaId,
+                    locationId,
+                    messageKey: 'inventory.areaLocationMismatch',
+                  }),
+                ),
+          ),
         );
 
       const findAllPaginated = (query: InventoryQueryDto) =>
-        Effect.map(repository.findAllPaginated(query), (result) =>
+        Effect.map(repository.findAllPaginatedWithRelations(query), (result) =>
           toPaginatedResponse(result, toInventoryResponseDto),
-        ).pipe(Effect.withSpan('InventoryService.findAllPaginated'));
+        ).pipe(trace.span('findAllPaginated'));
 
       const findAll = () =>
-        Effect.map(repository.findAll(), (inventoryItems) =>
+        Effect.map(repository.findAllWithRelations(), (inventoryItems) =>
           inventoryItems.map(toInventoryResponseDto),
-        ).pipe(Effect.withSpan('InventoryService.findAll'));
+        ).pipe(trace.span('findAll'));
 
       const findOne = (id: string) =>
         Effect.map(getInventoryOrFail(id), toInventoryResponseDto).pipe(
-          Effect.withSpan('InventoryService.findOne', { attributes: { id } }),
+          trace.span('findOne', { attributes: { id } }),
         );
 
       const findByProduct = (productId: string) =>
         Effect.gen(function* () {
-          yield* productsService.existsById(productId).pipe(
-            Effect.filterOrFail(
-              Boolean,
-              () =>
-                new InventoryProductNotFound({
-                  productId,
-                  messageKey: 'inventory.productNotFound',
-                }),
-            ),
-          );
+          yield* ensureProductForLookup(productId);
 
-          const inventoryItems = yield* repository.findByProductId(productId);
+          const inventoryItems =
+            yield* repository.findByProductIdWithRelations(productId);
           return inventoryItems.map(toInventoryResponseDto);
         }).pipe(
-          Effect.withSpan('InventoryService.findByProduct', {
+          trace.span('findByProduct', {
             attributes: { productId },
           }),
         );
 
       const findSummary = () =>
-        repository
-          .findSummary()
-          .pipe(Effect.withSpan('InventoryService.findSummary'));
+        repository.findSummary().pipe(trace.span('findSummary'));
 
       const findByLocation = (locationId: string) =>
         Effect.gen(function* () {
-          yield* locationsService.existsById(locationId).pipe(
-            Effect.filterOrFail(
-              Boolean,
-              () =>
-                new InventoryLocationNotFound({
-                  locationId,
-                  messageKey: 'inventory.locationNotFound',
-                }),
-            ),
-          );
+          yield* ensureLocationForLookup(locationId);
 
-          const inventoryItems = yield* repository.findByLocationId(locationId);
+          const inventoryItems =
+            yield* repository.findByLocationIdWithRelations(locationId);
           return inventoryItems.map(toInventoryResponseDto);
         }).pipe(
-          Effect.withSpan('InventoryService.findByLocation', {
+          trace.span('findByLocation', {
             attributes: { locationId },
           }),
         );
@@ -185,11 +187,12 @@ export class InventoryService extends Effect.Service<InventoryService>()(
             yield* getAreaForLocation(dto.area_id, dto.location_id);
           }
 
-          const existing = yield* repository.findByProductAndLocation(
-            dto.product_id,
-            dto.location_id,
-            dto.area_id,
-          );
+          const existing =
+            yield* repository.findByProductAndLocationWithRelations(
+              dto.product_id,
+              dto.location_id,
+              dto.area_id,
+            );
           if (existing) {
             return yield* Effect.fail(
               new InventoryAlreadyExists({
@@ -216,13 +219,22 @@ export class InventoryService extends Effect.Service<InventoryService>()(
             inventory.id,
           );
           return toInventoryResponseDto(inventoryWithRelations);
-        }).pipe(Effect.withSpan('InventoryService.create'));
+        }).pipe(trace.span('create'));
 
       const update = (id: string, dto: UpdateInventoryDto) =>
         Effect.gen(function* () {
           const inventory = yield* getInventoryOrFail(id);
+          const updateData = pickDefined<Inventory>([
+            ['location_id', dto.location_id],
+            ['area_id', dto.area_id],
+            ['quantity', dto.quantity],
+            ['batch_number', dto.batchNumber],
+            ['expiry_date', dto.expiry_date],
+            ['cost_per_unit', dto.cost_per_unit],
+            ['received_date', dto.received_date],
+          ]);
 
-          if (Object.keys(dto).length === 0) {
+          if (!hasDefinedPatchValues(updateData)) {
             return toInventoryResponseDto(inventory);
           }
 
@@ -245,11 +257,12 @@ export class InventoryService extends Effect.Service<InventoryService>()(
             dto.area_id !== undefined && dto.area_id !== inventory.area_id;
 
           if (locationChanged || areaChanged) {
-            const existing = yield* repository.findByProductAndLocation(
-              inventory.product_id,
-              newLocationId,
-              newAreaId,
-            );
+            const existing =
+              yield* repository.findByProductAndLocationWithRelations(
+                inventory.product_id,
+                newLocationId,
+                newAreaId,
+              );
 
             if (existing && existing.id !== id) {
               return yield* Effect.fail(
@@ -263,35 +276,12 @@ export class InventoryService extends Effect.Service<InventoryService>()(
             }
           }
 
-          const updateData: Partial<Inventory> = {};
-          if (dto.location_id !== undefined) {
-            updateData.location_id = dto.location_id;
-          }
-          if (dto.area_id !== undefined) {
-            updateData.area_id = dto.area_id;
-          }
-          if (dto.quantity !== undefined) {
-            updateData.quantity = dto.quantity;
-          }
-          if (dto.batchNumber !== undefined) {
-            updateData.batch_number = dto.batchNumber;
-          }
-          if (dto.expiry_date !== undefined) {
-            updateData.expiry_date = dto.expiry_date;
-          }
-          if (dto.cost_per_unit !== undefined) {
-            updateData.cost_per_unit = dto.cost_per_unit;
-          }
-          if (dto.received_date !== undefined) {
-            updateData.received_date = dto.received_date;
-          }
-
           yield* repository.update(id, updateData);
 
           const updatedInventory = yield* getInventoryOrFail(id);
           return toInventoryResponseDto(updatedInventory);
         }).pipe(
-          Effect.withSpan('InventoryService.update', { attributes: { id } }),
+          trace.span('update', { attributes: { id } }),
         );
 
       const adjustQuantity = (id: string, dto: AdjustInventoryDto) =>
@@ -312,7 +302,7 @@ export class InventoryService extends Effect.Service<InventoryService>()(
           const updatedInventory = yield* getInventoryOrFail(id);
           return toInventoryResponseDto(updatedInventory);
         }).pipe(
-          Effect.withSpan('InventoryService.adjustQuantity', {
+          trace.span('adjustQuantity', {
             attributes: { id },
           }),
         );
@@ -322,7 +312,7 @@ export class InventoryService extends Effect.Service<InventoryService>()(
           yield* getInventoryOrFail(id);
           yield* repository.delete(id);
         }).pipe(
-          Effect.withSpan('InventoryService.delete', { attributes: { id } }),
+          trace.span('delete', { attributes: { id } }),
         );
 
       return {

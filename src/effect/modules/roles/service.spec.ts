@@ -1,9 +1,7 @@
 import { type Mock } from 'vitest';
 import { Effect, Layer } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
-import { DrizzleDatabase, type DrizzleDb } from '../../platform/db/drizzle';
 import { CurrentRequestContext } from '../../platform/http/request-context';
-import { createChainableMock } from '../../testing/utils';
 import { RolesService } from './service';
 import { RolesRepository } from './repository';
 import { SystemRoleDeletionForbidden } from './roles.errors';
@@ -16,23 +14,18 @@ const tenantRequestContext = {
   locale: 'en' as const,
   tenantId: '00000000-0000-4000-8000-000000000001',
 };
+const TENANT_ID = tenantRequestContext.tenantId;
 
 describe('Effect RolesService', () => {
-  const makeService = async (
-    repository: Record<string, Mock>,
-    mockDb: unknown,
-  ) =>
+  const makeService = async (repository: Record<string, Mock>) =>
     Effect.runPromise(
       RolesService.pipe(
         Effect.provide(
           RolesService.DefaultWithoutDependencies.pipe(
             Layer.provide(
-              Layer.mergeAll(
-                Layer.succeed(
-                  RolesRepository,
-                  repository as unknown as typeof RolesRepository.Service,
-                ),
-                Layer.succeed(DrizzleDatabase, mockDb as DrizzleDb),
+              Layer.succeed(
+                RolesRepository,
+                repository as unknown as typeof RolesRepository.Service,
               ),
             ),
           ),
@@ -95,8 +88,7 @@ describe('Effect RolesService', () => {
       delete: vi.fn(),
       replacePermissions: vi.fn().mockReturnValue(Effect.void),
     };
-    const mockDb = createChainableMock([]);
-    const service = await makeService(repository, mockDb);
+    const service = await makeService(repository);
 
     const result = await run(
       service.create({
@@ -109,11 +101,16 @@ describe('Effect RolesService', () => {
     );
 
     expect(repository.create).toHaveBeenCalledWith({
-      tenant_id: '00000000-0000-4000-8000-000000000001',
+      tenant_id: TENANT_ID,
       name: 'Manager',
       description: 'Warehouse manager',
       is_system: false,
     });
+    expect(repository.replacePermissions).toHaveBeenCalledWith(
+      TENANT_ID,
+      'role-2',
+      [{ resource: Resource.ROLES, permission: Permission.READ }],
+    );
     expect(result.name).toBe('Manager');
   });
 
@@ -127,7 +124,7 @@ describe('Effect RolesService', () => {
       delete: vi.fn(),
       replacePermissions: vi.fn(),
     };
-    const service = await makeService(repository, createChainableMock([]));
+    const service = await makeService(repository);
 
     await expect(
       fail(
@@ -171,7 +168,7 @@ describe('Effect RolesService', () => {
       delete: vi.fn(),
       replacePermissions: vi.fn().mockReturnValue(Effect.void),
     };
-    const service = await makeService(repository, createChainableMock([]));
+    const service = await makeService(repository);
 
     const result = await run(
       service.update('role-2', {
@@ -185,13 +182,17 @@ describe('Effect RolesService', () => {
 
     expect(repository.update).toHaveBeenCalledWith(
       'role-2',
-      '00000000-0000-4000-8000-000000000001',
+      TENANT_ID,
       {
         name: 'Manager Updated',
         description: 'New',
       },
     );
-    expect(repository.replacePermissions).toHaveBeenCalled();
+    expect(repository.replacePermissions).toHaveBeenCalledWith(
+      TENANT_ID,
+      'role-2',
+      [{ resource: Resource.ROLES, permission: Permission.WRITE }],
+    );
     expect(result.name).toBe('Manager Updated');
   });
 
@@ -205,7 +206,7 @@ describe('Effect RolesService', () => {
       delete: vi.fn(),
       replacePermissions: vi.fn(),
     };
-    const service = await makeService(repository, createChainableMock([]));
+    const service = await makeService(repository);
 
     await expect(fail(service.delete('role-1'))).resolves.toBeInstanceOf(
       SystemRoleDeletionForbidden,
@@ -222,15 +223,14 @@ describe('Effect RolesService', () => {
       update: vi.fn(),
       delete: vi.fn(),
       replacePermissions: vi.fn(),
+      findPermissionsForUser: vi.fn().mockReturnValue(
+        Effect.succeed({
+          roleNames: ['Admin'],
+          permissions: { [Resource.ROLES]: [Permission.READ] },
+        }),
+      ),
     };
-    const mockDb = createChainableMock([
-      {
-        role_name: 'Admin',
-        resource: Resource.ROLES,
-        permission: Permission.READ,
-      },
-    ]);
-    const service = await makeService(repository, mockDb);
+    const service = await makeService(repository);
     let now = 1_000;
     const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
 
@@ -245,7 +245,22 @@ describe('Effect RolesService', () => {
     now += 61_000;
     await run(service.getPermissionsForUser('user-1'));
 
-    expect(mockDb.select).toHaveBeenCalledTimes(3);
+    expect(repository.findPermissionsForUser).toHaveBeenCalledTimes(3);
+    expect(repository.findPermissionsForUser).toHaveBeenNthCalledWith(
+      1,
+      'user-1',
+      TENANT_ID,
+    );
+    expect(repository.findPermissionsForUser).toHaveBeenNthCalledWith(
+      2,
+      'user-1',
+      '00000000-0000-4000-8000-000000000002',
+    );
+    expect(repository.findPermissionsForUser).toHaveBeenNthCalledWith(
+      3,
+      'user-1',
+      TENANT_ID,
+    );
     nowSpy.mockRestore();
   });
 });

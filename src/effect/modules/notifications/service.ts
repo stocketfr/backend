@@ -40,8 +40,24 @@ const currentDay = (): string => new Date().toISOString().slice(0, 10);
 const toSupportedLocale = (value: string | null): SupportedLocale =>
   value === 'en' || value === 'fr' || value === 'de' ? value : DEFAULT_LOCALE;
 
-const describeError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
+const describeError = (error: unknown): string => {
+  if (error instanceof Error && error.message.trim() !== '') {
+    return error.message;
+  }
+
+  if (
+    error !== null &&
+    typeof error === 'object' &&
+    !Array.isArray(error) &&
+    'message' in error &&
+    typeof error.message === 'string' &&
+    error.message.trim() !== ''
+  ) {
+    return error.message;
+  }
+
+  return String(error);
+};
 
 const toEmailTemplate = (event: NotificationEvent): EmailTemplate => ({
   kind: 'low-stock',

@@ -45,6 +45,7 @@ import {
   CurrentRequestContext,
   type RequestContext,
 } from '../../platform/http/request-context';
+import { pgUniqueViolationConstraintName } from '../../platform/db/pg-errors';
 
 interface BetterAuthCreateUserResponse {
   readonly user: { readonly id: string };
@@ -69,25 +70,12 @@ interface CreateTenantProductImport {
   readonly content: string;
 }
 
-const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
-  value !== null && typeof value === 'object';
-
-const uniqueConstraintName = (cause: unknown): string | null => {
-  if (!isRecord(cause)) return null;
-
-  if (cause.code === '23505' && typeof cause.constraint === 'string') {
-    return cause.constraint;
-  }
-
-  return uniqueConstraintName(cause.cause);
-};
-
 const mapCreateTenantError = (
   error: SuperAdminRepositoryError,
   slug: string,
   hostname: string,
 ) => {
-  const constraint = uniqueConstraintName(error);
+  const constraint = pgUniqueViolationConstraintName(error);
   if (constraint === 'organization_slug_unique') {
     return new TenantSlugAlreadyExists({
       slug,
@@ -117,14 +105,21 @@ const makeTenantImportInvalid = (details: string, cause?: unknown) =>
   });
 
 const formatImportCause = (cause: unknown): string => {
-  if (cause instanceof Error && cause.message) return cause.message;
+  if (cause instanceof Error && cause.message.trim() !== '') {
+    return cause.message;
+  }
+
   if (
-    isRecord(cause) &&
+    cause !== null &&
+    typeof cause === 'object' &&
+    !Array.isArray(cause) &&
+    'message' in cause &&
     typeof cause.message === 'string' &&
     cause.message.trim() !== ''
   ) {
     return cause.message;
   }
+
   return 'Product import failed.';
 };
 

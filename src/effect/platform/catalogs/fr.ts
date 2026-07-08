@@ -16,6 +16,8 @@ export const frCatalog: Record<MessageKey, string> = {
   'auditLogs.repositoryFailed': "L'operation sur le journal d'audit a echoue.",
   'auth.permissionDenied': 'Permissions insuffisantes.',
   'auth.unauthorized': 'Non autorise.',
+  'e2e.seedDisabled': 'Le seed E2E est desactive.',
+  'e2e.seedFailed': 'Le seed E2E a echoue.',
   'email.sendFailed': "L'envoi de l'e-mail a echoue.",
   'email.welcomeRequestFailed':
     "La demande d'e-mail de bienvenue a echoue.",
@@ -24,6 +26,8 @@ export const frCatalog: Record<MessageKey, string> = {
   'tenant.notResolved':
     'Aucun tenant actif na pu etre resolu pour cette requete.',
   'tenant.hostNotFound': 'Hote tenant introuvable.',
+  'tenantFeatures.repositoryFailed':
+    "L'operation sur les fonctionnalites du tenant a echoue.",
   'branding.repositoryFailed': "L'operation de branding a echoue.",
   'branding.sessionUserUnavailable':
     "L'utilisateur de session n'est pas disponible.",

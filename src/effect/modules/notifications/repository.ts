@@ -95,19 +95,18 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
         params: RecordPendingParams,
       ): RepoEffect<string | null> =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const values = yield* tenantQuery.insertValues({
+            user_id: params.userId,
+            event_kind: params.eventKind,
+            category: params.category,
+            channel: params.channel,
+            dedupe_key: params.dedupeKey,
+            status: 'pending' satisfies NotificationStatus,
+          });
           return yield* tryAsync('record pending notification', async () => {
             const rows = await db
               .insert(notifications)
-              .values({
-                tenant_id: tenantId,
-                user_id: params.userId,
-                event_kind: params.eventKind,
-                category: params.category,
-                channel: params.channel,
-                dedupe_key: params.dedupeKey,
-                status: 'pending' satisfies NotificationStatus,
-              })
+              .values(values)
               .onConflictDoNothing()
               .returning({ id: notifications.id });
             return rows[0]?.id ?? null;
@@ -119,7 +118,7 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
         providerMessageId: string | null,
       ): RepoEffect<void> =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantId(notifications, id);
           yield* tryAsync('mark notification sent', async () => {
             await db
               .update(notifications)
@@ -128,28 +127,18 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
                 provider_message_id: providerMessageId,
                 sent_at: new Date(),
               })
-              .where(
-                and(
-                  eq(notifications.tenant_id, tenantId),
-                  eq(notifications.id, id),
-                ),
-              );
+              .where(where);
           });
         });
 
       const markFailed = (id: string, error: string): RepoEffect<void> =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenantId(notifications, id);
           yield* tryAsync('mark notification failed', async () => {
             await db
               .update(notifications)
               .set({ status: 'failed' satisfies NotificationStatus, error })
-              .where(
-                and(
-                  eq(notifications.tenant_id, tenantId),
-                  eq(notifications.id, id),
-                ),
-              );
+              .where(where);
           });
         });
 
@@ -158,7 +147,10 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
       // inventory rows (missing product/location).
       const findLowStock = (): RepoEffect<LowStockItem[]> =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenant(
+            inventory,
+            sql`${inventory.quantity} <= ${products.reorder_point}`,
+          );
           return yield* tryAsync('find low stock items', async () => {
             return db
               .select({
@@ -173,12 +165,7 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
               .from(inventory)
               .innerJoin(products, eq(inventory.product_id, products.id))
               .innerJoin(locations, eq(inventory.location_id, locations.id))
-              .where(
-                and(
-                  eq(inventory.tenant_id, tenantId),
-                  sql`${inventory.quantity} <= ${products.reorder_point}`,
-                ),
-              );
+              .where(where);
           });
         });
 
@@ -196,7 +183,11 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
         userId: string,
       ): RepoEffect<StoredPreferenceRow[]> =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const where = yield* tenantQuery.whereTenant(
+            notificationPreferences,
+            eq(notificationPreferences.user_id, userId),
+            eq(notificationPreferences.channel, NotificationChannel.EMAIL),
+          );
           return yield* tryAsync('load notification preferences', async () => {
             return db
               .select({
@@ -205,13 +196,7 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
                 enabled: notificationPreferences.enabled,
               })
               .from(notificationPreferences)
-              .where(
-                and(
-                  eq(notificationPreferences.tenant_id, tenantId),
-                  eq(notificationPreferences.user_id, userId),
-                  eq(notificationPreferences.channel, NotificationChannel.EMAIL),
-                ),
-              );
+              .where(where);
           });
         });
 
@@ -221,19 +206,18 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
       ): RepoEffect<void> =>
         Effect.gen(function* () {
           if (prefs.length === 0) return;
-          const tenantId = yield* tenantQuery.tenantId;
+          const values = yield* Effect.forEach(prefs, (p) =>
+            tenantQuery.insertValues({
+              user_id: userId,
+              category: p.category,
+              channel: p.channel,
+              enabled: p.enabled,
+            }),
+          );
           yield* tryAsync('upsert notification preferences', async () => {
             await db
               .insert(notificationPreferences)
-              .values(
-                prefs.map((p) => ({
-                  tenant_id: tenantId,
-                  user_id: userId,
-                  category: p.category,
-                  channel: p.channel,
-                  enabled: p.enabled,
-                })),
-              )
+              .values(values)
               .onConflictDoUpdate({
                 target: [
                   notificationPreferences.tenant_id,
@@ -256,7 +240,7 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
         category: NotificationCategory,
       ): RepoEffect<AudienceCandidate[]> =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const tenantScope = tenantQuery.forTenant(yield* tenantQuery.tenantId);
           return yield* tryAsync('resolve notification audience', async () => {
             const emailPref = alias(notificationPreferences, 'email_pref');
             return db
@@ -271,14 +255,14 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
                 userRoles,
                 and(
                   eq(userRoles.user_id, betterAuthUsers.id),
-                  eq(userRoles.tenant_id, tenantId),
+                  tenantScope.tenantPredicate(userRoles),
                 ),
               )
               .innerJoin(
                 roles,
                 and(
                   eq(roles.id, userRoles.role_id),
-                  eq(roles.tenant_id, tenantId),
+                  tenantScope.tenantPredicate(roles),
                 ),
               )
               .innerJoin(
@@ -293,7 +277,7 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
                 emailPref,
                 and(
                   eq(emailPref.user_id, betterAuthUsers.id),
-                  eq(emailPref.tenant_id, tenantId),
+                  tenantScope.tenantPredicate(emailPref),
                   eq(emailPref.category, category),
                   eq(emailPref.channel, NotificationChannel.EMAIL),
                 ),

@@ -1,4 +1,4 @@
-import { HttpRouter, HttpServerRequest } from '@effect/platform';
+import { HttpRouter } from '@effect/platform';
 import { Effect, Schema } from 'effect';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
 import { Permission, Resource } from '@stocket/types/auth';
@@ -9,9 +9,16 @@ import {
   InventoryQuerySchema,
   UpdateInventorySchema,
 } from '@stocket/types/inventory';
-import { requirePermission } from '../../platform/auth/authorization';
-import { AuditLogWriter } from '../../platform/audit/index';
-import { respondJson, respondJsonOk } from '../../platform/http/errors';
+import { respondAuditedMutation } from '../../platform/audited-mutation';
+import {
+  emptyInput,
+  jsonBody,
+  pathParams,
+  pathParamsAndJsonBody,
+  queryParams,
+  tenantRouteContext,
+  tenantRoute,
+} from '../../platform/http/tenant-route';
 import { makeMessageResponse } from '../../platform/observability/messages';
 import { InventoryService } from './service';
 
@@ -22,132 +29,151 @@ const LocationPathParams = Schema.Struct({ locationId: Schema.UUID });
 export const inventoryRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
     '/',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.INVENTORY, Permission.READ);
-      const query =
-        yield* HttpServerRequest.schemaSearchParams(InventoryQuerySchema);
-      const inventoryService = yield* InventoryService;
-      return yield* respondJson(inventoryService.findAllPaginated(query));
+    tenantRoute({
+      permissions: [[Resource.INVENTORY, Permission.READ]],
+      decode: queryParams(InventoryQuerySchema),
+      handler: ({ input: query }) =>
+        Effect.flatMap(InventoryService, (inventoryService) =>
+          inventoryService.findAllPaginated(query),
+        ),
     }),
   ),
   HttpRouter.get(
     '/all',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.INVENTORY, Permission.READ);
-      const inventoryService = yield* InventoryService;
-      return yield* respondJson(inventoryService.findAll());
+    tenantRoute({
+      permissions: [[Resource.INVENTORY, Permission.READ]],
+      decode: emptyInput,
+      handler: () =>
+        Effect.flatMap(InventoryService, (inventoryService) =>
+          inventoryService.findAll(),
+        ),
     }),
   ),
   HttpRouter.get(
     '/product/:productId',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.INVENTORY, Permission.READ);
-      const { productId } =
-        yield* HttpRouter.schemaPathParams(ProductPathParams);
-      const inventoryService = yield* InventoryService;
-      return yield* respondJson(inventoryService.findByProduct(productId));
+    tenantRoute({
+      permissions: [[Resource.INVENTORY, Permission.READ]],
+      decode: pathParams(ProductPathParams),
+      handler: ({ input: { productId } }) =>
+        Effect.flatMap(InventoryService, (inventoryService) =>
+          inventoryService.findByProduct(productId),
+        ),
     }),
   ),
   HttpRouter.get(
     '/location/:locationId',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.INVENTORY, Permission.READ);
-      const { locationId } =
-        yield* HttpRouter.schemaPathParams(LocationPathParams);
-      const inventoryService = yield* InventoryService;
-      return yield* respondJson(inventoryService.findByLocation(locationId));
+    tenantRoute({
+      permissions: [[Resource.INVENTORY, Permission.READ]],
+      decode: pathParams(LocationPathParams),
+      handler: ({ input: { locationId } }) =>
+        Effect.flatMap(InventoryService, (inventoryService) =>
+          inventoryService.findByLocation(locationId),
+        ),
     }),
   ),
   HttpRouter.get(
     '/summary',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.INVENTORY, Permission.READ);
-      const inventoryService = yield* InventoryService;
-      return yield* respondJson(inventoryService.findSummary());
+    tenantRoute({
+      permissions: [[Resource.INVENTORY, Permission.READ]],
+      decode: emptyInput,
+      handler: () =>
+        Effect.flatMap(InventoryService, (inventoryService) =>
+          inventoryService.findSummary(),
+        ),
     }),
   ),
   HttpRouter.get(
     '/:id',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.INVENTORY, Permission.READ);
-      const { id } = yield* HttpRouter.schemaPathParams(InventoryPathParams);
-      const inventoryService = yield* InventoryService;
-      return yield* respondJson(inventoryService.findOne(id));
+    tenantRoute({
+      permissions: [[Resource.INVENTORY, Permission.READ]],
+      decode: pathParams(InventoryPathParams),
+      handler: ({ input: { id } }) =>
+        Effect.flatMap(InventoryService, (inventoryService) =>
+          inventoryService.findOne(id),
+        ),
     }),
   ),
   HttpRouter.post(
     '/',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.INVENTORY, Permission.WRITE);
-      const dto = yield* HttpServerRequest.schemaBodyJson(
-        CreateInventorySchema,
-      );
-      const inventoryService = yield* InventoryService;
-      const result = yield* inventoryService.create(dto);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
-        action: AuditAction.CREATE,
-        entityType: AuditEntityType.INVENTORY,
-        entityId: result.id,
-      });
-      return yield* respondJsonOk(result, { status: 201 });
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.INVENTORY, Permission.WRITE]],
+      decode: jsonBody(CreateInventorySchema),
+    }).pipe(
+      Effect.flatMap(({ input: dto }) =>
+        respondAuditedMutation(
+          Effect.flatMap(InventoryService, (inventoryService) =>
+            inventoryService.create(dto),
+          ),
+          {
+            action: AuditAction.CREATE,
+            entityType: AuditEntityType.INVENTORY,
+            entityId: (result) => result.id,
+            responseOptions: { status: 201 },
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.put(
     '/:id',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.INVENTORY, Permission.WRITE);
-      const { id } = yield* HttpRouter.schemaPathParams(InventoryPathParams);
-      const dto = yield* HttpServerRequest.schemaBodyJson(
-        UpdateInventorySchema,
-      );
-      const inventoryService = yield* InventoryService;
-      const result = yield* inventoryService.update(id, dto);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
-        action: AuditAction.UPDATE,
-        entityType: AuditEntityType.INVENTORY,
-        entityId: id,
-      });
-      return yield* respondJsonOk(result);
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.INVENTORY, Permission.WRITE]],
+      decode: pathParamsAndJsonBody(InventoryPathParams, UpdateInventorySchema),
+    }).pipe(
+      Effect.flatMap(({ input: { path, body } }) =>
+        respondAuditedMutation(
+          Effect.flatMap(InventoryService, (inventoryService) =>
+            inventoryService.update(path.id, body),
+          ),
+          {
+            action: AuditAction.UPDATE,
+            entityType: AuditEntityType.INVENTORY,
+            entityId: path.id,
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.patch(
     '/:id/adjust',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.INVENTORY, Permission.WRITE);
-      const { id } = yield* HttpRouter.schemaPathParams(InventoryPathParams);
-      const dto = yield* HttpServerRequest.schemaBodyJson(
-        AdjustInventorySchema,
-      );
-      const inventoryService = yield* InventoryService;
-      const result = yield* inventoryService.adjustQuantity(id, dto);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
-        action: AuditAction.ADJUST_QUANTITY,
-        entityType: AuditEntityType.INVENTORY,
-        entityId: id,
-      });
-      return yield* respondJsonOk(result);
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.INVENTORY, Permission.WRITE]],
+      decode: pathParamsAndJsonBody(InventoryPathParams, AdjustInventorySchema),
+    }).pipe(
+      Effect.flatMap(({ input: { path, body } }) =>
+        respondAuditedMutation(
+          Effect.flatMap(InventoryService, (inventoryService) =>
+            inventoryService.adjustQuantity(path.id, body),
+          ),
+          {
+            action: AuditAction.ADJUST_QUANTITY,
+            entityType: AuditEntityType.INVENTORY,
+            entityId: path.id,
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.del(
     '/:id',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.INVENTORY, Permission.WRITE);
-      const { id } = yield* HttpRouter.schemaPathParams(InventoryPathParams);
-      const inventoryService = yield* InventoryService;
-      yield* inventoryService.delete(id);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
-        action: AuditAction.DELETE,
-        entityType: AuditEntityType.INVENTORY,
-        entityId: id,
-      });
-      return yield* respondJson(
-        Effect.succeed(makeMessageResponse('inventory.deleted')),
-      );
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.INVENTORY, Permission.WRITE]],
+      decode: pathParams(InventoryPathParams),
+    }).pipe(
+      Effect.flatMap(({ input: { id } }) =>
+        respondAuditedMutation(
+          Effect.flatMap(InventoryService, (inventoryService) =>
+            inventoryService.delete(id),
+          ),
+          {
+            action: AuditAction.DELETE,
+            entityType: AuditEntityType.INVENTORY,
+            entityId: id,
+            mapResponse: () => makeMessageResponse('inventory.deleted'),
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.prefixAll('/inventory'),
 );

@@ -1,5 +1,6 @@
 import { HttpRouter, HttpServerRequest } from '@effect/platform';
 import { Effect, Schema } from 'effect';
+import { AppConfig } from '../../platform/config/app-config';
 import { ForbiddenError, InternalError } from '../../platform/effect/domain-errors';
 import { respondJson } from '../../platform/http/errors';
 import { seedE2eTenant } from '../../../scripts/seed-e2e';
@@ -22,17 +23,19 @@ const getHeader = (
 };
 
 const requireE2eSeedEnabled = Effect.gen(function* () {
-  if (process.env.NODE_ENV === 'production') {
+  const appConfig = yield* AppConfig;
+
+  if (appConfig.isProduction) {
     return yield* Effect.fail(
       new E2eSeedDisabled({ messageKey: 'e2e.seedDisabled' }),
     );
   }
 
-  const secret = process.env.E2E_SEED_SECRET;
+  const secret = appConfig.e2eSeedSecret;
   if (!secret) {
     // Fail closed: a missing secret must not leave the seed endpoint open on
     // shared environments such as staging.
-    if (process.env.NODE_ENV !== 'development') {
+    if (!appConfig.isDevelopment) {
       return yield* Effect.fail(
         new E2eSeedDisabled({ messageKey: 'e2e.seedDisabled' }),
       );

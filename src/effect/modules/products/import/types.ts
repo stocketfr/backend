@@ -1,3 +1,4 @@
+import { Schema } from 'effect';
 import type {
   ProductImportAiProposalDto,
   ProductImportApprovedPlanDto,
@@ -29,6 +30,102 @@ export const ProductImportTypes = [
   'normalized-products',
   'sortly-items',
 ] as const;
+
+const ProductImportFormatSchema = Schema.Literal(
+  'normalized-products',
+  'sortly-items',
+);
+
+const ProductImportSkuConflictPolicySchema = Schema.Literal(
+  'reject',
+  'derive-sku',
+);
+
+const ProductImportWarningSchema = Schema.Struct({
+  row: Schema.optional(Schema.Number),
+  field: Schema.optional(Schema.String),
+  severity: Schema.optionalWith(Schema.Literal('error', 'warning'), {
+    default: () => 'warning' as const,
+  }),
+  message: Schema.String,
+});
+
+const ProductImportCategoryMappingSchema = Schema.Struct({
+  sourcePath: Schema.String,
+  targetCategoryId: Schema.optional(Schema.String),
+  targetPath: Schema.String,
+  action: Schema.optionalWith(
+    Schema.Literal('use-existing', 'create', 'default'),
+    { default: () => 'create' as const },
+  ),
+  rowCount: Schema.optionalWith(Schema.Number, { default: () => 0 }),
+});
+
+const ProductImportSupplierMappingSchema = Schema.Struct({
+  sourcePattern: Schema.String,
+  supplierName: Schema.String,
+  targetSupplierId: Schema.optional(Schema.String),
+  action: Schema.optionalWith(
+    Schema.Literal('use-existing', 'create', 'ignore'),
+    { default: () => 'create' as const },
+  ),
+  confidence: Schema.optionalWith(Schema.Number, { default: () => 1 }),
+  rowCount: Schema.optionalWith(Schema.Number, { default: () => 0 }),
+});
+
+const ProductImportLocationMappingSchema = Schema.Struct({
+  sourceLocation: Schema.String,
+  targetLocationId: Schema.optional(Schema.String),
+  targetLocationName: Schema.optional(Schema.String),
+  areaPath: Schema.optional(Schema.String),
+  action: Schema.Literal(
+    'use-existing',
+    'create-location',
+    'create-area',
+    'ignore',
+  ),
+  confidence: Schema.optionalWith(Schema.Number, { default: () => 1 }),
+  rowCount: Schema.optionalWith(Schema.Number, { default: () => 0 }),
+}).pipe(
+  Schema.filter(
+    (mapping) =>
+      mapping.action !== 'create-area' ||
+      (mapping.areaPath !== undefined && mapping.areaPath.trim() !== ''),
+  ),
+);
+
+export const ProductImportApprovedPlanSchema = Schema.Struct({
+  skuConflictPolicy: Schema.optional(ProductImportSkuConflictPolicySchema),
+  allowCreateSuppliers: Schema.optional(Schema.Boolean),
+  defaultLocationName: Schema.optional(Schema.String),
+  categoryMappings: Schema.optional(
+    Schema.Array(ProductImportCategoryMappingSchema),
+  ),
+  supplierMappings: Schema.optional(
+    Schema.Array(ProductImportSupplierMappingSchema),
+  ),
+  locationMappings: Schema.optional(
+    Schema.Array(ProductImportLocationMappingSchema),
+  ),
+});
+
+export const ProductImportAiProposalSchema = Schema.Struct({
+  format: Schema.Union(ProductImportFormatSchema, Schema.Literal('unknown')),
+  confidence: Schema.Number,
+  productIdentity: Schema.Struct({
+    sourceColumn: Schema.String,
+    conflictPolicy: ProductImportSkuConflictPolicySchema,
+  }),
+  categoryMappings: Schema.Array(ProductImportCategoryMappingSchema),
+  supplierMappings: Schema.Array(ProductImportSupplierMappingSchema),
+  locationMappings: Schema.Array(ProductImportLocationMappingSchema),
+  warnings: Schema.Array(ProductImportWarningSchema),
+});
+
+export const ProductImportPlanSchema = Schema.Union(
+  ProductImportAiProposalSchema,
+  ProductImportApprovedPlanSchema,
+);
 
 export type ProductImportType = (typeof ProductImportTypes)[number];
 export type ProductImportFormat = Exclude<ProductImportType, 'auto'>;

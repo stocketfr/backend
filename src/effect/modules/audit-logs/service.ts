@@ -7,6 +7,7 @@ import {
 import { toPaginatedResponse } from '@stocket/types/common';
 import { makeGetOrFail } from '../../platform/effect/from-null-or';
 import type { auditLogs } from '../../platform/db/schema';
+import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import type { AuditLogQueryOptions, AuditLogRowWithUser } from './repository';
 import {
   AuditLogNotFound,
@@ -34,6 +35,11 @@ export class AuditLogsService extends Effect.Service<AuditLogsService>()(
   {
     effect: Effect.gen(function* () {
       const repository = yield* AuditLogsRepository;
+      const trace = makeServiceTracer({
+        serviceName: 'AuditLogsService',
+        module: 'audit-logs',
+        layer: 'service',
+      });
 
       const findOrFail = makeGetOrFail(
         (id: string) => repository.findById(id),
@@ -51,7 +57,7 @@ export class AuditLogsService extends Effect.Service<AuditLogsService>()(
       > =>
         Effect.map(repository.findPaginated(queryOptions), (result) =>
           toPaginatedResponse(result, toAuditLogResponseDto),
-        ).pipe(Effect.withSpan('AuditLogsService.query'));
+        ).pipe(trace.span('query'));
 
       const findById = (
         id: string,
@@ -60,7 +66,7 @@ export class AuditLogsService extends Effect.Service<AuditLogsService>()(
         AuditLogsInfrastructureError | AuditLogNotFound | TenantNotResolved
       > =>
         getAuditLogOrFail(id).pipe(
-          Effect.withSpan('AuditLogsService.findById', { attributes: { id } }),
+          trace.span('findById', { attributes: { id } }),
         );
 
       const getEntityHistory = (
@@ -74,7 +80,7 @@ export class AuditLogsService extends Effect.Service<AuditLogsService>()(
           repository.findByEntityId(entityType, entityId),
           (auditLogs) => auditLogs.map(toAuditLogResponseDto),
         ).pipe(
-          Effect.withSpan('AuditLogsService.getEntityHistory', {
+          trace.span('getEntityHistory', {
             attributes: { entityId },
           }),
         );
@@ -88,7 +94,7 @@ export class AuditLogsService extends Effect.Service<AuditLogsService>()(
         Effect.map(repository.findByUserId(userId), (auditLogs) =>
           auditLogs.map(toAuditLogResponseDto),
         ).pipe(
-          Effect.withSpan('AuditLogsService.getUserHistory', {
+          trace.span('getUserHistory', {
             attributes: { userId },
           }),
         );

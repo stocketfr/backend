@@ -71,6 +71,66 @@ describe('ProductsService Integration', () => {
       expect(error._tag).toBe('SkuAlreadyExists');
     });
 
+    it('rejects SKU held by a soft-deleted product', async () => {
+      const category = await seedCategory(db);
+      await seedProduct(db, {
+        category_id: category.id,
+        sku: 'SOFT-DELETED-SKU',
+        deleted_at: new Date('2026-01-01T00:00:00.000Z'),
+        deleted_by: TEST_USER_ID,
+      });
+
+      const error = await fail(
+        Effect.flatMap(ProductsService, (svc) =>
+          svc.create({
+            category_id: category.id,
+            sku: 'SOFT-DELETED-SKU',
+            name: 'Replacement',
+          } as any),
+        ),
+      );
+
+      expect(error._tag).toBe('SkuAlreadyExists');
+    });
+
+    it('maps concurrent duplicate SKU creates to SkuAlreadyExists', async () => {
+      const category = await seedCategory(db);
+
+      const results = await run(
+        Effect.flatMap(ProductsService, (svc) =>
+          Effect.all(
+            [
+              Effect.either(
+                svc.create({
+                  category_id: category.id,
+                  sku: 'RACE-SKU',
+                  name: 'Race A',
+                } as any),
+              ),
+              Effect.either(
+                svc.create({
+                  category_id: category.id,
+                  sku: 'RACE-SKU',
+                  name: 'Race B',
+                } as any),
+              ),
+            ],
+            { concurrency: 2 },
+          ),
+        ),
+      );
+
+      const successCount = results.filter(
+        (result) => result._tag === 'Right',
+      ).length;
+      const failureTags = results.flatMap((result) =>
+        result._tag === 'Left' ? [result.left._tag] : [],
+      );
+
+      expect(successCount).toBe(1);
+      expect(failureTags).toEqual(['SkuAlreadyExists']);
+    });
+
     it('rejects price below cost', async () => {
       const category = await seedCategory(db);
 

@@ -40,7 +40,7 @@ export const normalizeFeatureStates = (
   features: Partial<FeatureStates> | null | undefined,
 ): FeatureStates => ({
   ...DEFAULT_FEATURE_STATES,
-  ...(features ?? {}),
+  ...features,
 });
 
 export const resolveFeatureStates = (

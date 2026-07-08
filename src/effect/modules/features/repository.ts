@@ -1,11 +1,12 @@
 import { Effect } from 'effect';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import {
   EntitlementSource,
   type FeatureKey,
   type PlanKey,
 } from '@stocket/types/features';
 import { DrizzleDatabase } from '../../platform/db/drizzle';
+import { TenantQuery } from '../../platform/tenancy/tenant-query';
 import {
   organizations,
   tenantEntitlementProfiles,
@@ -33,6 +34,7 @@ export class FeaturesRepository extends Effect.Service<FeaturesRepository>()(
   {
     effect: Effect.gen(function* () {
       const db = yield* DrizzleDatabase;
+      const tenantQuery = yield* TenantQuery;
 
       const tenantExists = (tenantId: string) =>
         tryAsync('check tenant exists', async () => {
@@ -46,21 +48,23 @@ export class FeaturesRepository extends Effect.Service<FeaturesRepository>()(
 
       const findProfile = (tenantId: string) =>
         tryAsync('load tenant entitlement profile', async () => {
+          const tenantScope = tenantQuery.forTenant(tenantId);
           const rows = await db
             .select()
             .from(tenantEntitlementProfiles)
-            .where(eq(tenantEntitlementProfiles.tenant_id, tenantId))
+            .where(tenantScope.whereTenant(tenantEntitlementProfiles))
             .limit(1);
           return rows[0] ?? null;
         });
 
       const listOverrides = (tenantId: string) =>
-        tryAsync('load tenant feature overrides', async () =>
-          db
+        tryAsync('load tenant feature overrides', async () => {
+          const tenantScope = tenantQuery.forTenant(tenantId);
+          return db
             .select()
             .from(tenantFeatureOverrides)
-            .where(eq(tenantFeatureOverrides.tenant_id, tenantId)),
-        );
+            .where(tenantScope.whereTenant(tenantFeatureOverrides));
+        });
 
       const upsertPlan = (
         tenantId: string,
@@ -68,15 +72,15 @@ export class FeaturesRepository extends Effect.Service<FeaturesRepository>()(
         actorUserId: string,
       ) =>
         tryAsync('upsert tenant entitlement profile', async () => {
+          const tenantScope = tenantQuery.forTenant(tenantId);
           await db
             .insert(tenantEntitlementProfiles)
-            .values({
-              tenant_id: tenantId,
+            .values(tenantScope.insertValues({
               plan_key: planKey,
               source: EntitlementSource.MANUAL,
               updated_by: actorUserId,
               updated_at: new Date(),
-            })
+            }))
             .onConflictDoUpdate({
               target: tenantEntitlementProfiles.tenant_id,
               set: {
@@ -99,17 +103,17 @@ export class FeaturesRepository extends Effect.Service<FeaturesRepository>()(
         actorUserId: string,
       ) =>
         tryAsync('upsert tenant feature override', async () => {
+          const tenantScope = tenantQuery.forTenant(tenantId);
           await db
             .insert(tenantFeatureOverrides)
-            .values({
-              tenant_id: tenantId,
+            .values(tenantScope.insertValues({
               feature_key: featureKey,
               enabled: input.enabled,
               reason: input.reason ?? null,
               expires_at: input.expires_at ?? null,
               updated_by: actorUserId,
               updated_at: new Date(),
-            })
+            }))
             .onConflictDoUpdate({
               target: [
                 tenantFeatureOverrides.tenant_id,
@@ -127,11 +131,12 @@ export class FeaturesRepository extends Effect.Service<FeaturesRepository>()(
 
       const deleteOverride = (tenantId: string, featureKey: FeatureKey) =>
         tryAsync('delete tenant feature override', async () => {
+          const tenantScope = tenantQuery.forTenant(tenantId);
           await db
             .delete(tenantFeatureOverrides)
             .where(
-              and(
-                eq(tenantFeatureOverrides.tenant_id, tenantId),
+              tenantScope.whereTenant(
+                tenantFeatureOverrides,
                 eq(tenantFeatureOverrides.feature_key, featureKey),
               ),
             );
@@ -146,6 +151,6 @@ export class FeaturesRepository extends Effect.Service<FeaturesRepository>()(
         deleteOverride,
       };
     }),
+    dependencies: [TenantQuery.Default],
   },
 ) {}
-

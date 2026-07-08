@@ -1,7 +1,7 @@
 import { Effect, Layer } from 'effect';
 import { eq, ilike, sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { suppliers } from '../db/schema';
+import { categories, products, roles, suppliers } from '../db/schema';
 import { DrizzleDatabase } from '../db/drizzle';
 import { CurrentRequestContext, type RequestContext } from '../http/request-context';
 import { TenantQuery } from '../tenancy/tenant-query';
@@ -42,9 +42,75 @@ const makeProbe = () =>
         query.q ? [ilike(suppliers.name, `%${query.q}%`)] : [],
       orderBy: sql`"name" ASC`,
     },
+    extras: ({ db, withTransaction }) => ({
+      createThenFail: (tenantId: string) =>
+        withTransaction('create supplier then fail', async (tx) => {
+          await tx.insert(suppliers).values({
+            tenant_id: tenantId,
+            name: 'Rolled Back Supplier',
+          });
+          throw new Error('rollback supplier transaction');
+        }),
+      createOutsideTransaction: (tenantId: string, name: string) =>
+        Effect.promise(() =>
+          db.insert(suppliers).values({ tenant_id: tenantId, name }),
+        ),
+    }),
   });
 
 type Probe = Effect.Effect.Success<ReturnType<typeof makeProbe>>;
+
+class TenantCrudUniqueProbeError extends Error {
+  readonly _tag = 'TenantCrudUniqueProbeError' as const;
+}
+
+const makeRoleProbe = () =>
+  makeTenantCrud(roles, {
+    entity: 'role',
+    onError: (
+      action,
+      cause,
+    ): SuppliersInfrastructureError | TenantCrudUniqueProbeError =>
+      new SuppliersInfrastructureError({
+        action,
+        cause,
+        messageKey: 'suppliers.repositoryFailed',
+      }),
+    uniqueViolations: {
+      roles_tenant_name_unique: () => new TenantCrudUniqueProbeError(),
+    },
+  });
+
+type RoleProbe = Effect.Effect.Success<ReturnType<typeof makeRoleProbe>>;
+
+interface ProductProbeQuery {
+  readonly page?: number;
+  readonly limit?: number;
+  readonly includeDeleted?: boolean;
+}
+
+const makeProductProbe = () =>
+  makeTenantCrud(products, {
+    entity: 'product',
+    onError: (action, cause) =>
+      new SuppliersInfrastructureError({
+        action,
+        cause,
+        messageKey: 'suppliers.repositoryFailed',
+      }),
+    softDelete: {
+      deletedAt: products.deleted_at,
+      deletedBy: products.deleted_by,
+    },
+    list: {
+      filters: () => [],
+      includeDeleted: (query: ProductProbeQuery) =>
+        query.includeDeleted === true,
+      orderBy: sql`"sku" ASC`,
+    },
+  });
+
+type ProductProbe = Effect.Effect.Success<ReturnType<typeof makeProductProbe>>;
 
 const makeTenantContext = (tenantId: string): RequestContext => ({
   ...makeTestRequestContext(),
@@ -81,6 +147,41 @@ const runFail = <A, E>(
     ),
   );
 
+const runRole = <A, E>(
+  tenantId: string,
+  use: (crud: RoleProbe) => Effect.Effect<A, E>,
+) =>
+  Effect.runPromise(
+    makeRoleProbe().pipe(
+      Effect.flatMap(use),
+      Effect.provide(asTenant(tenantId)),
+    ),
+  );
+
+const runRoleFail = <A, E>(
+  tenantId: string,
+  use: (crud: RoleProbe) => Effect.Effect<A, E>,
+) =>
+  Effect.runPromise(
+    Effect.flip(
+      makeRoleProbe().pipe(
+        Effect.flatMap(use),
+        Effect.provide(asTenant(tenantId)),
+      ),
+    ),
+  );
+
+const runProduct = <A, E>(
+  tenantId: string,
+  use: (crud: ProductProbe) => Effect.Effect<A, E>,
+) =>
+  Effect.runPromise(
+    makeProductProbe().pipe(
+      Effect.flatMap(use),
+      Effect.provide(asTenant(tenantId)),
+    ),
+  );
+
 const seedSuppliers = async (tenantId: string, names: string[]) => {
   const db = getTestDb();
   const rows = await db
@@ -88,6 +189,33 @@ const seedSuppliers = async (tenantId: string, names: string[]) => {
     .values(names.map((name) => ({ tenant_id: tenantId, name })))
     .returning();
   return rows;
+};
+
+const seedCategory = async (tenantId: string) => {
+  const [category] = await getTestDb()
+    .insert(categories)
+    .values({ tenant_id: tenantId, name: `Category ${tenantId.slice(-3)}` })
+    .returning();
+  return category!;
+};
+
+const seedProduct = async (
+  tenantId: string,
+  categoryId: string,
+  sku: string,
+  deleted = false,
+) => {
+  const [product] = await getTestDb()
+    .insert(products)
+    .values({
+      tenant_id: tenantId,
+      category_id: categoryId,
+      sku,
+      name: sku,
+      deleted_at: deleted ? new Date('2026-01-01T00:00:00.000Z') : null,
+    })
+    .returning();
+  return product!;
 };
 
 describe('makeTenantCrud', () => {
@@ -209,6 +337,33 @@ describe('makeTenantCrud', () => {
     });
   });
 
+  describe('bulk primitives', () => {
+    it('findByIds and updateMany are tenant-scoped and return exact ids', async () => {
+      const [first, second] = await seedSuppliers(TENANT_A, [
+        'Bulk One',
+        'Bulk Two',
+      ]);
+      const [foreign] = await seedSuppliers(TENANT_B, ['Bulk Other']);
+
+      const found = await run(TENANT_A, (crud) =>
+        crud.findByIds([first!.id, second!.id, foreign!.id]),
+      );
+      expect(found.map((row) => row.id).sort()).toEqual(
+        [first!.id, second!.id].sort(),
+      );
+
+      const updatedIds = await run(TENANT_A, (crud) =>
+        crud.updateMany([first!.id, foreign!.id], { notes: 'bulk touched' }),
+      );
+      expect(updatedIds).toEqual([first!.id]);
+
+      const foreignAfter = await getTestDb().query.suppliers.findFirst({
+        where: eq(suppliers.id, foreign!.id),
+      });
+      expect(foreignAfter!.notes).toBeNull();
+    });
+  });
+
   describe('delete', () => {
     it('removes the row and is idempotent', async () => {
       const [seeded] = await seedSuppliers(TENANT_A, ['Doomed']);
@@ -220,6 +375,108 @@ describe('makeTenantCrud', () => {
         where: eq(suppliers.id, seeded!.id),
       });
       expect(remaining).toBeFalsy();
+    });
+  });
+
+  describe('transaction extras', () => {
+    it('rolls back work through withTransaction', async () => {
+      const error = await runFail(TENANT_A, (crud) =>
+        crud.createThenFail(TENANT_A),
+      );
+
+      expect(error).toBeInstanceOf(SuppliersInfrastructureError);
+
+      const rows = await getTestDb()
+        .select()
+        .from(suppliers)
+        .where(eq(suppliers.name, 'Rolled Back Supplier'));
+      expect(rows).toHaveLength(0);
+    });
+  });
+
+  describe('unique violation mapping', () => {
+    it('maps configured pg unique violations before generic infrastructure errors', async () => {
+      await runRole(TENANT_A, (crud) =>
+        crud.create({ name: 'Tenant Admin', is_system: true }),
+      );
+
+      const error = await runRoleFail(TENANT_A, (crud) =>
+        crud.create({ name: 'Tenant Admin', is_system: false }),
+      );
+
+      expect(error).toBeInstanceOf(TenantCrudUniqueProbeError);
+    });
+  });
+
+  describe('soft delete', () => {
+    it('excludes deleted rows by default and can include them per read', async () => {
+      const category = await seedCategory(TENANT_A);
+      const active = await seedProduct(TENANT_A, category.id, 'ACTIVE-001');
+      const deleted = await seedProduct(
+        TENANT_A,
+        category.id,
+        'DELETED-001',
+        true,
+      );
+
+      await expect(
+        runProduct(TENANT_A, (crud) => crud.findById(active.id)),
+      ).resolves.toMatchObject({ id: active.id });
+      await expect(
+        runProduct(TENANT_A, (crud) => crud.findById(deleted.id)),
+      ).resolves.toBeNull();
+      await expect(
+        runProduct(TENANT_A, (crud) =>
+          crud.findById(deleted.id, { includeDeleted: true }),
+        ),
+      ).resolves.toMatchObject({ id: deleted.id });
+
+      const listed = await runProduct(TENANT_A, (crud) =>
+        crud.findAllPaginated({}),
+      );
+      expect(listed.data.map((row) => row.id)).toEqual([active.id]);
+
+      const listedWithDeleted = await runProduct(TENANT_A, (crud) =>
+        crud.findAllPaginated({ includeDeleted: true }),
+      );
+      expect(listedWithDeleted.data.map((row) => row.id).sort()).toEqual(
+        [active.id, deleted.id].sort(),
+      );
+    });
+
+    it('soft-deletes, restores, and hard-deletes exact ids', async () => {
+      const category = await seedCategory(TENANT_A);
+      const first = await seedProduct(TENANT_A, category.id, 'SOFT-001');
+      const second = await seedProduct(TENANT_A, category.id, 'SOFT-002');
+
+      const softDeletedIds = await runProduct(TENANT_A, (crud) =>
+        crud.softDeleteMany([first.id, second.id], 'user-1'),
+      );
+      expect(softDeletedIds.sort()).toEqual([first.id, second.id].sort());
+
+      const deletedRows = await runProduct(TENANT_A, (crud) =>
+        crud.findDeletedByIds([first.id, second.id]),
+      );
+      expect(deletedRows.map((row) => row.deleted_by)).toEqual([
+        'user-1',
+        'user-1',
+      ]);
+
+      const restoredIds = await runProduct(TENANT_A, (crud) =>
+        crud.restoreMany([first.id, second.id]),
+      );
+      expect(restoredIds.sort()).toEqual([first.id, second.id].sort());
+
+      const hardDeletedIds = await runProduct(TENANT_A, (crud) =>
+        crud.hardDeleteMany([first.id, second.id]),
+      );
+      expect(hardDeletedIds.sort()).toEqual([first.id, second.id].sort());
+
+      const rows = await getTestDb()
+        .select()
+        .from(products)
+        .where(eq(products.category_id, category.id));
+      expect(rows).toHaveLength(0);
     });
   });
 

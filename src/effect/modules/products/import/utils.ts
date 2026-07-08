@@ -854,15 +854,21 @@ export const pushRowError = (
 };
 
 export const formatImportError = (error: unknown): string => {
-  if (error instanceof Error && error.message) return error.message;
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    'message' in error &&
-    typeof (error as { message?: unknown }).message === 'string'
-  ) {
-    return (error as { message: string }).message;
+  if (error instanceof Error && error.message.trim() !== '') {
+    return error.message;
   }
+
+  if (
+    error !== null &&
+    typeof error === 'object' &&
+    !Array.isArray(error) &&
+    'message' in error &&
+    typeof error.message === 'string' &&
+    error.message.trim() !== ''
+  ) {
+    return error.message;
+  }
+
   return String(error);
 };
 

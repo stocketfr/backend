@@ -8,6 +8,7 @@ import type {
 import { makeGetOrFail } from '../../platform/effect/from-null-or';
 import { LocationsService } from '../locations/service';
 import type { areas } from '../../platform/db/schema';
+import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { toAreaResponseDto } from './areas.utils';
 import {
   AreaCircularReference,
@@ -32,6 +33,11 @@ export class AreasService extends Effect.Service<AreasService>()(
     effect: Effect.gen(function* () {
       const repository = yield* AreasRepository;
       const locationsService = yield* LocationsService;
+      const trace = makeServiceTracer({
+        serviceName: 'AreasService',
+        module: 'areas',
+        layer: 'service',
+      });
 
       const getAreaOrFail = makeGetOrFail(
         (id: string) => repository.findById(id),
@@ -93,7 +99,7 @@ export class AreasService extends Effect.Service<AreasService>()(
 
           const area = yield* repository.create(dto);
           return toAreaResponseDto(area);
-        }).pipe(Effect.withSpan('AreasService.create'));
+        }).pipe(trace.span('create'));
 
       const findAll = (
         query: AreaQueryDto,
@@ -107,7 +113,7 @@ export class AreasService extends Effect.Service<AreasService>()(
               ? yield* repository.findHierarchyByLocationId(query.location_id)
               : yield* repository.findAll(query);
           return areas.map(toAreaResponseDto);
-        }).pipe(Effect.withSpan('AreasService.findAll'));
+        }).pipe(trace.span('findAll'));
 
       const findById = (
         id: string,
@@ -116,7 +122,7 @@ export class AreasService extends Effect.Service<AreasService>()(
         AreaNotFound | AreasInfrastructureError | TenantNotResolved
       > =>
         Effect.map(getAreaOrFail(id), toAreaResponseDto).pipe(
-          Effect.withSpan('AreasService.findById', { attributes: { id } }),
+          trace.span('findById', { attributes: { id } }),
         );
 
       const findByIdWithChildren = (
@@ -134,7 +140,7 @@ export class AreasService extends Effect.Service<AreasService>()(
                   messageKey: 'areas.notFound',
                 }),
               ),
-        ).pipe(Effect.withSpan('AreasService.findByIdWithChildren', { attributes: { id } }));
+        ).pipe(trace.span('findByIdWithChildren', { attributes: { id } }));
 
       const update = (
         id: string,
@@ -207,7 +213,7 @@ export class AreasService extends Effect.Service<AreasService>()(
             );
           }
           return toAreaResponseDto(updated);
-        }).pipe(Effect.withSpan('AreasService.update', { attributes: { id } }));
+        }).pipe(trace.span('update', { attributes: { id } }));
 
       const remove = (
         id: string,
@@ -225,7 +231,7 @@ export class AreasService extends Effect.Service<AreasService>()(
               }),
             );
           }
-        }).pipe(Effect.withSpan('AreasService.delete', { attributes: { id } }));
+        }).pipe(trace.span('delete', { attributes: { id } }));
 
       return {
         create,

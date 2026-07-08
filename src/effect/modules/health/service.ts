@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import { sql } from 'drizzle-orm';
 import { BetterAuth } from '../../platform/auth/better-auth';
+import { AppConfig } from '../../platform/config/app-config';
 import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { type AnyMessageKey, type MessageArgs } from '../../platform/observability/messages';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
@@ -46,6 +47,7 @@ export class HealthService extends Effect.Service<HealthService>()(
       // which is required for HttpApiBuilder handler compatibility.
       const db = yield* DrizzleDatabase;
       const auth = yield* BetterAuth;
+      const appConfig = yield* AppConfig;
       const trace = makeServiceTracer({
         serviceName: 'HealthService',
         module: 'health',
@@ -64,7 +66,7 @@ export class HealthService extends Effect.Service<HealthService>()(
       });
 
       const checkBetterAuth = Effect.sync(() => {
-        if (!process.env.BETTER_AUTH_SECRET) {
+        if (!appConfig.hasBetterAuthSecret) {
           return {
             status: 'down' as const,
             messageKey: 'health.betterAuthSecretMissing' as AnyMessageKey,
@@ -98,5 +100,6 @@ export class HealthService extends Effect.Service<HealthService>()(
     }),
     // DrizzleDatabase and BetterAuth are platform services wired externally in main.ts
     // via platformLayer; they are NOT listed here to avoid creating duplicate connections.
+    dependencies: [AppConfig.Default],
   },
 ) {}

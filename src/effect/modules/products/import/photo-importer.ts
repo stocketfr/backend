@@ -1,6 +1,8 @@
 import { Effect } from 'effect';
 import type { PhotoResponseDto } from '@stocket/types/photos';
 import { PhotosService, type UploadedFile } from '../../photos/service';
+import { toError } from '../../../platform/effect/to-error';
+import { makeServiceTracer } from '../../../platform/observability/service-tracer';
 import { isSupportedSortlyPhotoUrl } from './utils';
 
 const MAX_REMOTE_PHOTO_SIZE = 10 * 1024 * 1024;
@@ -20,9 +22,6 @@ const makeSortlyPhotoFilename = (
   photoIndex: number,
   mimetype: string,
 ): string => `sortly-photo-${photoIndex + 1}${MIME_EXT_MAP[mimetype] ?? '.bin'}`;
-
-const toError = (message: string, cause: unknown): Error =>
-  cause instanceof Error ? cause : new Error(message, { cause });
 
 const readRemotePhoto = (url: string, photoIndex: number) =>
   Effect.tryPromise({
@@ -77,6 +76,11 @@ export class ProductImportPhotoImporter extends Effect.Service<ProductImportPhot
   {
     effect: Effect.gen(function* () {
       const photosService = yield* PhotosService;
+      const trace = makeServiceTracer({
+        serviceName: 'ProductImportPhotoImporter',
+        module: 'products',
+        layer: 'service',
+      });
 
       const importSortlyPhoto = (
         productId: string,
@@ -87,11 +91,7 @@ export class ProductImportPhotoImporter extends Effect.Service<ProductImportPhot
         Effect.gen(function* () {
           const file = yield* readRemotePhoto(url, photoIndex);
           return yield* photosService.uploadPhoto(productId, file, userId);
-        }).pipe(
-          Effect.withSpan('ProductImportPhotoImporter.importSortlyPhoto', {
-            attributes: { productId },
-          }),
-        );
+        }).pipe(trace.span('importSortlyPhoto', { attributes: { productId } }));
 
       return { importSortlyPhoto };
     }),

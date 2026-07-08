@@ -4,9 +4,9 @@ import type { PhotoResponseDto } from '@stocket/types/photos';
 import { fromNullOr } from '../../platform/effect/from-null-or';
 import {
   StorageAdapter,
-  StorageObjectNotFound,
   type StorageError,
 } from '../../platform/storage';
+import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { toPhotoResponseDto } from './photos.utils';
 import {
   InvalidPhotoMimeType,
@@ -67,6 +67,11 @@ export class PhotosService extends Effect.Service<PhotosService>()(
     effect: Effect.gen(function* () {
       const repository = yield* PhotosRepository;
       const storage = yield* StorageAdapter;
+      const trace = makeServiceTracer({
+        serviceName: 'PhotosService',
+        module: 'photos',
+        layer: 'service',
+      });
 
       const getExtFromMime = (mimetype: string): string =>
         MIME_EXT_MAP[mimetype] ?? '.bin';
@@ -166,11 +171,7 @@ export class PhotosService extends Effect.Service<PhotosService>()(
           );
 
           return toPhotoResponseDto(photo);
-        }).pipe(
-          Effect.withSpan('PhotosService.uploadPhoto', {
-            attributes: { productId },
-          }),
-        );
+        }).pipe(trace.span('uploadPhoto', { attributes: { productId } }));
       };
 
       const findByProductId = (
@@ -181,11 +182,7 @@ export class PhotosService extends Effect.Service<PhotosService>()(
       > =>
         Effect.map(repository.findByProductId(productId), (photos) =>
           photos.map(toPhotoResponseDto),
-        ).pipe(
-          Effect.withSpan('PhotosService.findByProductId', {
-            attributes: { productId },
-          }),
-        );
+        ).pipe(trace.span('findByProductId', { attributes: { productId } }));
 
       const getFile = (
         id: string,
@@ -200,14 +197,17 @@ export class PhotosService extends Effect.Service<PhotosService>()(
           const photo = yield* findPhotoOrFail(id);
 
           const stored = yield* storage.getObject(photo.storage_path).pipe(
-            Effect.mapError((cause) =>
-              cause instanceof StorageObjectNotFound
-                ? new PhotoFileNotFound({
-                    id,
-                    path: photo.storage_path,
-                    messageKey: 'photos.fileNotFound',
-                  })
-                : mapStorageReadError(cause),
+            Effect.catchTag('StorageObjectNotFound', () =>
+              Effect.fail(
+                new PhotoFileNotFound({
+                  id,
+                  path: photo.storage_path,
+                  messageKey: 'photos.fileNotFound',
+                }),
+              ),
+            ),
+            Effect.catchTag('StorageError', (cause) =>
+              Effect.fail(mapStorageReadError(cause)),
             ),
           );
 
@@ -216,9 +216,7 @@ export class PhotosService extends Effect.Service<PhotosService>()(
             mimetype: photo.mimetype,
             filename: photo.filename,
           };
-        }).pipe(
-          Effect.withSpan('PhotosService.getFile', { attributes: { id } }),
-        );
+        }).pipe(trace.span('getFile', { attributes: { id } }));
 
       const deletePhoto = (
         id: string,
@@ -232,9 +230,7 @@ export class PhotosService extends Effect.Service<PhotosService>()(
             .deleteObject(photo.storage_path)
             .pipe(Effect.mapError(mapStorageDeleteError));
           yield* repository.delete(id);
-        }).pipe(
-          Effect.withSpan('PhotosService.deletePhoto', { attributes: { id } }),
-        );
+        }).pipe(trace.span('deletePhoto', { attributes: { id } }));
 
       return { uploadPhoto, findByProductId, getFile, deletePhoto };
     }),

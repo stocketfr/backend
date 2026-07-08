@@ -8,6 +8,10 @@ import type {
   PaginatedLocationsResponseDto,
 } from '@stocket/types/locations';
 import { fromNullOr } from '../../platform/effect/from-null-or';
+import {
+  hasDefinedPatchValues,
+  pickDefined,
+} from '../../platform/effect/pick-defined';
 import { makeReferenceEntityOperations } from '../../platform/reference-data-service';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { toLocationResponseDto } from './locations.utils';
@@ -33,6 +37,7 @@ export class LocationsService extends Effect.Service<LocationsService>()(
         findById: (id: string) => repository.findById(id),
         deleteById: (id: string) => repository.delete(id),
         existsById: (id: string) => repository.existsById(id),
+        findByIds: (ids: readonly string[]) => repository.findByIds(ids),
         makeNotFound: (id) =>
           new LocationNotFound({ id, messageKey: 'locations.notFound' }),
         toResponse: toLocationResponseDto,
@@ -92,13 +97,22 @@ export class LocationsService extends Effect.Service<LocationsService>()(
         LocationNotFound | LocationsInfrastructureError | TenantNotResolved
       > =>
         Effect.gen(function* () {
-          if (Object.keys(dto).length === 0) {
+          const updateData = pickDefined<UpdateLocationDto>([
+            ['name', dto.name],
+            ['type', dto.type],
+            ['address', dto.address],
+            ['contact_person', dto.contact_person],
+            ['phone', dto.phone],
+            ['is_active', dto.is_active],
+          ]);
+
+          if (!hasDefinedPatchValues(updateData)) {
             const location = yield* referenceEntity.getOrFail(id);
             return toLocationResponseDto(location);
           }
 
           const updated = yield* fromNullOr(
-            repository.update(id, dto),
+            repository.update(id, updateData),
             () => new LocationNotFound({ id, messageKey: 'locations.notFound' }),
           );
           return toLocationResponseDto(updated);
@@ -119,6 +133,16 @@ export class LocationsService extends Effect.Service<LocationsService>()(
           trace.span('existsById', { attributes: { id } }),
         );
 
+      const ensureExistsById = (id: string) =>
+        referenceEntity.ensureExistsById(id).pipe(
+          trace.span('ensureExistsById', { attributes: { id } }),
+        );
+
+      const ensureExistByIds = (ids: readonly string[]) =>
+        referenceEntity.ensureExistByIds(ids).pipe(
+          trace.span('ensureExistByIds'),
+        );
+
       return {
         findAllPaginated,
         findAll,
@@ -127,6 +151,8 @@ export class LocationsService extends Effect.Service<LocationsService>()(
         update,
         delete: remove,
         existsById,
+        ensureExistsById,
+        ensureExistByIds,
       };
     }),
     dependencies: [LocationsRepository.Default],

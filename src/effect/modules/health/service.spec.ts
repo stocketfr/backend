@@ -8,8 +8,8 @@
  *
  * Uses `@effect/vitest` `it.effect` style and mocks `DrizzleDatabase` +
  * `BetterAuth` as per-test layers. The service body calls `db.execute(...)`
- * and reads `process.env.BETTER_AUTH_SECRET`, so the mocks target those two
- * touch points specifically.
+ * and reads Better Auth secret presence through AppConfig, so the mocks target
+ * those two touch points specifically.
  */
 import { afterEach, describe, expect, it } from '@effect/vitest';
 import { Effect, Layer } from 'effect';

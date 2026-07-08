@@ -2,6 +2,7 @@ import { HttpServerRequest, HttpServerResponse } from '@effect/platform';
 import { Effect, Layer } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 import type { BetterAuthService } from '../platform/auth/better-auth';
+import { AppConfig } from '../platform/config/app-config';
 import {
   CurrentRequestContext,
   type RequestContext,
@@ -73,6 +74,7 @@ const provideTestRequest = <A, E, R>(
   let provided = effect.pipe(
     Effect.provide(makeRequestLayer(url)),
     Effect.provide(makeBetterAuthLayer(getSession)),
+    Effect.provide(AppConfig.Default),
   );
 
   if (requestContext) {
@@ -129,6 +131,7 @@ describe('tenantContextMiddleware', () => {
         makeRequestLayer(tenantUrl('/api/v1/products'), 'OPTIONS'),
       ),
       Effect.provide(makeBetterAuthLayer(getSession)),
+      Effect.provide(AppConfig.Default),
     );
 
     const response = await Effect.runPromise(effect);

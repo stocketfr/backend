@@ -8,7 +8,9 @@ import { fromNullOr } from '../../platform/effect/from-null-or';
 import { OrderStatus } from '@stocket/types/orders';
 import { StockMovementReason } from '@stocket/types/stock-movements';
 import { DrizzleDatabase, type DrizzleDb } from '../../platform/db/drizzle';
+import { withDrizzleTransaction } from '../../platform/db/transaction';
 import { CurrentRequestContext } from '../../platform/http/request-context';
+import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { InventoryRepository } from '../inventory/repository';
 import { OrderItemsRepository, OrdersRepository } from '../orders/repository';
 import type { Order } from '../orders/orders.utils';
@@ -22,33 +24,38 @@ import {
   type FulfillmentError,
 } from './errors';
 
-const isFulfillmentError = (cause: unknown): cause is FulfillmentError =>
-  cause instanceof FulfillmentOrderNotFound ||
-  cause instanceof FulfillmentInvalidTransition ||
-  cause instanceof FulfillmentPickFailed ||
-  cause instanceof FulfillmentNotImplemented ||
-  cause instanceof FulfillmentInfrastructureError;
-
-// Thrown only for defects/interrupts inside the pick transaction. A typed
-// failure (`Cause.failureOption` is `Some`) is rethrown as-is so the outer
-// `tryPromise` catch can pattern-match it back to a FulfillmentError. The
-// pretty-printed cause keeps stack/interrupt info that `Cause.squash` would drop.
+// Thrown only across Drizzle's Promise transaction callback. Typed failures are
+// carried in `failure`; defects/interrupts keep the pretty cause for diagnostics.
 class FulfillmentTransactionDefect extends Error {
-  constructor(public readonly cause: Cause.Cause<unknown>) {
-    super(Cause.pretty(cause));
+  private constructor(
+    message: string,
+    public readonly failure: FulfillmentError | null,
+    public readonly defectCause: Cause.Cause<unknown> | null,
+  ) {
+    super(message);
     this.name = 'FulfillmentTransactionDefect';
+  }
+
+  static failure(failure: FulfillmentError) {
+    return new FulfillmentTransactionDefect(failure.message, failure, null);
+  }
+
+  static defect(cause: Cause.Cause<unknown>) {
+    return new FulfillmentTransactionDefect(Cause.pretty(cause), null, cause);
   }
 }
 
-const runEffectAsPromise = async <A, E>(
+const runEffectAsPromise = async <A, E extends FulfillmentError>(
   effect: Effect.Effect<A, E, never>,
 ): Promise<A> => {
   const exit = await Effect.runPromiseExit(effect);
   if (Exit.isSuccess(exit)) return exit.value;
 
   const failure = Cause.failureOption(exit.cause);
-  if (Option.isSome(failure)) throw failure.value;
-  throw new FulfillmentTransactionDefect(exit.cause);
+  if (Option.isSome(failure)) {
+    throw FulfillmentTransactionDefect.failure(failure.value);
+  }
+  throw FulfillmentTransactionDefect.defect(exit.cause);
 };
 
 export class FulfillmentService extends Effect.Service<FulfillmentService>()(
@@ -63,6 +70,12 @@ export class FulfillmentService extends Effect.Service<FulfillmentService>()(
       // fails loudly during wiring rather than silently degrading pick() to a
       // non-transactional code path at runtime.
       const db = yield* DrizzleDatabase;
+      const trace = makeServiceTracer({
+        serviceName: 'FulfillmentService',
+        module: 'fulfillment',
+        layer: 'service',
+        entityType: 'order',
+      });
 
       const wrapInfrastructureError = (action: string) => (cause: unknown) =>
         new FulfillmentInfrastructureError({
@@ -77,7 +90,7 @@ export class FulfillmentService extends Effect.Service<FulfillmentService>()(
       ) =>
         fromNullOr(
           Effect.mapError(
-            repository.findById(orderId),
+            repository.findByIdWithRelations(orderId),
             wrapInfrastructureError('load order'),
           ),
           () =>
@@ -105,7 +118,7 @@ export class FulfillmentService extends Effect.Service<FulfillmentService>()(
         })),
       });
 
-      const runPickAtomically = <A, E>(
+      const runPickAtomically = <A, E extends FulfillmentError>(
         effect: (repositories: {
           readonly ordersRepository: typeof ordersRepository;
           readonly orderItemsRepository: typeof orderItemsRepository;
@@ -120,12 +133,7 @@ export class FulfillmentService extends Effect.Service<FulfillmentService>()(
 
           return yield* Effect.tryPromise({
             try: () =>
-              db.transaction(async (tx) => {
-                // drizzle's PgTransaction is structurally compatible with
-                // NodePgDatabase for all query methods we use, but the two are
-                // nominally distinct types — there is no clean public way to
-                // express "either".
-                const txDb = tx as unknown as DrizzleDb;
+              withDrizzleTransaction(db, async (txDb) => {
                 let txPlatformLayer: Layer.Layer<DrizzleDb> = Layer.succeed(
                   DrizzleDatabase,
                   txDb,
@@ -161,8 +169,9 @@ export class FulfillmentService extends Effect.Service<FulfillmentService>()(
                 return runEffectAsPromise(txEffect);
               }),
             catch: (cause) =>
-              isFulfillmentError(cause)
-                ? cause
+              cause instanceof FulfillmentTransactionDefect &&
+              cause.failure !== null
+                ? cause.failure
                 : wrapInfrastructureError('pick transaction')(cause),
           });
         });
@@ -192,11 +201,7 @@ export class FulfillmentService extends Effect.Service<FulfillmentService>()(
 
           const updated = yield* loadOrderOrFail(orderId);
           return toView(updated);
-        }).pipe(
-          Effect.withSpan('FulfillmentService.confirm', {
-            attributes: { orderId },
-          }),
-        );
+        }).pipe(trace.span('confirm', { attributes: { orderId } }));
 
       const PICKABLE_STATUSES: readonly OrderStatus[] = [
         OrderStatus.CONFIRMED,
@@ -332,11 +337,7 @@ export class FulfillmentService extends Effect.Service<FulfillmentService>()(
               return toView(updated);
             }),
           );
-        }).pipe(
-          Effect.withSpan('FulfillmentService.pick', {
-            attributes: { orderId: input.orderId },
-          }),
-        );
+        }).pipe(trace.span('pick', { attributes: { orderId: input.orderId } }));
 
       const pack = (input: {
         readonly orderId: string;
@@ -356,11 +357,7 @@ export class FulfillmentService extends Effect.Service<FulfillmentService>()(
               messageKey: 'fulfillment.packNotImplemented',
             }),
           );
-        }).pipe(
-          Effect.withSpan('FulfillmentService.pack', {
-            attributes: { orderId: input.orderId },
-          }),
-        );
+        }).pipe(trace.span('pack', { attributes: { orderId: input.orderId } }));
 
       const ship = (orderId: string, actorId: string) =>
         Effect.gen(function* () {
@@ -376,11 +373,7 @@ export class FulfillmentService extends Effect.Service<FulfillmentService>()(
               messageKey: 'fulfillment.shipNotImplemented',
             }),
           );
-        }).pipe(
-          Effect.withSpan('FulfillmentService.ship', {
-            attributes: { orderId },
-          }),
-        );
+        }).pipe(trace.span('ship', { attributes: { orderId } }));
 
       return {
         confirm,

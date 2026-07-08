@@ -41,6 +41,7 @@ import {
   ProductImportUnsupportedFormat,
   ProductsInfrastructureError,
 } from '../products.errors';
+import { makeServiceTracer } from '../../../platform/observability/service-tracer';
 import { ProductImportLlmProposer } from './llm-proposer';
 import { ProductImportPhotoImporter } from './photo-importer';
 import { ProductImportRepository } from './repository';
@@ -52,6 +53,11 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
       const repository = yield* ProductImportRepository;
       const llmProposer = yield* ProductImportLlmProposer;
       const photoImporter = yield* ProductImportPhotoImporter;
+      const trace = makeServiceTracer({
+        serviceName: 'ProductImportService',
+        module: 'products',
+        layer: 'service',
+      });
 
       const parseAndDetectFormat = ({
         content,
@@ -77,41 +83,38 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           return { parsed, format };
         });
 
-      const readProperty = (value: object, key: string): unknown =>
-        Object.hasOwn(value, key) ? Reflect.get(value, key) : undefined;
-
       const getSkuConflictPolicy = (
         approvedPlan: ProductImportPlan | undefined,
       ): 'reject' | 'derive-sku' | undefined => {
-        if (approvedPlan) {
-          const directPolicy = readProperty(approvedPlan, 'skuConflictPolicy');
-          if (directPolicy === 'reject' || directPolicy === 'derive-sku') {
-            return directPolicy;
-          }
-        }
-
-        const planValue: unknown = approvedPlan;
-        if (typeof planValue !== 'object' || planValue === null) {
+        if (!approvedPlan) {
           return undefined;
         }
 
-        const productIdentity = readProperty(planValue, 'productIdentity');
-        if (typeof productIdentity !== 'object' || productIdentity === null) {
-          return undefined;
+        if (
+          'skuConflictPolicy' in approvedPlan &&
+          approvedPlan.skuConflictPolicy !== undefined
+        ) {
+          return approvedPlan.skuConflictPolicy;
         }
 
-        const conflictPolicy = readProperty(productIdentity, 'conflictPolicy');
-        return conflictPolicy === 'reject' || conflictPolicy === 'derive-sku'
-          ? conflictPolicy
-          : undefined;
+        if ('productIdentity' in approvedPlan) {
+          return approvedPlan.productIdentity.conflictPolicy;
+        }
+
+        return undefined;
       };
 
       const getDefaultLocationName = (
         approvedPlan: ProductImportPlan | undefined,
       ): string => {
         if (!approvedPlan) return '';
-        const value = readProperty(approvedPlan, 'defaultLocationName');
-        return typeof value === 'string' ? value.trim() : '';
+        if (
+          !('defaultLocationName' in approvedPlan) ||
+          approvedPlan.defaultLocationName === undefined
+        ) {
+          return '';
+        }
+        return approvedPlan.defaultLocationName.trim();
       };
 
       const getOrCreateCategoryPath = (
@@ -700,7 +703,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           }
 
           return result;
-        }).pipe(Effect.withSpan('ProductImportService.importFromCsvContent'));
+        }).pipe(trace.span('importFromCsvContent'));
 
       const previewCsvContent = (
         options: AnalyzeProductsFromCsvOptions,
@@ -711,7 +714,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
         Effect.gen(function* () {
           const { parsed, format } = yield* parseAndDetectFormat(options);
           return makeProductImportPreview(parsed.records, format);
-        }).pipe(Effect.withSpan('ProductImportService.previewCsvContent'));
+        }).pipe(trace.span('previewCsvContent'));
 
       const proposeImportPlan = (
         options: AnalyzeProductsFromCsvOptions,
@@ -723,7 +726,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           const { parsed, format } = yield* parseAndDetectFormat(options);
           const preview = makeProductImportPreview(parsed.records, format);
           return yield* llmProposer.propose(preview);
-        }).pipe(Effect.withSpan('ProductImportService.proposeImportPlan'));
+        }).pipe(trace.span('proposeImportPlan'));
 
       return {
         importFromCsvContent,

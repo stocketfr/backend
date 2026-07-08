@@ -1,4 +1,4 @@
-import { Effect } from 'effect';
+import { Effect, Schema } from 'effect';
 import type {
   ProductImportAiProposalDto,
   ProductImportCategoryMappingDto,
@@ -14,6 +14,25 @@ import {
 import { makeProductImportProposal } from './utils';
 
 type FetchLike = typeof fetch;
+
+const isUnknownRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const messageFromUnknown = (value: unknown, fallback: string): string => {
+  if (value instanceof Error && value.message.trim() !== '') {
+    return value.message;
+  }
+
+  if (
+    isUnknownRecord(value) &&
+    typeof value.message === 'string' &&
+    value.message.trim() !== ''
+  ) {
+    return value.message;
+  }
+
+  return fallback;
+};
 
 const proposalSchema = {
   type: 'object',
@@ -143,72 +162,286 @@ const appendWarning = (
   ],
 });
 
-const clampConfidence = (value: unknown, fallback: number): number => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+const LenientString = Schema.transform(Schema.Unknown, Schema.String, {
+  decode: (value: unknown) =>
+    typeof value === 'string' ? value.trim() : '',
+  encode: (value) => value,
+});
+
+const LenientFiniteNumber = Schema.transform(
+  Schema.Unknown,
+  Schema.UndefinedOr(Schema.Number),
+  {
+    decode: (value: unknown) =>
+      typeof value === 'number' && Number.isFinite(value) ? value : undefined,
+    encode: (value) => value,
+  },
+);
+
+const LenientNonNegativeInteger = Schema.transform(
+  Schema.Unknown,
+  Schema.UndefinedOr(Schema.Number),
+  {
+    decode: (value: unknown) =>
+      typeof value === 'number' && Number.isInteger(value) && value >= 0
+        ? value
+        : undefined,
+    encode: (value) => value,
+  },
+);
+
+const LenientFormat = Schema.transform(
+  Schema.Unknown,
+  Schema.UndefinedOr(Schema.Literal('normalized-products', 'sortly-items')),
+  {
+    decode: (value: unknown) =>
+      value === 'normalized-products' || value === 'sortly-items'
+        ? value
+        : undefined,
+    encode: (value) => value,
+  },
+);
+
+const LenientSkuConflictPolicy = Schema.transform(
+  Schema.Unknown,
+  Schema.UndefinedOr(Schema.Literal('reject', 'derive-sku')),
+  {
+    decode: (value: unknown) =>
+      value === 'reject' || value === 'derive-sku' ? value : undefined,
+    encode: (value) => value,
+  },
+);
+
+const LenientCategoryAction = Schema.transform(
+  Schema.Unknown,
+  Schema.UndefinedOr(Schema.Literal('use-existing', 'create', 'default')),
+  {
+    decode: (value: unknown) =>
+      value === 'use-existing' || value === 'create' || value === 'default'
+        ? value
+        : undefined,
+    encode: (value) => value,
+  },
+);
+
+const LenientSupplierAction = Schema.transform(
+  Schema.Unknown,
+  Schema.UndefinedOr(Schema.Literal('use-existing', 'create', 'ignore')),
+  {
+    decode: (value: unknown) =>
+      value === 'use-existing' || value === 'create' || value === 'ignore'
+        ? value
+        : undefined,
+    encode: (value) => value,
+  },
+);
+
+const LenientLocationAction = Schema.transform(
+  Schema.Unknown,
+  Schema.UndefinedOr(
+    Schema.Literal('use-existing', 'create-location', 'create-area', 'ignore'),
+  ),
+  {
+    decode: (value: unknown) =>
+      value === 'use-existing' ||
+      value === 'create-location' ||
+      value === 'create-area' ||
+      value === 'ignore'
+        ? value
+        : undefined,
+    encode: (value) => value,
+  },
+);
+
+const LenientWarningSeverity = Schema.transform(
+  Schema.Unknown,
+  Schema.UndefinedOr(Schema.Literal('error', 'warning')),
+  {
+    decode: (value: unknown) =>
+      value === 'error' || value === 'warning' ? value : undefined,
+    encode: (value) => value,
+  },
+);
+
+const RawProductIdentitySchema = Schema.Struct({
+  sourceColumn: Schema.optionalWith(LenientString, { default: () => '' }),
+  conflictPolicy: Schema.optionalWith(LenientSkuConflictPolicy, {
+    default: () => undefined,
+  }),
+});
+
+const RawCategoryMappingSchema = Schema.Struct({
+  sourcePath: Schema.optionalWith(LenientString, { default: () => '' }),
+  targetPath: Schema.optionalWith(LenientString, { default: () => '' }),
+  action: Schema.optionalWith(LenientCategoryAction, {
+    default: () => undefined,
+  }),
+  rowCount: Schema.optionalWith(LenientNonNegativeInteger, {
+    default: () => undefined,
+  }),
+});
+
+const RawSupplierMappingSchema = Schema.Struct({
+  sourcePattern: Schema.optionalWith(LenientString, { default: () => '' }),
+  supplierName: Schema.optionalWith(LenientString, { default: () => '' }),
+  action: Schema.optionalWith(LenientSupplierAction, {
+    default: () => undefined,
+  }),
+  confidence: Schema.optionalWith(LenientFiniteNumber, {
+    default: () => undefined,
+  }),
+  rowCount: Schema.optionalWith(LenientNonNegativeInteger, {
+    default: () => undefined,
+  }),
+});
+
+const RawLocationMappingSchema = Schema.Struct({
+  sourceLocation: Schema.optionalWith(LenientString, { default: () => '' }),
+  targetLocationName: Schema.optionalWith(LenientString, { default: () => '' }),
+  areaPath: Schema.optionalWith(LenientString, { default: () => '' }),
+  action: Schema.optionalWith(LenientLocationAction, {
+    default: () => undefined,
+  }),
+  confidence: Schema.optionalWith(LenientFiniteNumber, {
+    default: () => undefined,
+  }),
+  rowCount: Schema.optionalWith(LenientNonNegativeInteger, {
+    default: () => undefined,
+  }),
+});
+
+const RawWarningSchema = Schema.Struct({
+  row: Schema.optionalWith(LenientNonNegativeInteger, {
+    default: () => undefined,
+  }),
+  field: Schema.optionalWith(LenientString, { default: () => '' }),
+  severity: Schema.optionalWith(LenientWarningSeverity, {
+    default: () => undefined,
+  }),
+  message: Schema.optionalWith(LenientString, { default: () => '' }),
+});
+
+const recordInput = (value: unknown): Record<string, unknown> =>
+  isUnknownRecord(value) ? value : {};
+
+const recordArrayInput = (
+  value: unknown,
+): ReadonlyArray<Record<string, unknown>> =>
+  Array.isArray(value) ? value.filter(isUnknownRecord) : [];
+
+const RawProductIdentityFromUnknown = Schema.transform(
+  Schema.Unknown,
+  RawProductIdentitySchema,
+  {
+    decode: (value: unknown) => recordInput(value),
+    encode: (value) => value,
+  },
+);
+
+const RawCategoryMappingsFromUnknown = Schema.transform(
+  Schema.Unknown,
+  Schema.Array(RawCategoryMappingSchema),
+  {
+    decode: (value: unknown) => recordArrayInput(value),
+    encode: (value) => value,
+  },
+);
+
+const RawSupplierMappingsFromUnknown = Schema.transform(
+  Schema.Unknown,
+  Schema.Array(RawSupplierMappingSchema),
+  {
+    decode: (value: unknown) => recordArrayInput(value),
+    encode: (value) => value,
+  },
+);
+
+const RawLocationMappingsFromUnknown = Schema.transform(
+  Schema.Unknown,
+  Schema.Array(RawLocationMappingSchema),
+  {
+    decode: (value: unknown) => recordArrayInput(value),
+    encode: (value) => value,
+  },
+);
+
+const RawWarningsFromUnknown = Schema.transform(
+  Schema.Unknown,
+  Schema.Array(RawWarningSchema),
+  {
+    decode: (value: unknown) => recordArrayInput(value),
+    encode: (value) => value,
+  },
+);
+
+const RawLlmProposalSchema = Schema.Struct({
+  format: Schema.optionalWith(LenientFormat, { default: () => undefined }),
+  confidence: Schema.optionalWith(LenientFiniteNumber, {
+    default: () => undefined,
+  }),
+  productIdentity: Schema.optionalWith(RawProductIdentityFromUnknown, {
+    default: () => ({ sourceColumn: '', conflictPolicy: undefined }),
+  }),
+  categoryMappings: Schema.optionalWith(RawCategoryMappingsFromUnknown, {
+    default: () => [],
+  }),
+  supplierMappings: Schema.optionalWith(RawSupplierMappingsFromUnknown, {
+    default: () => [],
+  }),
+  locationMappings: Schema.optionalWith(RawLocationMappingsFromUnknown, {
+    default: () => [],
+  }),
+  warnings: Schema.optionalWith(RawWarningsFromUnknown, { default: () => [] }),
+});
+
+const decodeRawLlmProposal = Schema.decodeUnknownSync(RawLlmProposalSchema);
+
+const clampConfidence = (
+  value: number | undefined,
+  fallback: number,
+): number => {
+  if (value === undefined) return fallback;
   return Math.max(0, Math.min(1, value));
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
-
-const asString = (value: unknown): string =>
-  typeof value === 'string' ? value.trim() : '';
-
-const asPositiveInteger = (value: unknown, fallback: number): number => {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
-    return fallback;
-  }
-  return value;
-};
+const nonNegativeIntegerOr = (
+  value: number | undefined,
+  fallback: number,
+): number => value ?? fallback;
 
 const categoryAction = (
-  value: unknown,
+  value: ProductImportCategoryMappingDto['action'] | undefined,
   fallback: ProductImportCategoryMappingDto['action'],
 ): ProductImportCategoryMappingDto['action'] =>
-  value === 'use-existing' || value === 'create' || value === 'default'
-    ? value
-    : fallback;
+  value ?? fallback;
 
 const supplierAction = (
-  value: unknown,
+  value: ProductImportSupplierMappingDto['action'] | undefined,
 ): ProductImportSupplierMappingDto['action'] =>
-  value === 'use-existing' || value === 'create' || value === 'ignore'
-    ? value
-    : 'ignore';
+  value ?? 'ignore';
 
 const locationAction = (
-  value: unknown,
+  value: ProductImportLocationMappingDto['action'] | undefined,
   fallback: ProductImportLocationMappingDto['action'],
 ): ProductImportLocationMappingDto['action'] =>
-  value === 'use-existing' ||
-  value === 'create-location' ||
-  value === 'create-area' ||
-  value === 'ignore'
-    ? value
-    : fallback;
+  value ?? fallback;
 
 const warningSeverity = (
-  value: unknown,
+  value: ProductImportWarningDto['severity'] | undefined,
 ): ProductImportWarningDto['severity'] =>
-  value === 'error' || value === 'warning' ? value : 'warning';
+  value ?? 'warning';
 
 const sanitizeWarnings = (
-  value: unknown,
+  llmWarnings: ReadonlyArray<Schema.Schema.Type<typeof RawWarningSchema>>,
   preview: ProductImportPreviewDto,
 ): ProductImportWarningDto[] => {
-  const llmWarnings = Array.isArray(value) ? value : [];
   const sanitized = llmWarnings.flatMap((warning) => {
-    if (!isRecord(warning)) return [];
-    const message = asString(warning.message);
+    const message = warning.message;
     if (!message) return [];
     return [
       {
-        ...(typeof warning.row === 'number' && Number.isInteger(warning.row)
-          ? { row: warning.row }
-          : {}),
-        ...(typeof warning.field === 'string' && warning.field.trim()
-          ? { field: warning.field.trim() }
-          : {}),
+        ...(warning.row !== undefined ? { row: warning.row } : {}),
+        ...(warning.field ? { field: warning.field } : {}),
         severity: warningSeverity(warning.severity),
         message,
       } satisfies ProductImportWarningDto,
@@ -225,30 +458,19 @@ const sanitizeLlmProposal = (
   raw: unknown,
   preview: ProductImportPreviewDto,
 ): ProductImportAiProposalDto => {
-  if (!isRecord(raw)) {
-    throw new Error('LLM response was not a JSON object');
-  }
+  const proposal = decodeRawLlmProposal(raw);
 
   const fallback = makeProductImportProposal(preview);
-  const rawProductIdentity = isRecord(raw.productIdentity)
-    ? raw.productIdentity
-    : {};
   const sourceColumn =
-    asString(rawProductIdentity.sourceColumn) ||
-    fallback.productIdentity.sourceColumn;
+    proposal.productIdentity.sourceColumn || fallback.productIdentity.sourceColumn;
   const conflictPolicy =
-    rawProductIdentity.conflictPolicy === 'derive-sku' ||
-    rawProductIdentity.conflictPolicy === 'reject'
-      ? rawProductIdentity.conflictPolicy
-      : fallback.productIdentity.conflictPolicy;
+    proposal.productIdentity.conflictPolicy ??
+    fallback.productIdentity.conflictPolicy;
 
-  const rawCategories = Array.isArray(raw.categoryMappings)
-    ? raw.categoryMappings
-    : [];
   const rawCategoriesBySource = new Map(
-    rawCategories
-      .filter(isRecord)
-      .map((mapping) => [asString(mapping.sourcePath), mapping] as const),
+    proposal.categoryMappings.map(
+      (mapping) => [mapping.sourcePath, mapping] as const,
+    ),
   );
   const categoryMappings = preview.categoryMappings.map((mapping) => {
     const proposed = rawCategoriesBySource.get(mapping.sourcePath);
@@ -258,7 +480,7 @@ const sanitizeLlmProposal = (
           (item) => item.sourcePath === mapping.sourcePath,
         ) ?? mapping
       );
-    const targetPath = asString(proposed.targetPath);
+    const targetPath = proposed.targetPath;
     return {
       sourcePath: mapping.sourcePath,
       targetPath: targetPath || mapping.targetPath,
@@ -267,19 +489,16 @@ const sanitizeLlmProposal = (
     };
   });
 
-  const rawLocations = Array.isArray(raw.locationMappings)
-    ? raw.locationMappings
-    : [];
   const rawLocationsBySource = new Map(
-    rawLocations
-      .filter(isRecord)
-      .map((mapping) => [asString(mapping.sourceLocation), mapping] as const),
+    proposal.locationMappings.map(
+      (mapping) => [mapping.sourceLocation, mapping] as const,
+    ),
   );
   const locationMappings = preview.locationMappings.map((mapping) => {
     const proposed = rawLocationsBySource.get(mapping.sourceLocation);
     if (!proposed) return mapping;
-    const areaPath = asString(proposed.areaPath);
-    const targetLocationName = asString(proposed.targetLocationName);
+    const areaPath = proposed.areaPath;
+    const targetLocationName = proposed.targetLocationName;
     return {
       sourceLocation: mapping.sourceLocation,
       ...(targetLocationName ? { targetLocationName } : {}),
@@ -290,13 +509,9 @@ const sanitizeLlmProposal = (
     };
   });
 
-  const rawSuppliers = Array.isArray(raw.supplierMappings)
-    ? raw.supplierMappings
-    : [];
-  const supplierMappings = rawSuppliers.flatMap((mapping) => {
-    if (!isRecord(mapping)) return [];
-    const sourcePattern = asString(mapping.sourcePattern);
-    const supplierName = asString(mapping.supplierName);
+  const supplierMappings = proposal.supplierMappings.flatMap((mapping) => {
+    const sourcePattern = mapping.sourcePattern;
+    const supplierName = mapping.supplierName;
     if (!sourcePattern || !supplierName) return [];
     return [
       {
@@ -304,17 +519,14 @@ const sanitizeLlmProposal = (
         supplierName,
         action: supplierAction(mapping.action),
         confidence: clampConfidence(mapping.confidence, 0.5),
-        rowCount: asPositiveInteger(mapping.rowCount, 0),
+        rowCount: nonNegativeIntegerOr(mapping.rowCount, 0),
       } satisfies ProductImportSupplierMappingDto,
     ];
   });
 
   return {
-    format:
-      raw.format === 'normalized-products' || raw.format === 'sortly-items'
-        ? raw.format
-        : preview.format,
-    confidence: clampConfidence(raw.confidence, fallback.confidence),
+    format: proposal.format ?? preview.format,
+    confidence: clampConfidence(proposal.confidence, fallback.confidence),
     productIdentity: {
       sourceColumn,
       conflictPolicy,
@@ -322,17 +534,21 @@ const sanitizeLlmProposal = (
     categoryMappings,
     supplierMappings,
     locationMappings,
-    warnings: sanitizeWarnings(raw.warnings, preview),
+    warnings: sanitizeWarnings(proposal.warnings, preview),
   };
 };
 
-const responseText = (json: Record<string, unknown>): string => {
+const responseText = (json: unknown): string => {
+  if (!isUnknownRecord(json)) {
+    throw new Error('OpenAI response was not a JSON object');
+  }
+
   if (typeof json.output_text === 'string') return json.output_text;
   const output = Array.isArray(json.output) ? json.output : [];
   for (const item of output) {
-    if (!isRecord(item) || !Array.isArray(item.content)) continue;
+    if (!isUnknownRecord(item) || !Array.isArray(item.content)) continue;
     for (const content of item.content) {
-      if (!isRecord(content)) continue;
+      if (!isUnknownRecord(content)) continue;
       if (typeof content.text === 'string') return content.text;
     }
   }
@@ -414,7 +630,7 @@ async function callOpenAiForProposal(
       );
     }
 
-    const json = (await response.json()) as Record<string, unknown>;
+    const json = await response.json();
     return sanitizeLlmProposal(JSON.parse(responseText(json)), preview);
   } finally {
     clearTimeout(timeout);
@@ -441,7 +657,7 @@ export class ProductImportLlmProposer extends Effect.Service<ProductImportLlmPro
             Effect.succeed(
               appendWarning(
                 makeProductImportProposal(preview),
-                `AI proposal unavailable: ${cause instanceof Error ? cause.message : String(cause)}`,
+                `AI proposal unavailable: ${messageFromUnknown(cause, String(cause))}`,
               ),
             ),
           ),

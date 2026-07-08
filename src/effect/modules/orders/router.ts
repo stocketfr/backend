@@ -1,4 +1,4 @@
-import { HttpRouter, HttpServerRequest } from '@effect/platform';
+import { HttpRouter } from '@effect/platform';
 import { Effect, Schema } from 'effect';
 import {
   CreateOrderSchema,
@@ -10,10 +10,15 @@ import {
 import { Permission, Resource } from '@stocket/types/auth';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
 import { FeatureKey } from '@stocket/types/features';
-import { requirePermission } from '../../platform/auth/authorization';
-import { respondJson, respondJsonOk } from '../../platform/http/errors';
-import { AuditLogWriter } from '../../platform/audit/index';
-import { getOptionalSession } from '../../platform/http/session';
+import { respondAuditedMutation } from '../../platform/audited-mutation';
+import {
+  jsonBody,
+  pathParams,
+  pathParamsAndJsonBody,
+  queryParams,
+  tenantRouteContext,
+  tenantRoute,
+} from '../../platform/http/tenant-route';
 import { makeMessageResponse } from '../../platform/observability/messages';
 import { FeaturesService } from '../features/service';
 import { OrdersService } from './service';
@@ -26,98 +31,114 @@ const requireOrdersFeature = Effect.flatMap(FeaturesService, (features) =>
 export const ordersRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
     '/',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.ORDERS, Permission.READ);
-      yield* requireOrdersFeature;
-      const query = yield* HttpServerRequest.schemaSearchParams(OrderQuerySchema);
-      const ordersService = yield* OrdersService;
-      return yield* respondJson(ordersService.findAllPaginated(query));
+    tenantRoute({
+      permissions: [[Resource.ORDERS, Permission.READ]],
+      guard: requireOrdersFeature,
+      decode: queryParams(OrderQuerySchema),
+      handler: ({ input: query }) =>
+        Effect.flatMap(OrdersService, (ordersService) =>
+          ordersService.findAllPaginated(query),
+        ),
     }),
   ),
   HttpRouter.get(
     '/:id',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.ORDERS, Permission.READ);
-      yield* requireOrdersFeature;
-      const { id } = yield* HttpRouter.schemaPathParams(OrderPathParams);
-      const ordersService = yield* OrdersService;
-      return yield* respondJson(ordersService.findOne(id));
+    tenantRoute({
+      permissions: [[Resource.ORDERS, Permission.READ]],
+      guard: requireOrdersFeature,
+      decode: pathParams(OrderPathParams),
+      handler: ({ input: { id } }) =>
+        Effect.flatMap(OrdersService, (ordersService) =>
+          ordersService.findOne(id),
+        ),
     }),
   ),
   HttpRouter.post(
     '/',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.ORDERS, Permission.WRITE);
-      yield* requireOrdersFeature;
-      const dto = yield* HttpServerRequest.schemaBodyJson(CreateOrderSchema);
-      const session = yield* getOptionalSession;
-      const ordersService = yield* OrdersService;
-      const result = yield* ordersService.create(dto, session?.user.id ?? '');
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
-        action: AuditAction.CREATE,
-        entityType: AuditEntityType.ORDER,
-        entityId: result.id,
-      });
-      return yield* respondJsonOk(result, { status: 201 });
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.ORDERS, Permission.WRITE]],
+      guard: requireOrdersFeature,
+      decode: jsonBody(CreateOrderSchema),
+      session: 'optional',
+    }).pipe(
+      Effect.flatMap(({ input: dto, userId }) =>
+        respondAuditedMutation(
+          Effect.flatMap(OrdersService, (ordersService) =>
+            ordersService.create(dto, userId ?? ''),
+          ),
+          {
+            action: AuditAction.CREATE,
+            entityType: AuditEntityType.ORDER,
+            entityId: (result) => result.id,
+            responseOptions: { status: 201 },
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.put(
     '/:id',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.ORDERS, Permission.WRITE);
-      yield* requireOrdersFeature;
-      const { id } = yield* HttpRouter.schemaPathParams(OrderPathParams);
-      const dto = yield* HttpServerRequest.schemaBodyJson(UpdateOrderSchema);
-      const ordersService = yield* OrdersService;
-      const result = yield* ordersService.update(id, dto);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
-        action: AuditAction.UPDATE,
-        entityType: AuditEntityType.ORDER,
-        entityId: id,
-      });
-      return yield* respondJsonOk(result);
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.ORDERS, Permission.WRITE]],
+      guard: requireOrdersFeature,
+      decode: pathParamsAndJsonBody(OrderPathParams, UpdateOrderSchema),
+    }).pipe(
+      Effect.flatMap(({ input: { path, body } }) =>
+        respondAuditedMutation(
+          Effect.flatMap(OrdersService, (ordersService) =>
+            ordersService.update(path.id, body),
+          ),
+          {
+            action: AuditAction.UPDATE,
+            entityType: AuditEntityType.ORDER,
+            entityId: path.id,
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.patch(
     '/:id/status',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.ORDERS, Permission.WRITE);
-      yield* requireOrdersFeature;
-      const { id } = yield* HttpRouter.schemaPathParams(OrderPathParams);
-      const dto = yield* HttpServerRequest.schemaBodyJson(
-        UpdateOrderStatusSchema,
-      );
-      const ordersService = yield* OrdersService;
-      const result = yield* ordersService.updateStatus(id, dto);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
-        action: AuditAction.STATUS_CHANGE,
-        entityType: AuditEntityType.ORDER,
-        entityId: id,
-      });
-      return yield* respondJsonOk(result);
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.ORDERS, Permission.WRITE]],
+      guard: requireOrdersFeature,
+      decode: pathParamsAndJsonBody(OrderPathParams, UpdateOrderStatusSchema),
+    }).pipe(
+      Effect.flatMap(({ input: { path, body } }) =>
+        respondAuditedMutation(
+          Effect.flatMap(OrdersService, (ordersService) =>
+            ordersService.updateStatus(path.id, body),
+          ),
+          {
+            action: AuditAction.STATUS_CHANGE,
+            entityType: AuditEntityType.ORDER,
+            entityId: path.id,
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.del(
     '/:id',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.ORDERS, Permission.WRITE);
-      yield* requireOrdersFeature;
-      const { id } = yield* HttpRouter.schemaPathParams(OrderPathParams);
-      const ordersService = yield* OrdersService;
-      yield* ordersService.delete(id);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
-        action: AuditAction.DELETE,
-        entityType: AuditEntityType.ORDER,
-        entityId: id,
-      });
-      return yield* respondJson(
-        Effect.succeed(makeMessageResponse('orders.deleted')),
-      );
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.ORDERS, Permission.WRITE]],
+      guard: requireOrdersFeature,
+      decode: pathParams(OrderPathParams),
+    }).pipe(
+      Effect.flatMap(({ input: { id } }) =>
+        respondAuditedMutation(
+          Effect.flatMap(OrdersService, (ordersService) =>
+            ordersService.delete(id),
+          ),
+          {
+            action: AuditAction.DELETE,
+            entityType: AuditEntityType.ORDER,
+            entityId: id,
+            mapResponse: () => makeMessageResponse('orders.deleted'),
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.prefixAll('/orders'),
 );

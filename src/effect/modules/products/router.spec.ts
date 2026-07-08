@@ -386,7 +386,11 @@ describe('productsRouter', () => {
     });
 
     it('returns 201 and writes a CREATE audit on success', async () => {
-      const bulkCreate = vi.fn(() => Effect.succeed(bulkResult()));
+      const result = bulkResult({
+        succeeded: [PRODUCT_ID, OTHER_PRODUCT_ID],
+        success_count: 2,
+      });
+      const bulkCreate = vi.fn(() => Effect.succeed(result));
       const auditLog = vi.fn(() => Effect.void);
       const { handler } = makeProductsRouterHarness({
         service: { bulkCreate },
@@ -403,12 +407,18 @@ describe('productsRouter', () => {
       );
 
       expect(response.status).toBe(201);
-      await expect(response.json()).resolves.toEqual(bulkResult());
+      await expect(response.json()).resolves.toEqual(result);
       expect(bulkCreate).toHaveBeenCalledTimes(1);
+      expect(auditLog).toHaveBeenCalledTimes(2);
       expect(auditLog).toHaveBeenCalledWith({
         action: AuditAction.CREATE,
         entityType: AuditEntityType.PRODUCT,
         entityId: PRODUCT_ID,
+      });
+      expect(auditLog).toHaveBeenCalledWith({
+        action: AuditAction.CREATE,
+        entityType: AuditEntityType.PRODUCT,
+        entityId: OTHER_PRODUCT_ID,
       });
     });
 

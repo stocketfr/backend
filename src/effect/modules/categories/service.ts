@@ -5,6 +5,14 @@ import type {
   UpdateCategoryDto,
 } from '@stocket/types/categories';
 import { fromNullOr } from '../../platform/effect/from-null-or';
+import {
+  makeEnsureExistByIds,
+  makeEnsureExistsById,
+} from '../../platform/effect/existence';
+import {
+  hasDefinedPatchValues,
+  pickDefined,
+} from '../../platform/effect/pick-defined';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import type { categories } from '../../platform/db/schema';
 import {
@@ -61,10 +69,11 @@ export class CategoriesService extends Effect.Service<CategoriesService>()(
         layer: 'service',
       });
 
+      const makeCategoryNotFound = (id: string) =>
+        new CategoryNotFound({ id, messageKey: 'categories.notFound' });
+
       const getCategoryOrFail = (id: string) =>
-        fromNullOr(repository.findById(id), () =>
-          new CategoryNotFound({ id, messageKey: 'categories.notFound' }),
-        );
+        fromNullOr(repository.findById(id), () => makeCategoryNotFound(id));
 
       const checkForCycle = (
         categoryId: string,
@@ -213,13 +222,13 @@ export class CategoriesService extends Effect.Service<CategoriesService>()(
             }
           }
 
-          const updateData: Partial<Category> = {};
-          if (dto.name !== undefined) updateData.name = dto.name;
-          if (dto.parent_id !== undefined) updateData.parent_id = dto.parent_id;
-          if (dto.description !== undefined)
-            updateData.description = dto.description;
+          const updateData = pickDefined<Category>([
+            ['name', dto.name],
+            ['parent_id', dto.parent_id],
+            ['description', dto.description],
+          ]);
 
-          if (Object.keys(updateData).length === 0) {
+          if (!hasDefinedPatchValues(updateData)) {
             return category;
           }
 
@@ -245,6 +254,18 @@ export class CategoriesService extends Effect.Service<CategoriesService>()(
           trace.span('existsById', { attributes: { id } }),
         );
 
+      const ensureExistsById = (id: string) =>
+        makeEnsureExistsById(
+          repository.existsById,
+          makeCategoryNotFound,
+        )(id).pipe(trace.span('ensureExistsById', { attributes: { id } }));
+
+      const ensureExistByIds = (ids: readonly string[]) =>
+        makeEnsureExistByIds(
+          repository.findByIds,
+          makeCategoryNotFound,
+        )(ids).pipe(trace.span('ensureExistByIds'));
+
       const findAllDescendantIds = (parentId: string) =>
         repository.findAllDescendantIds(parentId).pipe(
           trace.span('findAllDescendantIds', { attributes: { parentId } }),
@@ -256,6 +277,8 @@ export class CategoriesService extends Effect.Service<CategoriesService>()(
         update,
         delete: remove,
         existsById,
+        ensureExistsById,
+        ensureExistByIds,
         findAllDescendantIds,
       };
     }),

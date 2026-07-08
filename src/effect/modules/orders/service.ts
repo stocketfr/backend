@@ -10,6 +10,14 @@ import {
   type UpdateOrderStatusSchema,
 } from '@stocket/types/orders';
 import { fromNullOr } from '../../platform/effect/from-null-or';
+import {
+  hasDefinedPatchValues,
+  pickDefined,
+} from '../../platform/effect/pick-defined';
+import {
+  makeEnsureExistByIds,
+  makeEnsureExistsById,
+} from '../../platform/effect/existence';
 import { ProductNotFound } from '../products/products.errors';
 import { ClientsService } from '../clients/service';
 import { ProductsService } from '../products/service';
@@ -20,9 +28,13 @@ import {
   OrderNotFound,
   type OrdersInfrastructureError,
 } from './orders.errors';
-import { generateOrderPrefix, toOrderResponseDto, type Order } from './orders.utils';
+import {
+  generateOrderPrefix,
+  toOrderResponseDto,
+  type Order,
+} from './orders.utils';
 import { getOrderState } from './state/order-state';
-import { OrderItemsRepository, OrdersRepository } from './repository';
+import { OrdersRepository } from './repository';
 
 type OrderQueryDto = Schema.Schema.Type<typeof OrderQuerySchema>;
 type CreateOrderDto = Schema.Schema.Type<typeof CreateOrderSchema>;
@@ -34,7 +46,6 @@ export class OrdersService extends Effect.Service<OrdersService>()(
   {
     effect: Effect.gen(function* () {
       const ordersRepository = yield* OrdersRepository;
-      const orderItemsRepository = yield* OrderItemsRepository;
       const clientsService = yield* ClientsService;
       const productsService = yield* ProductsService;
       const trace = makeServiceTracer({
@@ -44,9 +55,12 @@ export class OrdersService extends Effect.Service<OrdersService>()(
         entityType: 'order',
       });
 
+      const makeOrderNotFound = (id: string) =>
+        new OrderNotFound({ id, messageKey: 'orders.notFound' });
+
       const getOrderOrFail = (id: string) =>
-        fromNullOr(ordersRepository.findById(id), () =>
-          new OrderNotFound({ id, messageKey: 'orders.notFound' }),
+        fromNullOr(ordersRepository.findByIdWithRelations(id), () =>
+          makeOrderNotFound(id),
         );
 
       const validateStatusTransition = (
@@ -85,7 +99,7 @@ export class OrdersService extends Effect.Service<OrdersService>()(
 
       const findAllPaginated = (query: OrderQueryDto) =>
         Effect.map(
-          ordersRepository.findAllPaginated(query),
+          ordersRepository.findAllPaginatedWithRelations(query),
           (result) =>
             toPaginatedResponse(result, (order) =>
               toOrderResponseDto(order),
@@ -111,7 +125,9 @@ export class OrdersService extends Effect.Service<OrdersService>()(
 
           yield* Effect.forEach(dto.items, (item) =>
             Effect.gen(function* () {
-              const productExists = yield* productsService.existsById(item.product_id);
+              const productExists = yield* productsService.existsById(
+                item.product_id,
+              );
               if (!productExists) {
                 return yield* Effect.fail(
                   new ProductNotFound({
@@ -130,7 +146,7 @@ export class OrdersService extends Effect.Service<OrdersService>()(
 
           const order_number = yield* generateOrderNumber();
 
-          const order = yield* ordersRepository.create({
+          const orderData = {
             client_id: dto.client_id,
             delivery_address: dto.delivery_address,
             delivery_deadline: dto.delivery_deadline ?? null,
@@ -140,19 +156,21 @@ export class OrdersService extends Effect.Service<OrdersService>()(
             created_by: userId,
             status: OrderStatus.DRAFT,
             order_number,
-          });
-
-          yield* Effect.annotateCurrentSpan({ orderId: order.id });
+          };
 
           const items = dto.items.map((item) => ({
-            order_id: order.id,
             product_id: item.product_id,
             quantity: item.quantity,
             unit_price: item.unit_price,
             subtotal: item.quantity * item.unit_price,
             notes: item.notes ?? null,
           }));
-          yield* orderItemsRepository.createMany(items);
+          const order = yield* ordersRepository.createWithItems(
+            orderData,
+            items,
+          );
+
+          yield* Effect.annotateCurrentSpan({ orderId: order.id });
 
           const orderWithRelations = yield* getOrderOrFail(order.id);
           return toOrderResponseDto(orderWithRelations);
@@ -165,26 +183,16 @@ export class OrdersService extends Effect.Service<OrdersService>()(
       const update = (id: string, dto: UpdateOrderDto) =>
         Effect.gen(function* () {
           const order = yield* getOrderOrFail(id);
+          const updateData = pickDefined<Order>([
+            ['delivery_address', dto.delivery_address],
+            ['delivery_deadline', dto.delivery_deadline],
+            ['yacht_name', dto.yacht_name],
+            ['special_instructions', dto.special_instructions],
+            ['assigned_to', dto.assigned_to],
+          ]);
 
-          if (Object.keys(dto).length === 0) {
+          if (!hasDefinedPatchValues(updateData)) {
             return toOrderResponseDto(order);
-          }
-
-          const updateData: Partial<Order> = {};
-          if (dto.delivery_address !== undefined) {
-            updateData.delivery_address = dto.delivery_address;
-          }
-          if (dto.delivery_deadline !== undefined) {
-            updateData.delivery_deadline = dto.delivery_deadline;
-          }
-          if (dto.yacht_name !== undefined) {
-            updateData.yacht_name = dto.yacht_name;
-          }
-          if (dto.special_instructions !== undefined) {
-            updateData.special_instructions = dto.special_instructions;
-          }
-          if (dto.assigned_to !== undefined) {
-            updateData.assigned_to = dto.assigned_to;
           }
 
           yield* ordersRepository.update(id, updateData);
@@ -200,9 +208,9 @@ export class OrdersService extends Effect.Service<OrdersService>()(
           yield* validateStatusTransition(order, dto.status);
 
           const updateData: Partial<Order> = { status: dto.status };
-          const {timestampField} = getOrderState(dto.status);
+          const { timestampField } = getOrderState(dto.status);
           if (timestampField) {
-            updateData[timestampField] = new Date() as never;
+            updateData[timestampField] = new Date();
           }
 
           yield* ordersRepository.update(id, updateData);
@@ -224,14 +232,41 @@ export class OrdersService extends Effect.Service<OrdersService>()(
             );
           }
 
-          yield* orderItemsRepository.deleteByOrderId(id);
-          yield* ordersRepository.delete(id);
+          const result = yield* ordersRepository.deleteDraftWithItems(id);
+          if (result === 'not_found') {
+            return yield* Effect.fail(
+              new OrderNotFound({ id, messageKey: 'orders.notFound' }),
+            );
+          }
+          if (result === 'not_draft') {
+            return yield* Effect.fail(
+              new CannotDeleteNonDraftOrder({
+                orderId: id,
+                status: order.status,
+                messageKey: 'orders.deleteOnlyDraft',
+              }),
+            );
+          }
         }).pipe(trace.span('delete', { attributes: { orderId: id } }));
 
       const existsById = (id: string) =>
         ordersRepository.existsById(id).pipe(
           trace.span('existsById', { attributes: { orderId: id } }),
         );
+
+      const ensureExistsById = (id: string) =>
+        makeEnsureExistsById(
+          ordersRepository.existsById,
+          makeOrderNotFound,
+        )(id).pipe(
+          trace.span('ensureExistsById', { attributes: { orderId: id } }),
+        );
+
+      const ensureExistByIds = (ids: readonly string[]) =>
+        makeEnsureExistByIds(
+          ordersRepository.findByIds,
+          makeOrderNotFound,
+        )(ids).pipe(trace.span('ensureExistByIds'));
 
       return {
         findAllPaginated,
@@ -241,8 +276,14 @@ export class OrdersService extends Effect.Service<OrdersService>()(
         updateStatus,
         delete: remove,
         existsById,
+        ensureExistsById,
+        ensureExistByIds,
       };
     }),
-    dependencies: [OrdersRepository.Default, OrderItemsRepository.Default, ClientsService.Default, ProductsService.Default],
+    dependencies: [
+      OrdersRepository.Default,
+      ClientsService.Default,
+      ProductsService.Default,
+    ],
   },
 ) {}

@@ -7,6 +7,10 @@ import type {
 } from '@stocket/types/suppliers';
 import { toPaginatedResponse } from '@stocket/types/common';
 import { fromNullOr } from '../../platform/effect/from-null-or';
+import {
+  hasDefinedPatchValues,
+  pickDefined,
+} from '../../platform/effect/pick-defined';
 import { makeReferenceEntityOperations } from '../../platform/reference-data-service';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { toSupplierResponseDto } from './suppliers.utils';
@@ -31,6 +35,7 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
         findById: (id: string) => repository.findById(id),
         deleteById: (id: string) => repository.delete(id),
         existsById: (id: string) => repository.existsById(id),
+        findByIds: (ids: readonly string[]) => repository.findByIds(ids),
         makeNotFound: (id) =>
           new SupplierNotFound({ id, messageKey: 'suppliers.notFound' }),
         toResponse: toSupplierResponseDto,
@@ -64,13 +69,24 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
 
       const update = (id: string, dto: UpdateSupplierDto) =>
         Effect.gen(function* () {
-          if (Object.keys(dto).length === 0) {
+          const updateData = pickDefined<UpdateSupplierDto>([
+            ['name', dto.name],
+            ['contact_person', dto.contact_person],
+            ['email', dto.email],
+            ['phone', dto.phone],
+            ['address', dto.address],
+            ['website', dto.website],
+            ['notes', dto.notes],
+            ['is_active', dto.is_active],
+          ]);
+
+          if (!hasDefinedPatchValues(updateData)) {
             const supplier = yield* referenceEntity.getOrFail(id);
             return toSupplierResponseDto(supplier);
           }
 
           const updated = yield* fromNullOr(
-            repository.update(id, dto),
+            repository.update(id, updateData),
             () => new SupplierNotFound({ id, messageKey: 'suppliers.notFound' }),
           );
           return toSupplierResponseDto(updated);
@@ -86,6 +102,16 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
           trace.span('existsById', { attributes: { id } }),
         );
 
+      const ensureExistsById = (id: string) =>
+        referenceEntity.ensureExistsById(id).pipe(
+          trace.span('ensureExistsById', { attributes: { id } }),
+        );
+
+      const ensureExistByIds = (ids: readonly string[]) =>
+        referenceEntity.ensureExistByIds(ids).pipe(
+          trace.span('ensureExistByIds'),
+        );
+
       return {
         findAllPaginated,
         findOne,
@@ -93,6 +119,8 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
         update,
         delete: remove,
         existsById,
+        ensureExistsById,
+        ensureExistByIds,
       };
     }),
     dependencies: [SuppliersRepository.Default],

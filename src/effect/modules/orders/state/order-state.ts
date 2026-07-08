@@ -2,11 +2,15 @@ import { OrderStatus } from '@stocket/types/orders';
 import type { orders } from '../../../platform/db/schema';
 
 type Order = typeof orders.$inferSelect;
+type OrderStatusTimestampField = Extract<
+  keyof Order,
+  'confirmed_at' | 'shipped_at' | 'delivered_at'
+>;
 
 export abstract class OrderState {
   abstract readonly status: OrderStatus;
   abstract readonly validTransitions: readonly OrderStatus[];
-  readonly timestampField: keyof Order | null = null;
+  readonly timestampField: OrderStatusTimestampField | null = null;
 
   validateTransition(target: OrderStatus): void {
     if (!this.validTransitions.includes(target)) {

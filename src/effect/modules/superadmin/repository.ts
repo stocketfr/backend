@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { Effect } from 'effect';
+import { Effect, Schema } from 'effect';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { DrizzleDatabase } from '../../platform/db/drizzle';
+import { executeRows } from '../../platform/db/execute-rows';
 import {
   betterAuthUsers,
   members,
@@ -25,11 +26,19 @@ const tryAsync = makeTryAsync(
     }),
 );
 
-export interface SuperAdminUserRow {
-  readonly id: string;
-  readonly email: string | null;
-  readonly name: string | null;
-}
+const SuperAdminUserRowSchema = Schema.Struct({
+  id: Schema.String,
+  email: Schema.NullOr(Schema.String),
+  name: Schema.NullOr(Schema.String),
+});
+
+export type SuperAdminUserRow = Schema.Schema.Type<
+  typeof SuperAdminUserRowSchema
+>;
+
+const ExistsRowSchema = Schema.Struct({
+  exists: Schema.Number,
+});
 
 export interface TenantListRow {
   readonly id: string;
@@ -68,9 +77,6 @@ export interface CreatedTenantResult {
   };
 }
 
-const rowsOf = <A>(result: unknown): A[] =>
-  ((result as { rows?: A[] }).rows ?? (result as A[])) as A[];
-
 export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()(
   '@stocket/effect/superadmin/SuperAdminRepository',
   {
@@ -79,15 +85,19 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
 
       const findSuperAdminUser = (userId: string) =>
         tryAsync('find superadmin user', async () => {
-          const result = await db.execute(sql`
-            SELECT u.id, u.email, u.name
-            FROM "user" u
-            INNER JOIN super_admins sa ON sa.user_id = u.id
-            WHERE u.id = ${userId}
-            LIMIT 1
-          `);
+          const rows = await executeRows(
+            db,
+            sql`
+              SELECT u.id, u.email, u.name
+              FROM "user" u
+              INNER JOIN super_admins sa ON sa.user_id = u.id
+              WHERE u.id = ${userId}
+              LIMIT 1
+            `,
+            SuperAdminUserRowSchema,
+          );
 
-          return rowsOf<SuperAdminUserRow>(result)[0] ?? null;
+          return rows[0] ?? null;
         });
 
       const findBetterAuthUserByLoweredEmail = (normalizedEmail: string) =>
@@ -260,15 +270,17 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
               return null;
             }
 
-            const sessionActiveOrganizationColumns = rowsOf<{ exists: number }>(
-              await tx.execute(sql`
+            const sessionActiveOrganizationColumns = await executeRows(
+              tx,
+              sql`
                 SELECT 1 AS exists
                 FROM information_schema.columns
                 WHERE table_schema = 'public'
                   AND table_name = 'session'
                   AND column_name = 'active_organization_id'
                 LIMIT 1
-              `),
+              `,
+              ExistsRowSchema,
             );
             if (sessionActiveOrganizationColumns.length > 0) {
               await tx.execute(sql`
@@ -352,14 +364,16 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
             await tx.execute(
               sql`DELETE FROM tenant_domains WHERE tenant_id = ${tenantId}`,
             );
-            const invitationTables = rowsOf<{ exists: number }>(
-              await tx.execute(sql`
+            const invitationTables = await executeRows(
+              tx,
+              sql`
                 SELECT 1 AS exists
                 FROM information_schema.tables
                 WHERE table_schema = 'public'
                   AND table_name = 'invitation'
                 LIMIT 1
-              `),
+              `,
+              ExistsRowSchema,
             );
             if (invitationTables.length > 0) {
               await tx.execute(

@@ -62,6 +62,7 @@ export const createChainableMock = <T>(
   for (const method of [...DEFAULT_CHAIN_METHODS, ...extraMethods]) {
     chain[method] = vi.fn().mockReturnValue(chain);
   }
+  // oxlint-disable-next-line unicorn/no-thenable -- Drizzle query mocks are awaited in tests.
   chain.then = (resolve) => resolve(resolveValue);
   return chain;
 };

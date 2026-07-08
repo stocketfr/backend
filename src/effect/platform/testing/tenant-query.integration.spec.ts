@@ -81,6 +81,35 @@ describe('TenantQuery', () => {
     expect(inserted.tenant_id).toBe(TENANT_A);
   });
 
+  it('builds explicit tenant scopes without request context', async () => {
+    const rows = await Effect.runPromise(
+      Effect.gen(function* () {
+        const tenantQuery = yield* TenantQuery;
+        const tenantScope = tenantQuery.forTenant(TENANT_B);
+        const inserted = tenantScope.insertValues({
+          name: 'Explicit Tenant Inserted',
+        });
+
+        yield* Effect.promise(() =>
+          getTestDb().insert(categories).values(inserted),
+        );
+
+        return yield* Effect.promise(() =>
+          getTestDb()
+            .select()
+            .from(categories)
+            .where(tenantScope.whereTenant(categories))
+            .orderBy(asc(categories.name)),
+        );
+      }).pipe(Effect.provide(TenantQuery.Default)),
+    );
+
+    expect(rows.map((row) => row.name)).toEqual([
+      'Explicit Tenant Inserted',
+      'Tenant B Category',
+    ]);
+  });
+
   it('scopes update predicates by tenant and id', async () => {
     const tenantBRow = await getTestDb().query.categories.findFirst({
       where: eq(categories.tenant_id, TENANT_B),

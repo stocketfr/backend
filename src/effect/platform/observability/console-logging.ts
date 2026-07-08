@@ -1,6 +1,10 @@
 import type { Logger as DrizzleLogger } from 'drizzle-orm/logger';
 import { HashMap, Layer, Logger, LogLevel, Cause } from 'effect';
 
+import {
+  readLogLevelName,
+  readSqlLogModeName,
+} from '../config/observability-config';
 import type { MessageArgs } from './messages';
 
 const MAX_FIELD_LENGTH = 120;
@@ -14,6 +18,9 @@ type LogRecord = Record<string, unknown> & {
   readonly messageArgs?: MessageArgs;
 };
 
+const isUnknownRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
 const LOG_LEVELS = {
   trace: LogLevel.Trace,
   debug: LogLevel.Debug,
@@ -24,9 +31,6 @@ const LOG_LEVELS = {
   fatal: LogLevel.Fatal,
   none: LogLevel.None,
 } as const;
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
 
 const pad = (value: number, length = 2) => String(value).padStart(length, '0');
 
@@ -62,7 +66,7 @@ const stringifyValue = (value: unknown): string => {
     return `${value.name}:${truncate(value.message, MAX_FIELD_LENGTH)}`;
   }
 
-  if (isRecord(value) && typeof value._tag === 'string') {
+  if (isUnknownRecord(value) && typeof value._tag === 'string') {
     return String(value._tag);
   }
 
@@ -252,7 +256,7 @@ const formatMessage = (message: unknown): string => {
     return message.map(formatMessage).join(' | ');
   }
 
-  if (isRecord(message) && typeof message.messageKey === 'string') {
+  if (isUnknownRecord(message) && typeof message.messageKey === 'string') {
     return formatKeyedRecord(message);
   }
 
@@ -325,14 +329,14 @@ const appConsoleLogger = Logger.withLeveledConsole(
 );
 
 const resolveLogLevel = () => {
-  const value = process.env.LOG_LEVEL?.trim().toLowerCase();
+  const value = readLogLevelName();
   return value && value in LOG_LEVELS
     ? LOG_LEVELS[value as keyof typeof LOG_LEVELS]
     : LogLevel.Info;
 };
 
 const resolveSqlLogMode = (): SqlLogMode => {
-  const value = process.env.LOG_SQL?.trim().toLowerCase();
+  const value = readSqlLogModeName();
 
   if (value === 'summary' || value === 'full') {
     return value;

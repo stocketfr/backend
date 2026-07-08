@@ -28,6 +28,27 @@
 - Do not declare `DrizzleDatabase` or `BetterAuth` as service `dependencies:`; they are provided once through `platformLayer`.
 - Do not replace `src/effect/platform/service-tracer.ts` or migrate service methods to `Effect.fn` without explicit direction.
 
+## Reuse Platform Abstractions
+
+(Context: `plans/module-standardization.md` — these exist to stop re-implementing cross-cutting concerns per module.)
+
+- Tenant scoping in repositories goes through `TenantQuery` (`whereTenant*`, `insertValues`) or `makeTenantCrud` (`src/effect/platform/db/tenant-crud.ts`). Never hand-build `eq(table.tenant_id, ...)` predicates.
+- New CRUD repositories start from `makeTenantCrud`; bespoke queries go in `extras` so they ride the same tenant fence and error wrapping.
+- Service spans come from `makeServiceTracer` (register the module in `TraceModule`); do not hand-roll `Effect.withSpan` in services.
+- To check that a foreign entity exists, call the owning module's service and fail with its canonical NotFound error; do not define new "X not found" error classes in consumer modules.
+- Uniqueness is enforced by DB constraints; pre-checks are UX sugar. Map pg `23505` on a known constraint to the domain error instead of letting it surface as an infrastructure 500.
+- Multi-statement writes (parent + children, check-then-write transitions) run in `db.transaction`, or move the state check into the UPDATE's WHERE and treat 0 affected rows as the domain error.
+- Bulk operations report `succeeded` from the ids actually returned by `.returning()`, never `ids.slice(0, affectedCount)`.
+
+## Types at the Boundary
+
+- Decode external input exactly once, at the boundary, with Effect Schema. Past a Schema boundary values are trusted: no `isRecord`/`typeof` guards, no re-validation, no defensive fallbacks on already-typed values.
+- JSON embedded in requests and LLM output are boundaries too: decode them with `Schema.parseJson` or a lenient Schema (optional-with-default, clamping transforms) — never hand-written guard-function stacks.
+- Do not add `as unknown as` / `as any` / `as never` casts; fix the type, or contain the boundary in one typed platform helper.
+- A shared boundary helper must decode or narrow to a real type. Do not centralize an `as` cast or a `typeof`/record check into a reusable export; a helper that returns `x as T` has not solved the boundary.
+- Branch on typed errors with `Effect.catchTag`/`catchTags`, never `instanceof` chains. `instanceof Error` is only for last-resort cause formatting in a shared helper.
+- Do not read `process.env` inside `src/effect/modules/**`; environment access belongs to startup/platform config. Never invent a new `NODE_ENV` predicate — reuse the existing derived flags.
+
 ## Structured Logging
 
 - Log message arguments must use properties defined in `LogProperties` (`src/effect/platform/messages.ts`).

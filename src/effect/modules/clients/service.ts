@@ -8,6 +8,10 @@ import type {
 } from '@stocket/types/clients';
 import { toPaginatedResponse, type PaginationMeta } from '@stocket/types/common';
 import { fromNullOr } from '../../platform/effect/from-null-or';
+import {
+  hasDefinedPatchValues,
+  pickDefined,
+} from '../../platform/effect/pick-defined';
 import { makeReferenceEntityOperations } from '../../platform/reference-data-service';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { toClientResponseDto } from './clients.utils';
@@ -37,6 +41,7 @@ export class ClientsService extends Effect.Service<ClientsService>()(
         findById: (id: string) => repository.findById(id),
         deleteById: (id: string) => repository.delete(id),
         existsById: (id: string) => repository.existsById(id),
+        findByIds: (ids: readonly string[]) => repository.findByIds(ids),
         makeNotFound: (id) =>
           new ClientNotFound({ id, messageKey: 'clients.notFound' }),
         toResponse: toClientResponseDto,
@@ -108,8 +113,21 @@ export class ClientsService extends Effect.Service<ClientsService>()(
       > =>
         Effect.gen(function* () {
           const client = yield* referenceEntity.getOrFail(id);
+          const updateData = pickDefined<UpdateClientDto>([
+            ['company_name', dto.company_name],
+            ['contact_person', dto.contact_person],
+            ['email', dto.email],
+            ['yacht_name', dto.yacht_name],
+            ['phone', dto.phone],
+            ['billing_address', dto.billing_address],
+            ['default_delivery_address', dto.default_delivery_address],
+            ['account_status', dto.account_status],
+            ['payment_terms', dto.payment_terms],
+            ['credit_limit', dto.credit_limit],
+            ['notes', dto.notes],
+          ]);
 
-          if (Object.keys(dto).length === 0) {
+          if (!hasDefinedPatchValues(updateData)) {
             return toClientResponseDto(client);
           }
 
@@ -126,7 +144,7 @@ export class ClientsService extends Effect.Service<ClientsService>()(
           }
 
           const updated = yield* fromNullOr(
-            repository.update(id, dto),
+            repository.update(id, updateData),
             () => new ClientNotFound({ id, messageKey: 'clients.notFound' }),
           );
           return toClientResponseDto(updated);
@@ -147,6 +165,16 @@ export class ClientsService extends Effect.Service<ClientsService>()(
           trace.span('existsById', { attributes: { id } }),
         );
 
+      const ensureExistsById = (id: string) =>
+        referenceEntity.ensureExistsById(id).pipe(
+          trace.span('ensureExistsById', { attributes: { id } }),
+        );
+
+      const ensureExistByIds = (ids: readonly string[]) =>
+        referenceEntity.ensureExistByIds(ids).pipe(
+          trace.span('ensureExistByIds'),
+        );
+
       return {
         findAllPaginated,
         findOne,
@@ -154,6 +182,8 @@ export class ClientsService extends Effect.Service<ClientsService>()(
         update,
         delete: remove,
         existsById,
+        ensureExistsById,
+        ensureExistByIds,
       };
     }),
     dependencies: [ClientsRepository.Default],

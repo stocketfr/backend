@@ -1,4 +1,4 @@
-import { HttpRouter, HttpServerRequest } from '@effect/platform';
+import { HttpRouter } from '@effect/platform';
 import { Effect, Schema } from 'effect';
 import { toPaginatedResponse } from '@stocket/types/common';
 import type { CreateUserDto, UserQueryDto } from '@stocket/types/users';
@@ -10,160 +10,157 @@ import {
   UserIdSchema,
   UserQuerySchema,
 } from '@stocket/types/users';
-import { requirePermission } from '../../platform/auth/authorization';
-import { respondEmpty, respondJson } from '../../platform/http/errors';
 import { BetterAuthHeaders } from '../../platform/auth/better-auth';
 import { getRequestHeaders } from '../../platform/http/session';
+import { respondEmpty } from '../../platform/http/errors';
+import {
+  jsonBody,
+  pathParams,
+  pathParamsAndJsonBody,
+  queryParams,
+  tenantRouteContext,
+  tenantRoute,
+} from '../../platform/http/tenant-route';
 import { UsersService } from './service';
 
 const UserPathParamsSchema = Schema.Struct({
   id: UserIdSchema,
 });
 
+const provideBetterAuthHeaders = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  Effect.gen(function* () {
+    const requestHeaders = yield* getRequestHeaders;
+    return yield* effect.pipe(
+      Effect.provideService(BetterAuthHeaders, requestHeaders),
+    );
+  });
+
 export const usersRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
     '/',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.USERS, Permission.READ);
-      const query =
-        yield* HttpServerRequest.schemaSearchParams(UserQuerySchema);
-      const normalizedQuery = {
-        page: query.page,
-        limit: query.limit,
-        ...(query.search ? { search: query.search } : {}),
-        ...(query.role ? { role: query.role } : {}),
-      } satisfies UserQueryDto;
-      const requestHeaders = yield* getRequestHeaders;
-      const usersService = yield* UsersService;
-      return yield* respondJson(
-        Effect.map(
-          usersService
-            .listUsers(normalizedQuery)
-            .pipe(Effect.provideService(BetterAuthHeaders, requestHeaders)),
-          (result) => toPaginatedResponse(result, (user) => user),
-        ),
-      );
+    tenantRoute({
+      permissions: [[Resource.USERS, Permission.READ]],
+      decode: queryParams(UserQuerySchema),
+      handler: ({ input: query }) => {
+        const normalizedQuery = {
+          page: query.page,
+          limit: query.limit,
+          ...(query.search ? { search: query.search } : {}),
+          ...(query.role ? { role: query.role } : {}),
+        } satisfies UserQueryDto;
+        return Effect.flatMap(UsersService, (usersService) =>
+          provideBetterAuthHeaders(
+            usersService
+              .listUsers(normalizedQuery)
+              .pipe(Effect.map((result) => toPaginatedResponse(result, (user) => user))),
+          ),
+        );
+      },
     }),
   ),
   HttpRouter.get(
     '/:id',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.USERS, Permission.READ);
-      const { id } = yield* HttpRouter.schemaPathParams(UserPathParamsSchema);
-      const requestHeaders = yield* getRequestHeaders;
-      const usersService = yield* UsersService;
-      return yield* respondJson(
-        usersService
-          .getUser(id)
-          .pipe(Effect.provideService(BetterAuthHeaders, requestHeaders)),
-      );
+    tenantRoute({
+      permissions: [[Resource.USERS, Permission.READ]],
+      decode: pathParams(UserPathParamsSchema),
+      handler: ({ input: { id } }) =>
+        Effect.flatMap(UsersService, (usersService) =>
+          provideBetterAuthHeaders(usersService.getUser(id)),
+        ),
     }),
   ),
   HttpRouter.post(
     '/',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.USERS, Permission.WRITE);
-      const dto = yield* HttpServerRequest.schemaBodyJson(CreateUserSchema);
-      const requestHeaders = yield* getRequestHeaders;
-      const usersService = yield* UsersService;
-      const createDto: CreateUserDto = {
-        name: dto.name,
-        email: dto.email,
-        password: dto.password,
-        roles: [...dto.roles],
-      };
-      return yield* respondJson(
-        usersService
-          .createUser(createDto)
-          .pipe(Effect.provideService(BetterAuthHeaders, requestHeaders)),
-        {
-          status: 201,
-        },
-      );
+    tenantRoute({
+      permissions: [[Resource.USERS, Permission.WRITE]],
+      decode: jsonBody(CreateUserSchema),
+      handler: ({ input: dto }) =>
+        Effect.flatMap(UsersService, (usersService) => {
+          const createDto: CreateUserDto = {
+            name: dto.name,
+            email: dto.email,
+            password: dto.password,
+            roles: [...dto.roles],
+          };
+          return provideBetterAuthHeaders(usersService.createUser(createDto));
+        }),
+      responseOptions: { status: 201 },
     }),
   ),
   HttpRouter.put(
     '/:id/roles',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.USERS, Permission.WRITE);
-      const { id } = yield* HttpRouter.schemaPathParams(UserPathParamsSchema);
-      const dto = yield* HttpServerRequest.schemaBodyJson(
+    tenantRoute({
+      permissions: [[Resource.USERS, Permission.WRITE]],
+      decode: pathParamsAndJsonBody(
+        UserPathParamsSchema,
         UpdateUserRolesSchema,
-      );
-      const requestHeaders = yield* getRequestHeaders;
-      const usersService = yield* UsersService;
-      return yield* respondJson(
-        usersService
-          .updateRoles(id, [...dto.roles])
-          .pipe(Effect.provideService(BetterAuthHeaders, requestHeaders)),
-      );
+      ),
+      handler: ({ input: { path, body: dto } }) =>
+        Effect.flatMap(UsersService, (usersService) =>
+          provideBetterAuthHeaders(
+            usersService.updateRoles(path.id, [...dto.roles]),
+          ),
+        ),
     }),
   ),
   HttpRouter.patch(
     '/:id/ban',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.USERS, Permission.WRITE);
-      const { id } = yield* HttpRouter.schemaPathParams(UserPathParamsSchema);
-      const dto = yield* HttpServerRequest.schemaBodyJson(BanUserSchema);
-      const requestHeaders = yield* getRequestHeaders;
-      const usersService = yield* UsersService;
-      return yield* respondJson(
-        usersService
-          .banUser(id, {
-            reason: dto.reason,
-            expiresAt: dto.expiresAt?.toISOString(),
-          })
-          .pipe(Effect.provideService(BetterAuthHeaders, requestHeaders)),
-      );
+    tenantRoute({
+      permissions: [[Resource.USERS, Permission.WRITE]],
+      decode: pathParamsAndJsonBody(UserPathParamsSchema, BanUserSchema),
+      handler: ({ input: { path, body: dto } }) =>
+        Effect.flatMap(UsersService, (usersService) =>
+          provideBetterAuthHeaders(
+            usersService.banUser(path.id, {
+              reason: dto.reason,
+              expiresAt: dto.expiresAt?.toISOString(),
+            }),
+          ),
+        ),
     }),
   ),
   HttpRouter.patch(
     '/:id/unban',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.USERS, Permission.WRITE);
-      const { id } = yield* HttpRouter.schemaPathParams(UserPathParamsSchema);
-      const requestHeaders = yield* getRequestHeaders;
-      const usersService = yield* UsersService;
-      return yield* respondJson(
-        usersService
-          .unbanUser(id)
-          .pipe(Effect.provideService(BetterAuthHeaders, requestHeaders)),
-      );
+    tenantRoute({
+      permissions: [[Resource.USERS, Permission.WRITE]],
+      decode: pathParams(UserPathParamsSchema),
+      handler: ({ input: { id } }) =>
+        Effect.flatMap(UsersService, (usersService) =>
+          provideBetterAuthHeaders(usersService.unbanUser(id)),
+        ),
     }),
   ),
   HttpRouter.del(
     '/:id',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.USERS, Permission.WRITE);
-      const { id } = yield* HttpRouter.schemaPathParams(UserPathParamsSchema);
-      const requestHeaders = yield* getRequestHeaders;
-      const usersService = yield* UsersService;
-      return yield* respondEmpty(
-        usersService
-          .deleteUser(id)
-          .pipe(Effect.provideService(BetterAuthHeaders, requestHeaders)),
-        {
-          status: 200,
-        },
-      );
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.USERS, Permission.WRITE]],
+      decode: pathParams(UserPathParamsSchema),
+    }).pipe(
+      Effect.flatMap(({ input: { id } }) =>
+        respondEmpty(
+          Effect.flatMap(UsersService, (usersService) =>
+            provideBetterAuthHeaders(usersService.deleteUser(id)),
+          ),
+          { status: 200 },
+        ),
+      ),
+    ),
   ),
   HttpRouter.post(
     '/:id/revoke-sessions',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.USERS, Permission.WRITE);
-      const { id } = yield* HttpRouter.schemaPathParams(UserPathParamsSchema);
-      const requestHeaders = yield* getRequestHeaders;
-      const usersService = yield* UsersService;
-      return yield* respondEmpty(
-        usersService
-          .revokeSessions(id)
-          .pipe(Effect.provideService(BetterAuthHeaders, requestHeaders)),
-        {
-          status: 200,
-        },
-      );
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.USERS, Permission.WRITE]],
+      decode: pathParams(UserPathParamsSchema),
+    }).pipe(
+      Effect.flatMap(({ input: { id } }) =>
+        respondEmpty(
+          Effect.flatMap(UsersService, (usersService) =>
+            provideBetterAuthHeaders(usersService.revokeSessions(id)),
+          ),
+          { status: 200 },
+        ),
+      ),
+    ),
   ),
   HttpRouter.prefixAll('/users'),
 );
