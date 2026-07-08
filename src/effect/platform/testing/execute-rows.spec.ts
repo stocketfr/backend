@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { Schema } from 'effect';
 import { executeRows, rowsFromExecuteResult } from '../db/execute-rows';
