@@ -18,7 +18,10 @@ import { Effect } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
 import { LocationType } from '@stocket/types/locations';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
-import { LocationNotFound, LocationsInfrastructureError } from './locations.errors';
+import {
+  LocationNotFound,
+  LocationsInfrastructureError,
+} from './locations.errors';
 import { makeLocationsRouterHarness } from './__fixtures__/router-harness';
 import { LocationsService } from './service';
 

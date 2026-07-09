@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { Effect } from 'effect';
+import { Effect, Schema } from 'effect';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { DrizzleDatabase } from '../../platform/db/drizzle';
+import { executeRows } from '../../platform/db/execute-rows';
 import {
   betterAuthUsers,
   members,
@@ -15,6 +16,12 @@ import {
 import { makeTryAsync } from '../../platform/effect/try-async';
 import { defaultRoleSeedDefinitions } from '../../platform/seed/default-roles';
 import { SuperAdminRepositoryError } from './superadmin.errors';
+import {
+  SuperAdminUserRowSchema,
+  type CreatedTenantResult,
+  type CreateTenantInput,
+  type PlatformAuditEventInput,
+} from './types';
 
 const tryAsync = makeTryAsync(
   (action, cause) =>
@@ -25,51 +32,9 @@ const tryAsync = makeTryAsync(
     }),
 );
 
-export interface SuperAdminUserRow {
-  readonly id: string;
-  readonly email: string | null;
-  readonly name: string | null;
-}
-
-export interface TenantListRow {
-  readonly id: string;
-  readonly name: string;
-  readonly slug: string;
-  readonly primaryHostname: string | null;
-  readonly createdAt: Date;
-}
-
-export interface CreateTenantInput {
-  readonly name: string;
-  readonly slug: string;
-  readonly hostname: string;
-  readonly adminUserId: string;
-}
-
-export interface PlatformAuditEventInput {
-  readonly actorUserId: string;
-  readonly action: string;
-  readonly entityType: string;
-  readonly entityId: string;
-  readonly metadata?: Record<string, unknown>;
-  readonly ipAddress?: string | null;
-  readonly userAgent?: string | null;
-}
-
-export interface CreatedTenantResult {
-  readonly tenant: {
-    readonly id: string;
-    readonly name: string;
-    readonly slug: string;
-    readonly hostname: string;
-  };
-  readonly admin: {
-    readonly id: string;
-  };
-}
-
-const rowsOf = <A>(result: unknown): A[] =>
-  ((result as { rows?: A[] }).rows ?? (result as A[])) as A[];
+const ExistsRowSchema = Schema.Struct({
+  exists: Schema.Number,
+});
 
 export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()(
   '@stocket/effect/superadmin/SuperAdminRepository',
@@ -79,15 +44,19 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
 
       const findSuperAdminUser = (userId: string) =>
         tryAsync('find superadmin user', async () => {
-          const result = await db.execute(sql`
-            SELECT u.id, u.email, u.name
-            FROM "user" u
-            INNER JOIN super_admins sa ON sa.user_id = u.id
-            WHERE u.id = ${userId}
-            LIMIT 1
-          `);
+          const rows = await executeRows(
+            db,
+            sql`
+              SELECT u.id, u.email, u.name
+              FROM "user" u
+              INNER JOIN super_admins sa ON sa.user_id = u.id
+              WHERE u.id = ${userId}
+              LIMIT 1
+            `,
+            SuperAdminUserRowSchema,
+          );
 
-          return rowsOf<SuperAdminUserRow>(result)[0] ?? null;
+          return rows[0] ?? null;
         });
 
       const findBetterAuthUserByLoweredEmail = (normalizedEmail: string) =>
@@ -206,7 +175,9 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
             const adminRoleRows = await tx
               .select({ id: roles.id })
               .from(roles)
-              .where(and(eq(roles.tenant_id, tenantId), eq(roles.name, 'Admin')))
+              .where(
+                and(eq(roles.tenant_id, tenantId), eq(roles.name, 'Admin')),
+              )
               .limit(1);
 
             const adminRoleId = adminRoleRows[0]?.id;
@@ -260,15 +231,17 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
               return null;
             }
 
-            const sessionActiveOrganizationColumns = rowsOf<{ exists: number }>(
-              await tx.execute(sql`
+            const sessionActiveOrganizationColumns = await executeRows(
+              tx,
+              sql`
                 SELECT 1 AS exists
                 FROM information_schema.columns
                 WHERE table_schema = 'public'
                   AND table_name = 'session'
                   AND column_name = 'active_organization_id'
                 LIMIT 1
-              `),
+              `,
+              ExistsRowSchema,
             );
             if (sessionActiveOrganizationColumns.length > 0) {
               await tx.execute(sql`
@@ -352,14 +325,16 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
             await tx.execute(
               sql`DELETE FROM tenant_domains WHERE tenant_id = ${tenantId}`,
             );
-            const invitationTables = rowsOf<{ exists: number }>(
-              await tx.execute(sql`
+            const invitationTables = await executeRows(
+              tx,
+              sql`
                 SELECT 1 AS exists
                 FROM information_schema.tables
                 WHERE table_schema = 'public'
                   AND table_name = 'invitation'
                 LIMIT 1
-              `),
+              `,
+              ExistsRowSchema,
             );
             if (invitationTables.length > 0) {
               await tx.execute(

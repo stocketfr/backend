@@ -22,7 +22,8 @@ import { Effect, Layer } from 'effect';
 import { HttpApiBuilder, HttpServer } from '@effect/platform';
 import { AppApi } from '../../http/api';
 import { HealthApiLive } from './router';
-import { HealthService, type HealthCheckResponse } from './service';
+import { HealthService } from './service';
+import type { HealthCheckResponse } from './types';
 
 const okResponse = (
   details: HealthCheckResponse['details'] = {},
@@ -92,9 +93,7 @@ describe('HealthApiLive', () => {
   describe('GET /ready (public: /health-check/ready)', () => {
     it('returns 200 when the service reports ok', async () => {
       const handler = makeHandler({
-        ready: Effect.succeed(
-          okResponse({ database: { status: 'up' } }),
-        ),
+        ready: Effect.succeed(okResponse({ database: { status: 'up' } })),
       });
       const response = await handler(new Request('http://localhost/ready'));
       expect(response.status).toBe(200);

@@ -114,9 +114,7 @@ describe('ClientsService Integration', () => {
     it('deletes a client', async () => {
       const client = await seedClient(db);
 
-      await run(
-        Effect.flatMap(ClientsService, (svc) => svc.delete(client.id)),
-      );
+      await run(Effect.flatMap(ClientsService, (svc) => svc.delete(client.id)));
 
       const error = await fail(
         Effect.flatMap(ClientsService, (svc) => svc.findOne(client.id)),

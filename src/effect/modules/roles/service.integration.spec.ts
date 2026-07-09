@@ -224,9 +224,7 @@ describe('RolesService Integration', () => {
     });
 
     it('findById fails with RoleNotFound for an unknown id', async () => {
-      const error = await fail(
-        withSvc((svc) => svc.findById(randomUUID())),
-      );
+      const error = await fail(withSvc((svc) => svc.findById(randomUUID())));
       expect(error._tag).toBe('RoleNotFound');
     });
   });
@@ -251,7 +249,10 @@ describe('RolesService Integration', () => {
                 description: 'changed',
                 permissions: [
                   { resource: Resource.INVENTORY, permission: Permission.READ },
-                  { resource: Resource.INVENTORY, permission: Permission.WRITE },
+                  {
+                    resource: Resource.INVENTORY,
+                    permission: Permission.WRITE,
+                  },
                   { resource: Resource.PRODUCTS, permission: Permission.READ },
                 ],
               };
@@ -356,9 +357,7 @@ describe('RolesService Integration', () => {
 
     it('fails with RoleNotFound for an unknown id', async () => {
       const error = await fail(
-        withSvc((svc) =>
-          svc.update(randomUUID(), { description: 'nope' }),
-        ),
+        withSvc((svc) => svc.update(randomUUID(), { description: 'nope' })),
       );
       expect(error._tag).toBe('RoleNotFound');
     });
@@ -376,7 +375,9 @@ describe('RolesService Integration', () => {
             const lookup = yield* Effect.either(svc.findById(role.id));
             if (lookup._tag === 'Right') {
               return yield* Effect.fail(
-                new Error('findById unexpectedly found deleted role — retrying'),
+                new Error(
+                  'findById unexpectedly found deleted role — retrying',
+                ),
               );
             }
             return lookup.left._tag;
@@ -471,9 +472,7 @@ describe('RolesService Integration', () => {
     });
 
     it('fails with RoleNotFound for an unknown id', async () => {
-      const error = await fail(
-        withSvc((svc) => svc.delete(randomUUID())),
-      );
+      const error = await fail(withSvc((svc) => svc.delete(randomUUID())));
       expect(error._tag).toBe('RoleNotFound');
     });
   });

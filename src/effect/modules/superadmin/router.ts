@@ -100,14 +100,16 @@ export const superAdminRouter = HttpRouter.empty.pipe(
 
       return yield* respondJson(
         superAdminService
-          .createTenant(dto, {
-            userId: session.user.id,
-            ipAddress: requestContext.ip,
-            userAgent: typeof userAgent === 'string' ? userAgent : null,
-            requestContext,
-          },
-          productImport,
-        )
+          .createTenant(
+            dto,
+            {
+              userId: session.user.id,
+              ipAddress: requestContext.ip,
+              userAgent: typeof userAgent === 'string' ? userAgent : null,
+              requestContext,
+            },
+            productImport,
+          )
           .pipe(Effect.provideService(BetterAuthHeaders, requestHeaders)),
         { status: 201 },
       );
@@ -160,8 +162,9 @@ export const superAdminRouter = HttpRouter.empty.pipe(
     '/tenants/:tenantId/features/:featureKey',
     Effect.gen(function* () {
       const session = yield* requireSuperAdmin;
-      const { tenantId, featureKey } =
-        yield* HttpRouter.schemaPathParams(TenantFeaturePathParams);
+      const { tenantId, featureKey } = yield* HttpRouter.schemaPathParams(
+        TenantFeaturePathParams,
+      );
       const dto = yield* HttpServerRequest.schemaBodyJson(
         UpdateTenantFeatureOverrideSchema,
       );
@@ -180,8 +183,9 @@ export const superAdminRouter = HttpRouter.empty.pipe(
     '/tenants/:tenantId/features/:featureKey',
     Effect.gen(function* () {
       yield* requireSuperAdmin;
-      const { tenantId, featureKey } =
-        yield* HttpRouter.schemaPathParams(TenantFeaturePathParams);
+      const { tenantId, featureKey } = yield* HttpRouter.schemaPathParams(
+        TenantFeaturePathParams,
+      );
       const superAdminService = yield* SuperAdminService;
       return yield* respondJson(
         superAdminService.clearTenantFeatureOverride(tenantId, featureKey),

@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
+import { Schema } from 'effect';
 import { getProductionTenantBaseDomain } from '../tenancy/host';
 import type { DrizzleDb } from './drizzle';
+import { executeRows } from './execute-rows';
 
 const LEGACY_PRODUCTION_TENANT_BASE_DOMAIN = 'librestock.maximilian.pw';
 const LOCALHOST_TENANT_BASE_DOMAIN = 'localhost';
@@ -11,17 +13,10 @@ export interface TenantDomainCleanupResult {
   readonly skippedConflicts: number;
 }
 
-type SqlResult = {
-  readonly rows?: ReadonlyArray<{
-    readonly updated?: unknown;
-    readonly skipped_conflicts?: unknown;
-  }>;
-};
-
-const toCount = (value: unknown): number => {
-  const count = Number(value ?? 0);
-  return Number.isFinite(count) ? count : 0;
-};
+const TenantDomainCleanupRowSchema = Schema.Struct({
+  updated: Schema.Union(Schema.Number, Schema.NumberFromString),
+  skipped_conflicts: Schema.Union(Schema.Number, Schema.NumberFromString),
+});
 
 /**
  * Local development used to inherit production-shaped primary subdomains from
@@ -38,7 +33,9 @@ export async function normalizeDevelopmentTenantDomains(
   const legacyProductionSuffix = `.${LEGACY_PRODUCTION_TENANT_BASE_DOMAIN}`;
   const localhostSuffix = `.${LOCALHOST_TENANT_BASE_DOMAIN}`;
   const localPortSuffix = `.${LOCALHOST_TENANT_BASE_DOMAIN}:${LOCAL_TENANT_PORT}`;
-  const result = (await db.execute(sql`
+  const rows = await executeRows(
+    db,
+    sql`
     WITH candidates AS (
       SELECT
         td.id,
@@ -79,11 +76,13 @@ export async function normalizeDevelopmentTenantDomains(
     SELECT
       (SELECT count(*)::int FROM updated) AS updated,
       (SELECT count(*)::int FROM skipped_conflicts) AS skipped_conflicts
-  `)) as SqlResult;
+  `,
+    TenantDomainCleanupRowSchema,
+  );
 
-  const row = result.rows?.[0];
+  const row = rows[0];
   return {
-    updated: toCount(row?.updated),
-    skippedConflicts: toCount(row?.skipped_conflicts),
+    updated: row?.updated ?? 0,
+    skippedConflicts: row?.skipped_conflicts ?? 0,
   };
 }

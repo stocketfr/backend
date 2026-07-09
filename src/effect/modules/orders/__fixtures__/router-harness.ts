@@ -56,7 +56,10 @@ export const makeOrdersRouterHarness = (
 
   return makeRouterTestHarness({
     router: ordersRouter,
-    layers: [makeRouterServiceLayer(OrdersService, opts.service), featuresLayer],
+    layers: [
+      makeRouterServiceLayer(OrdersService, opts.service),
+      featuresLayer,
+    ],
     permissions: opts.permissions,
     roleNames: [],
     session: opts.session,

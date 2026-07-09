@@ -125,11 +125,7 @@ export class ProductImportRepository extends Effect.Service<ProductImportReposit
           );
           const where = yield* tenantQuery.whereTenant(areas, ...conditions);
           return yield* tryAsync('find import area', async () => {
-            const rows = await db
-              .select()
-              .from(areas)
-              .where(where)
-              .limit(1);
+            const rows = await db.select().from(areas).where(where).limit(1);
             return rows[0] ?? null;
           });
         });
@@ -150,11 +146,7 @@ export class ProductImportRepository extends Effect.Service<ProductImportReposit
             eq(products.sku, sku),
           );
           return yield* tryAsync('find import product by sku', async () => {
-            const rows = await db
-              .select()
-              .from(products)
-              .where(where)
-              .limit(1);
+            const rows = await db.select().from(products).where(where).limit(1);
             return rows[0] ?? null;
           });
         });

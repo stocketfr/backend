@@ -15,7 +15,9 @@ class SeederRegistry {
     for (const [name, seeder] of this.seeders) {
       for (const dep of seeder.dependencies) {
         if (!this.seeders.has(dep)) {
-          throw new Error(`Seeder "${name}" depends on "${dep}", which is not registered`);
+          throw new Error(
+            `Seeder "${name}" depends on "${dep}", which is not registered`,
+          );
         }
       }
     }
@@ -51,8 +53,12 @@ class SeederRegistry {
     }
 
     if (sorted.length !== this.seeders.size) {
-      const stuck = [...inDegree.entries()].filter(([, d]) => d > 0).map(([n]) => n);
-      throw new Error(`Circular dependency detected among: ${stuck.join(', ')}`);
+      const stuck = [...inDegree.entries()]
+        .filter(([, d]) => d > 0)
+        .map(([n]) => n);
+      throw new Error(
+        `Circular dependency detected among: ${stuck.join(', ')}`,
+      );
     }
 
     return sorted;

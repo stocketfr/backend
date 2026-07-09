@@ -33,4 +33,3 @@ export const PLAN_FEATURE_DEFAULTS: Record<PlanKey, FeatureStates> = {
 export const featuresForPlan = (planKey: PlanKey): FeatureStates => ({
   ...PLAN_FEATURE_DEFAULTS[planKey],
 });
-

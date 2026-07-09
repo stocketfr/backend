@@ -97,10 +97,11 @@ export const tenantPlanKeyEnum = pgEnum('tenant_plan_key', [
   PlanKey.ENTERPRISE,
 ]);
 
-export const tenantEntitlementSourceEnum = pgEnum(
-  'tenant_entitlement_source',
-  [EntitlementSource.SYSTEM, EntitlementSource.MANUAL, EntitlementSource.BILLING],
-);
+export const tenantEntitlementSourceEnum = pgEnum('tenant_entitlement_source', [
+  EntitlementSource.SYSTEM,
+  EntitlementSource.MANUAL,
+  EntitlementSource.BILLING,
+]);
 
 export const tenantFeatureKeyEnum = pgEnum('tenant_feature_key', [
   FeatureKey.SMART_IMPORT,
@@ -129,7 +130,9 @@ export const betterAuthUsers = pgTable(
   {
     // Better Auth still generates UUID values, but the app stores user ids as
     // text because local RBAC tables and audit logs use opaque auth ids.
-    id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: text('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     name: text('name').notNull(),
     email: text('email').notNull(),
     email_verified: boolean('email_verified').notNull().default(false),
@@ -302,9 +305,7 @@ export const tenantEntitlementProfiles = pgTable(
     tenant_id: uuid('tenant_id')
       .primaryKey()
       .references(() => organizations.id, { onDelete: 'cascade' }),
-    plan_key: tenantPlanKeyEnum('plan_key')
-      .notNull()
-      .default(PlanKey.FREE),
+    plan_key: tenantPlanKeyEnum('plan_key').notNull().default(PlanKey.FREE),
     source: tenantEntitlementSourceEnum('source')
       .notNull()
       .default(EntitlementSource.SYSTEM),

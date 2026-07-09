@@ -66,7 +66,15 @@ async function seedFulfillmentScenario() {
     quantity: 100,
   });
 
-  return { category, product, location, client, order, orderItem: orderItem!, inv };
+  return {
+    category,
+    product,
+    location,
+    client,
+    order,
+    orderItem: orderItem!,
+    inv,
+  };
 }
 
 describe('FulfillmentService Integration', () => {

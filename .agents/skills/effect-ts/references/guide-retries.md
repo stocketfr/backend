@@ -67,9 +67,7 @@ This is explicitly covered in the module tests.
 Use this for the simplest bounded retry case.
 
 ```ts
-const retried = effect.pipe(
-  Effect.retry({ times: 3 })
-)
+const retried = effect.pipe(Effect.retry({ times: 3 }));
 ```
 
 Use this when:
@@ -91,8 +89,8 @@ Example:
 
 ```ts
 const retried = effect.pipe(
-  Effect.retry({ until: (error) => error._tag === "Done" })
-)
+  Effect.retry({ until: (error) => error._tag === 'Done' }),
+);
 ```
 
 ### `{ while: predicate }`
@@ -105,8 +103,8 @@ Example:
 
 ```ts
 const retried = effect.pipe(
-  Effect.retry({ while: (error) => error._tag === "Retryable" })
-)
+  Effect.retry({ while: (error) => error._tag === 'Retryable' }),
+);
 ```
 
 ## Retry With Schedule
@@ -114,9 +112,7 @@ const retried = effect.pipe(
 Use a `Schedule` whenever timing matters.
 
 ```ts
-const retried = effect.pipe(
-  Effect.retry(Schedule.recurs(3))
-)
+const retried = effect.pipe(Effect.retry(Schedule.recurs(3)));
 ```
 
 Or with the richer object form:
@@ -125,9 +121,9 @@ Or with the richer object form:
 const retried = effect.pipe(
   Effect.retry({
     schedule: Schedule.recurs(3),
-    while: (error) => error._tag === "Retryable"
-  })
-)
+    while: (error) => error._tag === 'Retryable',
+  }),
+);
 ```
 
 This is a very important repo pattern because it lets you combine:
@@ -175,21 +171,19 @@ The vendored repo repeatedly uses these patterns:
 ### Fixed retry count
 
 ```ts
-Schedule.recurs(3)
+Schedule.recurs(3);
 ```
 
 ### Exponential backoff
 
 ```ts
-Schedule.exponential(500, 1.5)
+Schedule.exponential(500, 1.5);
 ```
 
 ### Exponential plus steady fallback spacing
 
 ```ts
-Schedule.exponential(500, 1.5).pipe(
-  Schedule.either(Schedule.spaced(5000))
-)
+Schedule.exponential(500, 1.5).pipe(Schedule.either(Schedule.spaced(5000)));
 ```
 
 This appears in production modules such as RPC and workflow code.
@@ -197,9 +191,7 @@ This appears in production modules such as RPC and workflow code.
 ### Error-sensitive delay policy
 
 ```ts
-Schedule.forever.pipe(
-  Schedule.addDelay((error) => Effect.succeed("1 second"))
-)
+Schedule.forever.pipe(Schedule.addDelay((error) => Effect.succeed('1 second')));
 ```
 
 The OTLP exporter uses this shape to derive delays from actual HTTP failure details such as rate limits.
@@ -220,11 +212,11 @@ effect.pipe(
   Effect.retry(policy),
   Effect.catch((cause) => {
     if (!Cause.hasInterrupts(cause)) {
-      return Effect.failCause(cause)
+      return Effect.failCause(cause);
     }
-    return Effect.die("interrupted and retries exhausted")
-  })
-)
+    return Effect.die('interrupted and retries exhausted');
+  }),
+);
 ```
 
 Use this when:
@@ -291,17 +283,17 @@ const Plan = ExecutionPlan.make(
   {
     provide: FastLayer,
     attempts: 2,
-    schedule: Schedule.spaced("3 seconds")
+    schedule: Schedule.spaced('3 seconds'),
   },
   {
     provide: SafeLayer,
     attempts: 3,
-    schedule: Schedule.spaced("1 second")
+    schedule: Schedule.spaced('1 second'),
   },
   {
-    provide: FinalFallbackLayer
-  }
-)
+    provide: FinalFallbackLayer,
+  },
+);
 ```
 
 ### Step Semantics
@@ -373,24 +365,22 @@ Use `ExecutionPlan` when:
 ### Pattern: simple bounded retry
 
 ```ts
-const retried = effect.pipe(
-  Effect.retry({ times: 3 })
-)
+const retried = effect.pipe(Effect.retry({ times: 3 }));
 ```
 
 ### Pattern: retryable-error backoff
 
 ```ts
 const retryPolicy = Schedule.exponential(500, 1.5).pipe(
-  Schedule.either(Schedule.spaced(5000))
-)
+  Schedule.either(Schedule.spaced(5000)),
+);
 
 const retried = effect.pipe(
   Effect.retry({
     schedule: retryPolicy,
-    while: (error) => error._tag === "Retryable"
-  })
-)
+    while: (error) => error._tag === 'Retryable',
+  }),
+);
 ```
 
 ### Pattern: fallback across providers
@@ -400,17 +390,17 @@ const Plan = ExecutionPlan.make(
   {
     provide: PrimaryLayer,
     attempts: 2,
-    schedule: Schedule.spaced("1 second")
+    schedule: Schedule.spaced('1 second'),
   },
   {
     provide: SecondaryLayer,
     attempts: 3,
-    schedule: Schedule.exponential(500, 1.5)
+    schedule: Schedule.exponential(500, 1.5),
   },
   {
-    provide: FinalFallbackLayer
-  }
-)
+    provide: FinalFallbackLayer,
+  },
+);
 ```
 
 ## Anti-Patterns

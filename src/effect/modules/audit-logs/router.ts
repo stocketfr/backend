@@ -1,4 +1,4 @@
-import { HttpRouter, HttpServerRequest } from '@effect/platform';
+import { HttpRouter } from '@effect/platform';
 import { Effect, Schema } from 'effect';
 import {
   AuditEntityTypeSchema,
@@ -6,8 +6,11 @@ import {
   AuditLogQuerySchema,
 } from '@stocket/types/audit-logs';
 import { Permission, Resource } from '@stocket/types/auth';
-import { requirePermission } from '../../platform/auth/authorization';
-import { respondJson } from '../../platform/http/errors';
+import {
+  pathParams,
+  queryParams,
+  tenantRoute,
+} from '../../platform/http/tenant-route';
 import { AuditLogsService } from './service';
 
 const AuditLogPathParamsSchema = Schema.Struct({
@@ -26,47 +29,46 @@ const AuditUserPathParamsSchema = Schema.Struct({
 export const auditLogsRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
     '/entity/:entityType/:entityId',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.AUDIT_LOGS, Permission.READ);
-      const { entityType, entityId } = yield* HttpRouter.schemaPathParams(
-        AuditEntityPathParamsSchema,
-      );
-      const auditLogsService = yield* AuditLogsService;
-      return yield* respondJson(
-        auditLogsService.getEntityHistory(entityType, entityId),
-      );
+    tenantRoute({
+      permissions: [[Resource.AUDIT_LOGS, Permission.READ]],
+      decode: pathParams(AuditEntityPathParamsSchema),
+      handler: ({ input: { entityType, entityId } }) =>
+        Effect.flatMap(AuditLogsService, (auditLogsService) =>
+          auditLogsService.getEntityHistory(entityType, entityId),
+        ),
     }),
   ),
   HttpRouter.get(
     '/user/:userId',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.AUDIT_LOGS, Permission.READ);
-      const { userId } = yield* HttpRouter.schemaPathParams(
-        AuditUserPathParamsSchema,
-      );
-      const auditLogsService = yield* AuditLogsService;
-      return yield* respondJson(auditLogsService.getUserHistory(userId));
+    tenantRoute({
+      permissions: [[Resource.AUDIT_LOGS, Permission.READ]],
+      decode: pathParams(AuditUserPathParamsSchema),
+      handler: ({ input: { userId } }) =>
+        Effect.flatMap(AuditLogsService, (auditLogsService) =>
+          auditLogsService.getUserHistory(userId),
+        ),
     }),
   ),
   HttpRouter.get(
     '/',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.AUDIT_LOGS, Permission.READ);
-      const query =
-        yield* HttpServerRequest.schemaSearchParams(AuditLogQuerySchema);
-      const auditLogsService = yield* AuditLogsService;
-      return yield* respondJson(auditLogsService.query(query));
+    tenantRoute({
+      permissions: [[Resource.AUDIT_LOGS, Permission.READ]],
+      decode: queryParams(AuditLogQuerySchema),
+      handler: ({ input: query }) =>
+        Effect.flatMap(AuditLogsService, (auditLogsService) =>
+          auditLogsService.query(query),
+        ),
     }),
   ),
   HttpRouter.get(
     '/:id',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.AUDIT_LOGS, Permission.READ);
-      const { id } = yield* HttpRouter.schemaPathParams(
-        AuditLogPathParamsSchema,
-      );
-      const auditLogsService = yield* AuditLogsService;
-      return yield* respondJson(auditLogsService.findById(id));
+    tenantRoute({
+      permissions: [[Resource.AUDIT_LOGS, Permission.READ]],
+      decode: pathParams(AuditLogPathParamsSchema),
+      handler: ({ input: { id } }) =>
+        Effect.flatMap(AuditLogsService, (auditLogsService) =>
+          auditLogsService.findById(id),
+        ),
     }),
   ),
   HttpRouter.prefixAll('/audit-logs'),

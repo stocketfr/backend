@@ -16,6 +16,8 @@ export const deCatalog: Record<MessageKey, string> = {
   'auditLogs.repositoryFailed': 'Der Audit-Log-Vorgang ist fehlgeschlagen.',
   'auth.permissionDenied': 'Unzureichende Berechtigungen.',
   'auth.unauthorized': 'Nicht autorisiert.',
+  'e2e.seedDisabled': 'E2E-Seeding ist deaktiviert.',
+  'e2e.seedFailed': 'E2E-Seeding ist fehlgeschlagen.',
   'email.sendFailed': 'Der E-Mail-Versand ist fehlgeschlagen.',
   'email.welcomeRequestFailed':
     'Die Anforderung der Willkommens-E-Mail ist fehlgeschlagen.',
@@ -24,6 +26,8 @@ export const deCatalog: Record<MessageKey, string> = {
   'tenant.notResolved':
     'Fuer diese Anfrage konnte kein aktiver Tenant ermittelt werden.',
   'tenant.hostNotFound': 'Tenant-Host nicht gefunden.',
+  'tenantFeatures.repositoryFailed':
+    'Der Tenant-Feature-Vorgang ist fehlgeschlagen.',
   'branding.repositoryFailed': 'Der Branding-Vorgang ist fehlgeschlagen.',
   'branding.sessionUserUnavailable':
     'Der Sitzungsbenutzer ist nicht verfuegbar.',

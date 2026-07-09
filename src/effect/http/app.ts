@@ -11,6 +11,7 @@ import { auth } from '../../auth';
 import { apiRouter } from '../modules';
 import { HealthService } from '../modules/health/service';
 import { HealthApiLive } from '../modules/health/router';
+import { AppConfig } from '../platform/config/app-config';
 import { respondCause } from '../platform/http/errors';
 import {
   resolveLocale,
@@ -123,6 +124,7 @@ export const buildHttpApp = Effect.gen(function* () {
   // Build the HttpApiBuilder app once. HealthService is in scope from the
   // applicationLayer provided in main.ts. The resulting HttpApp serves both
   // the typed API routes and the Swagger UI at /docs.
+  const appConfig = yield* AppConfig;
   const healthService = yield* HealthService;
   const builderApp = yield* makeApiBuilderApp(healthService);
 
@@ -148,8 +150,10 @@ export const buildHttpApp = Effect.gen(function* () {
   );
 
   return requestLoggingMiddleware(
-    securityHeadersMiddleware(
-      corsMiddleware(bodyLimitMiddleware(tenantContextMiddleware(base))),
+    securityHeadersMiddleware(appConfig)(
+      corsMiddleware(appConfig)(
+        bodyLimitMiddleware(tenantContextMiddleware(base)),
+      ),
     ),
   ).pipe(Effect.catchAllCause(respondCause));
 });

@@ -113,7 +113,10 @@ const withService = <A, E, R>(
     return yield* body(svc);
   }).pipe(
     Effect.provide(
-      serviceLayer(rolesLayer(rolesOverrides), featuresLayer(featuresOverrides)),
+      serviceLayer(
+        rolesLayer(rolesOverrides),
+        featuresLayer(featuresOverrides),
+      ),
     ),
   ) as unknown as Effect.Effect<A, E, never>;
 
