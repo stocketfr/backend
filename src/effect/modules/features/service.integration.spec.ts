@@ -5,7 +5,10 @@ import {
   type UpdateTenantFeatureOverride,
 } from '@stocket/types/features';
 import { eq } from 'drizzle-orm';
-import { organizations, tenantFeatureOverrides } from '../../platform/db/schema';
+import {
+  organizations,
+  tenantFeatureOverrides,
+} from '../../platform/db/schema';
 import { DEFAULT_TENANT_ID } from '../../platform/tenancy/tenant-constants';
 import {
   getTestDb,
@@ -23,15 +26,20 @@ let TestLayer: Layer.Layer<FeaturesService>;
 withTestDb();
 beforeAll(() => {
   db = getTestDb();
-  TestLayer = FeaturesService.Default.pipe(Layer.provide(makeTestDrizzleLayer()));
+  TestLayer = FeaturesService.Default.pipe(
+    Layer.provide(makeTestDrizzleLayer()),
+  );
 });
 
 const seedTenant = async () => {
-  await db.insert(organizations).values({
-    id: DEFAULT_TENANT_ID,
-    name: 'Stocket',
-    slug: 'stocket',
-  }).onConflictDoNothing();
+  await db
+    .insert(organizations)
+    .values({
+      id: DEFAULT_TENANT_ID,
+      name: 'Stocket',
+      slug: 'stocket',
+    })
+    .onConflictDoNothing();
 };
 
 describe('FeaturesService integration', () => {

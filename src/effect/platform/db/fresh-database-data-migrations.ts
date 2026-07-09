@@ -1,5 +1,8 @@
 import { sql, type SQL } from 'drizzle-orm';
-import { seedSuperAdmin } from '../../../scripts/seed-superadmin';
+import {
+  readSuperAdminSeedConfig,
+  seedSuperAdmin,
+} from '../../../scripts/seed-superadmin';
 import type { DrizzleDb } from './drizzle';
 
 const DATA_MIGRATIONS_TABLE_NAME = 'stocket_data_migrations';
@@ -72,18 +75,10 @@ async function markDataMigrationApplied(
 }
 
 async function seedSuperAdminWithPasswordRotation(): Promise<void> {
-  const previousRotatePassword = process.env.SUPERADMIN_ROTATE_PASSWORD;
-  process.env.SUPERADMIN_ROTATE_PASSWORD = 'true';
-
-  try {
-    await seedSuperAdmin();
-  } finally {
-    if (previousRotatePassword === undefined) {
-      delete process.env.SUPERADMIN_ROTATE_PASSWORD;
-    } else {
-      process.env.SUPERADMIN_ROTATE_PASSWORD = previousRotatePassword;
-    }
-  }
+  await seedSuperAdmin({
+    ...(await readSuperAdminSeedConfig()),
+    rotatePassword: true,
+  });
 }
 
 const dataMigrations: ReadonlyArray<{

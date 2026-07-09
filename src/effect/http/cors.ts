@@ -5,33 +5,25 @@ import { Effect } from 'effect';
 import { findTenantByHostname } from '../platform/db/tenant-queries';
 import { DrizzleDatabase } from '../platform/db/drizzle';
 import { isPlatformHost, normalizeHost } from '../platform/tenancy/host';
-import { readRequiredEnv } from '@stocket/types/common';
+import type { AppConfigShape } from '../platform/config/app-config';
 
 const CORS_MAX_AGE_SECONDS = 86_400;
 
-const parseCorsOrigins = (value: string): string[] =>
-  value
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter((origin) => origin.length > 0);
-
-const createCorsConfig = () => {
-  const nodeEnv = process.env.NODE_ENV;
-  const isProduction = nodeEnv === 'production';
-  const origins = parseCorsOrigins(readRequiredEnv('CORS_ORIGIN'));
+const createCorsConfig = (appConfig: AppConfigShape) => {
+  const origins = appConfig.corsOrigins;
 
   if (origins.length === 0) {
     throw new Error('CORS_ORIGIN must contain at least one origin');
   }
 
-  if (isProduction && origins.includes('*')) {
+  if (appConfig.isProduction && origins.includes('*')) {
     throw new Error(
       'CORS_ORIGIN must be set to specific origins in production (not "*")',
     );
   }
 
   const isConfiguredOriginAllowed = (origin: string) => {
-    if (!isProduction && (origins.length === 0 || origins.includes('*'))) {
+    if (!appConfig.isProduction && origins.includes('*')) {
       return origin.length > 0;
     }
 
@@ -40,8 +32,6 @@ const createCorsConfig = () => {
 
   return { isConfiguredOriginAllowed };
 };
-
-const { isConfiguredOriginAllowed } = createCorsConfig();
 
 const ALLOWED_METHODS = 'GET, HEAD, PUT, PATCH, POST, DELETE';
 
@@ -53,7 +43,7 @@ const hostnameFromOrigin = (origin: string) => {
   }
 };
 
-const isVerifiedTenantOrigin = (origin: string) =>
+const isVerifiedTenantOrigin = (appConfig: AppConfigShape, origin: string) =>
   Effect.gen(function* () {
     const hostname = hostnameFromOrigin(origin);
     if (!hostname) return false;
@@ -61,16 +51,20 @@ const isVerifiedTenantOrigin = (origin: string) =>
 
     const db = yield* DrizzleDatabase;
     const rows = yield* Effect.tryPromise(() =>
-      findTenantByHostname(db, hostname),
+      findTenantByHostname(db, hostname, appConfig),
     ).pipe(Effect.catchAll(() => Effect.succeed([])));
 
     return rows.length > 0;
   });
 
-const isAllowedOrigin = (origin: string) =>
+const isAllowedOrigin = (
+  appConfig: AppConfigShape,
+  isConfiguredOriginAllowed: (origin: string) => boolean,
+  origin: string,
+) =>
   isConfiguredOriginAllowed(origin)
     ? Effect.succeed(true)
-    : isVerifiedTenantOrigin(origin);
+    : isVerifiedTenantOrigin(appConfig, origin);
 
 const getCorsHeaders = (origin: string): Record<string, string> => ({
   'access-control-allow-origin': origin,
@@ -92,32 +86,38 @@ const getPreflightHeaders = (
   vary: 'Origin, Access-Control-Request-Headers',
 });
 
-export const corsMiddleware = <E, R>(httpApp: HttpApp.Default<E, R>) =>
-  Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
-    Effect.gen(function* () {
-      const { origin } = request.headers;
-      const originAllowed = origin ? yield* isAllowedOrigin(origin) : false;
+export const corsMiddleware =
+  (appConfig: AppConfigShape) =>
+  <E, R>(httpApp: HttpApp.Default<E, R>) => {
+    const { isConfiguredOriginAllowed } = createCorsConfig(appConfig);
+    return Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
+      Effect.gen(function* () {
+        const { origin } = request.headers;
+        const originAllowed = origin
+          ? yield* isAllowedOrigin(appConfig, isConfiguredOriginAllowed, origin)
+          : false;
 
-      if (request.method === 'OPTIONS' && origin && originAllowed) {
-        const accessControlRequestHeaders =
-          request.headers['access-control-request-headers'];
-        return HttpServerResponse.empty({
-          status: 204,
-          headers: getPreflightHeaders(
-            origin,
-            typeof accessControlRequestHeaders === 'string'
-              ? accessControlRequestHeaders
-              : undefined,
-          ),
-        });
-      }
+        if (request.method === 'OPTIONS' && origin && originAllowed) {
+          const accessControlRequestHeaders =
+            request.headers['access-control-request-headers'];
+          return HttpServerResponse.empty({
+            status: 204,
+            headers: getPreflightHeaders(
+              origin,
+              typeof accessControlRequestHeaders === 'string'
+                ? accessControlRequestHeaders
+                : undefined,
+            ),
+          });
+        }
 
-      if (!origin || !originAllowed) {
-        return yield* httpApp;
-      }
+        if (!origin || !originAllowed) {
+          return yield* httpApp;
+        }
 
-      return yield* Effect.map(httpApp, (response) =>
-        HttpServerResponse.setHeaders(response, getCorsHeaders(origin)),
-      );
-    }),
-  );
+        return yield* Effect.map(httpApp, (response) =>
+          HttpServerResponse.setHeaders(response, getCorsHeaders(origin)),
+        );
+      }),
+    );
+  };

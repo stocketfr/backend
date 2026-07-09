@@ -77,13 +77,10 @@ const makePermissionProviderLayer = (
     [Resource.CLIENTS]: [Permission.READ, Permission.WRITE],
   },
 ) =>
-  Layer.succeed(
-    PermissionProvider,
-    {
-      getPermissionsForUser: () =>
-        Effect.succeed({ roleNames: ['Admin'], permissions }),
-    } as any,
-  );
+  Layer.succeed(PermissionProvider, {
+    getPermissionsForUser: () =>
+      Effect.succeed({ roleNames: ['Admin'], permissions }),
+  } as any);
 
 // Audit writer stub — fire-and-forget, tests don't assert on the side channel.
 const auditLogWriterLayer = Layer.succeed(AuditLogWriter, {

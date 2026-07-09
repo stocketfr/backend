@@ -1,41 +1,45 @@
-import { HttpRouter, HttpServerRequest } from '@effect/platform';
+import { HttpRouter } from '@effect/platform';
 import { Effect } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
 import { UpdateBrandingSchema } from '@stocket/types/branding';
-import { requirePermission } from '../../platform/auth/authorization';
-import { respondJson } from '../../platform/http/errors';
-import { requireSession } from '../../platform/http/session';
+import {
+  emptyInput,
+  jsonBody,
+  tenantRoute,
+} from '../../platform/http/tenant-route';
 import { BrandingUnauthorized } from './branding.errors';
 import { BrandingService } from './service';
 
 export const brandingRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
     '/',
-    Effect.gen(function* () {
-      const brandingService = yield* BrandingService;
-      return yield* respondJson(brandingService.get());
+    tenantRoute({
+      decode: emptyInput,
+      handler: () =>
+        Effect.flatMap(BrandingService, (brandingService) =>
+          brandingService.get(),
+        ),
     }),
   ),
   HttpRouter.put(
     '/',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.SETTINGS, Permission.WRITE);
-      const dto = yield* HttpServerRequest.schemaBodyJson(UpdateBrandingSchema);
-      const session = yield* requireSession;
-      const userId = session.user.id;
+    tenantRoute({
+      permissions: [[Resource.SETTINGS, Permission.WRITE]],
+      decode: jsonBody(UpdateBrandingSchema),
+      session: 'required',
+      handler: ({ input: dto, session }) =>
+        Effect.gen(function* () {
+          if (!session) {
+            return yield* Effect.fail(
+              new BrandingUnauthorized({
+                messageKey: 'branding.sessionUserUnavailable',
+              }),
+            );
+          }
 
-      if (!userId) {
-        return yield* respondJson(
-          Effect.fail(
-            new BrandingUnauthorized({
-              messageKey: 'branding.sessionUserUnavailable',
-            }),
-          ),
-        );
-      }
-
-      const brandingService = yield* BrandingService;
-      return yield* respondJson(brandingService.update(dto, userId));
+          const brandingService = yield* BrandingService;
+          return yield* brandingService.update(dto, session.user.id);
+        }),
     }),
   ),
   HttpRouter.prefixAll('/branding'),

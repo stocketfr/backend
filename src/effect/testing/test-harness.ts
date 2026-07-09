@@ -25,6 +25,7 @@
 import { Effect, Layer } from 'effect';
 import { DrizzleDatabase } from '../platform/db/drizzle';
 import { BetterAuth, BetterAuthHeaders } from '../platform/auth/better-auth';
+import { AppConfig } from '../platform/config/app-config';
 import {
   closeTestDb,
   getTestDb,
@@ -88,6 +89,7 @@ const betterAuthHeadersLayer = Layer.succeed(
  */
 export const testPlatformLayer = Layer.suspend(() =>
   Layer.mergeAll(
+    AppConfig.Default,
     makeTestDrizzleLayer(),
     makeBetterAuthTestLayer(),
     betterAuthHeadersLayer,

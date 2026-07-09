@@ -67,11 +67,11 @@ pnpm tenant:seed:workspace # Seed local tenant + tenant-admin@stocket.fr / admin
 
 ## Shared Types
 
-Shared API contracts live in this workspace as `@stocket/types`.
+Shared API contracts are linked into this workspace as `@stocket/types` from `../packages/types`.
 
 When request/response shapes change:
 
-1. update `packages/types`
+1. update `../packages/types`
 2. run `pnpm --filter @stocket/types barrels`
 3. run `pnpm --filter @stocket/types build`
 4. use the workspace-linked package directly from the API

@@ -8,12 +8,12 @@ For deeper detail on the Effect test harness internals (layers, seeds, Better Au
 
 ## 1. The five test flavors
 
-| Flavor                 | File suffix                  | Runs with                 | Touches DB?         | Use when                                                                                                                             |
-| ---------------------- | ---------------------------- | ------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| **Unit**               | `*.spec.ts`                  | `pnpm test`               | No                  | Testing a service, router, or pure function with mocked dependencies.                                                                |
-| **Effect-native unit** | `*.effect.spec.ts`           | `pnpm test`               | No                  | New unit tests where the test body itself is an Effect (preferred for new code on services with simple wiring).                      |
-| **Property**           | `*.property.spec.ts`         | `pnpm test`               | No                  | Pure functions whose behavior is best expressed as an invariant ("for all inputs, X holds").                                         |
-| **Integration**        | `*.integration.spec.ts`      | `pnpm test:integration`   | Yes (real Postgres) | Testing a service through real Drizzle SQL, transactional behavior, or full HTTP-app composition.                                    |
+| Flavor                 | File suffix                  | Runs with                 | Touches DB?         | Use when                                                                                                                   |
+| ---------------------- | ---------------------------- | ------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **Unit**               | `*.spec.ts`                  | `pnpm test`               | No                  | Testing a service, router, or pure function with mocked dependencies.                                                      |
+| **Effect-native unit** | `*.effect.spec.ts`           | `pnpm test`               | No                  | New unit tests where the test body itself is an Effect (preferred for new code on services with simple wiring).            |
+| **Property**           | `*.property.spec.ts`         | `pnpm test`               | No                  | Pure functions whose behavior is best expressed as an invariant ("for all inputs, X holds").                               |
+| **Integration**        | `*.integration.spec.ts`      | `pnpm test:integration`   | Yes (real Postgres) | Testing a service through real Drizzle SQL, transactional behavior, or full HTTP-app composition.                          |
 | **Mutation**           | n/a (re-runs existing specs) | `pnpm test:mutation:pure` | No                  | Optional quality check for pure utility files. Catches assertions that are too weak to detect off-by-one or boolean flips. |
 
 There is also a **duplication check** (`pnpm test:duplicates`) — not a test flavor, but a signal for excessive copy-paste across spec files.

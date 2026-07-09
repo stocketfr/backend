@@ -53,9 +53,9 @@ describe('Effect SuperAdminService', () => {
   const makeRepository = () => ({
     tenantSlugExists: vi.fn().mockReturnValue(Effect.succeed(false)),
     tenantHostnameExists: vi.fn().mockReturnValue(Effect.succeed(false)),
-    findBetterAuthUserByLoweredEmail: vi.fn().mockReturnValue(
-      Effect.succeed(null),
-    ),
+    findBetterAuthUserByLoweredEmail: vi
+      .fn()
+      .mockReturnValue(Effect.succeed(null)),
     createTenantWithAdmin: vi
       .fn()
       .mockReturnValue(Effect.succeed(createdTenant)),
@@ -206,7 +206,8 @@ describe('Effect SuperAdminService', () => {
           Layer.succeed(BetterAuth, betterAuth as typeof BetterAuth.Service),
           Layer.succeed(
             FeaturesService,
-            (featuresService ?? makeFeaturesService()) as typeof FeaturesService.Service,
+            (featuresService ??
+              makeFeaturesService()) as typeof FeaturesService.Service,
           ),
           Layer.succeed(
             SuperAdminRepository,
@@ -287,7 +288,8 @@ describe('Effect SuperAdminService', () => {
     });
 
     await waitForCall(betterAuth.api.requestPasswordReset);
-    const welcomeRequest = betterAuth.api.requestPasswordReset.mock.calls[0]![0];
+    const welcomeRequest =
+      betterAuth.api.requestPasswordReset.mock.calls[0]![0];
     expect(welcomeRequest.body).toEqual({
       email: 'admin@example.com',
       redirectTo: 'https://acme.localhost:3000/reset-password?flow=welcome',

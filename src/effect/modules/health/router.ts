@@ -2,7 +2,8 @@ import { HttpApiBuilder } from '@effect/platform';
 import { Effect } from 'effect';
 import { AppApi } from '../../http/api';
 import { ServiceDown } from './api';
-import { HealthService, type HealthCheckResponse } from './service';
+import { HealthService } from './service';
+import type { HealthCheckResponse } from './types';
 
 /**
  * HttpApiBuilder implementation for the health group.
@@ -15,32 +16,35 @@ import { HealthService, type HealthCheckResponse } from './service';
  * ServiceDown (annotated with HTTP 503). HttpApiBuilder encodes the correct
  * status code from that annotation automatically.
  */
-export const HealthApiLive = HttpApiBuilder.group(AppApi, 'health', (handlers) =>
-  Effect.gen(function* () {
-    const svc = yield* HealthService;
+export const HealthApiLive = HttpApiBuilder.group(
+  AppApi,
+  'health',
+  (handlers) =>
+    Effect.gen(function* () {
+      const svc = yield* HealthService;
 
-    const toServiceDown = (response: HealthCheckResponse) =>
-      new ServiceDown({ details: response.details });
+      const toServiceDown = (response: HealthCheckResponse) =>
+        new ServiceDown({ details: response.details });
 
-    return handlers
-      .handle('live', () => svc.live)
-      .handle('ready', () =>
-        svc.ready.pipe(
-          Effect.flatMap((response) =>
-            response.status === 'ok'
-              ? Effect.succeed(response)
-              : Effect.fail(toServiceDown(response)),
+      return handlers
+        .handle('live', () => svc.live)
+        .handle('ready', () =>
+          svc.ready.pipe(
+            Effect.flatMap((response) =>
+              response.status === 'ok'
+                ? Effect.succeed(response)
+                : Effect.fail(toServiceDown(response)),
+            ),
           ),
-        ),
-      )
-      .handle('check', () =>
-        svc.healthCheck.pipe(
-          Effect.flatMap((response) =>
-            response.status === 'ok'
-              ? Effect.succeed(response)
-              : Effect.fail(toServiceDown(response)),
+        )
+        .handle('check', () =>
+          svc.healthCheck.pipe(
+            Effect.flatMap((response) =>
+              response.status === 'ok'
+                ? Effect.succeed(response)
+                : Effect.fail(toServiceDown(response)),
+            ),
           ),
-        ),
-      );
-  }),
+        );
+    }),
 );

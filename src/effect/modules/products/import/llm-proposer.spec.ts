@@ -198,4 +198,124 @@ describe('ProductImportLlmProposer', () => {
       ]),
     );
   });
+
+  it('repairs malformed structured proposal fields without trusting the model', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-key');
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        output_text: JSON.stringify({
+          format: 'hallucinated-format',
+          confidence: -3,
+          productIdentity: {
+            sourceColumn: '  ',
+            conflictPolicy: 'overwrite',
+          },
+          categoryMappings: [
+            {
+              sourcePath: 'Accessories / Dental',
+              targetPath: '  ',
+              action: 'rename',
+              rowCount: 999,
+            },
+            {
+              sourcePath: 'Hallucinated Source',
+              targetPath: 'Ignored',
+              action: 'create',
+              rowCount: 1,
+            },
+          ],
+          supplierMappings: [
+            {
+              sourcePattern: '  ',
+              supplierName: 'Ignored Supplier',
+              action: 'create',
+              confidence: 0.7,
+              rowCount: 1,
+            },
+            {
+              sourcePattern: 'Dental',
+              supplierName: 'Dental Supplier',
+              action: 'rename',
+              confidence: 2,
+              rowCount: -4,
+            },
+          ],
+          locationMappings: [
+            {
+              sourceLocation: 'Bay I - Shelf 3',
+              targetLocationName: '  ',
+              areaPath: '  ',
+              action: 'teleport',
+              confidence: 3,
+              rowCount: 999,
+            },
+          ],
+          warnings: [
+            {
+              row: 1.5,
+              field: ' category_path ',
+              severity: 'panic',
+              message: '  Needs review. ',
+            },
+            {
+              severity: 'warning',
+              message: '   ',
+            },
+          ],
+        }),
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const proposal = await runProposer();
+
+    expect(proposal).toMatchObject({
+      format: 'sortly-items',
+      confidence: 0,
+      productIdentity: {
+        sourceColumn: 'SID',
+        conflictPolicy: 'derive-sku',
+      },
+      categoryMappings: [
+        {
+          sourcePath: 'Accessories / Dental',
+          targetPath: 'Accessories / Dental',
+          action: 'create',
+          rowCount: 2,
+        },
+      ],
+      supplierMappings: [
+        {
+          sourcePattern: 'Dental',
+          supplierName: 'Dental Supplier',
+          action: 'ignore',
+          confidence: 1,
+          rowCount: 0,
+        },
+      ],
+      locationMappings: [
+        {
+          sourceLocation: 'Bay I - Shelf 3',
+          action: 'create-area',
+          confidence: 1,
+          rowCount: 2,
+        },
+      ],
+    });
+    expect(proposal.locationMappings[0]).not.toHaveProperty(
+      'targetLocationName',
+    );
+    expect(proposal.locationMappings[0]).not.toHaveProperty('areaPath');
+    expect(proposal.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ severity: 'error', field: 'sku' }),
+        expect.objectContaining({
+          severity: 'warning',
+          field: 'category_path',
+          message: 'Needs review.',
+        }),
+      ]),
+    );
+  });
 });

@@ -55,7 +55,10 @@ code. For unit tests, follow the pattern in
 For integration / router tests where you want a real layer graph, use:
 
 ```ts
-import { makeBetterAuthTestLayer, makeFakeBetterAuthUser } from './better-auth-test';
+import {
+  makeBetterAuthTestLayer,
+  makeFakeBetterAuthUser,
+} from './better-auth-test';
 
 const authLayer = makeBetterAuthTestLayer({
   users: [makeFakeBetterAuthUser({ id: 'user-1', name: 'Jane' })],

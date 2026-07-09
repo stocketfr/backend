@@ -3,69 +3,22 @@ import type {
   CreateUserDto,
   UserQueryDto,
   UserResponseDto,
-  BanUserDto,
 } from '@stocket/types/users';
-import { makeTryAsync } from '../../platform/effect/try-async';
-import { BetterAuth, BetterAuthHeaders } from '../../platform/auth/better-auth';
-import { type LogPayload } from '../../platform/observability/messages';
+import { BetterAuth } from '../../platform/auth/better-auth';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import {
-  requireRequestTenantId,
   type TenantNotResolved,
+  requireRequestTenantId,
 } from '../../platform/tenancy/tenant-context';
 import { RolesService } from '../roles/service';
-import { UserNotFound, UsersInfrastructureError } from './users.errors';
+import type { UserNotFound, UsersInfrastructureError } from './users.errors';
 import { UsersRepository } from './repository';
-import { welcomeRedirectUrl } from './users.utils';
-
-const tryAsync = makeTryAsync(
-  (action, cause) =>
-    new UsersInfrastructureError({
-      action,
-      cause,
-      messageKey: 'users.infrastructureFailed',
-    }),
-);
-
-interface BetterAuthUser {
-  readonly id: string;
-  readonly name?: string | null;
-  readonly email?: string | null;
-  readonly image?: string | null;
-  readonly banned?: boolean | null;
-  readonly banReason?: string | null;
-  readonly banExpires?: string | Date | null;
-  readonly createdAt: string | Date;
-}
-
-interface BetterAuthCreateUserBody {
-  readonly email: string;
-  readonly name: string;
-  readonly password: string;
-  // Admin-created users skip self-serve verification: clicking the emailed
-  // set-password link proves mailbox ownership, and without this flag
-  // `requireEmailVerification` would lock them out of sign-in.
-  readonly data?: { readonly emailVerified: boolean };
-}
-
-interface BetterAuthCreateUserResponse {
-  readonly user: BetterAuthUser;
-}
-
-const toUserResponse = (
-  user: BetterAuthUser,
-  roles: string[],
-): UserResponseDto => ({
-  id: user.id,
-  name: user.name ?? '',
-  email: user.email ?? '',
-  image: user.image ?? null,
-  roles,
-  banned: user.banned ?? false,
-  banReason: user.banReason ?? null,
-  banExpires: user.banExpires ?? null,
-  createdAt: user.createdAt,
-});
+import { toUserResponse } from './mappers';
+import { resolveUserListWindow, toUserListResponse } from './list';
+import { getBetterAuthUserOrFail, requireTenantMemberOrFail } from './access';
+import { requestWelcomeEmail } from './welcome-email';
+import { makeUserWriteWorkflows } from './write';
+import type { BetterAuthCreateUserResponse } from './types';
 
 export class UsersService extends Effect.Service<UsersService>()(
   '@stocket/effect/users/UsersService',
@@ -80,42 +33,10 @@ export class UsersService extends Effect.Service<UsersService>()(
         layer: 'service',
         entityType: 'user',
       });
-      const getBetterAuthUserOrFail = (
-        id: string,
-      ): Effect.Effect<
-        BetterAuthUser,
-        UserNotFound | UsersInfrastructureError
-      > =>
-        Effect.gen(function* () {
-          const user = yield* usersRepository.findBetterAuthUser(id);
-          return user
-            ? yield* Effect.succeed(user)
-            : yield* Effect.fail(
-                new UserNotFound({
-                  id,
-                  messageKey: 'users.notFound',
-                }),
-              );
-        });
-
-      const requireTenantMemberOrFail = (userId: string) =>
-        Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
-          const hasTenantMembership =
-            yield* usersRepository.hasTenantMembership(userId, tenantId);
-
-          yield* Effect.filterOrFail(
-            Effect.succeed(hasTenantMembership),
-            Boolean,
-            () =>
-              new UserNotFound({
-                id: userId,
-                messageKey: 'users.notFound',
-              }),
-          );
-
-          return tenantId;
-        });
+      const requireTenantMember = (userId: string) =>
+        requireTenantMemberOrFail(usersRepository, userId);
+      const getBetterAuthUser = (userId: string) =>
+        getBetterAuthUserOrFail(usersRepository, userId);
 
       const getUser = trace.traced(
         'getUser',
@@ -126,8 +47,8 @@ export class UsersService extends Effect.Service<UsersService>()(
           UserNotFound | UsersInfrastructureError | TenantNotResolved
         > =>
           Effect.gen(function* () {
-            const tenantId = yield* requireTenantMemberOrFail(id);
-            const user = yield* getBetterAuthUserOrFail(id);
+            const tenantId = yield* requireTenantMember(id);
+            const user = yield* getBetterAuthUser(id);
             const roleEntities = yield* usersRepository.findUserRoles(
               id,
               tenantId,
@@ -144,9 +65,7 @@ export class UsersService extends Effect.Service<UsersService>()(
       const listUsers = trace.traced('listUsers', (query: UserQueryDto) =>
         Effect.gen(function* () {
           const tenantId = yield* requireRequestTenantId;
-          const page = query.page ?? 1;
-          const limit = query.limit ?? 20;
-          const offset = (page - 1) * limit;
+          const { page, limit, offset } = resolveUserListWindow(query);
 
           const { users, total } = yield* usersRepository.listTenantUsers({
             tenantId,
@@ -160,175 +79,65 @@ export class UsersService extends Effect.Service<UsersService>()(
             tenantId,
           );
 
-          const rolesByUserId = new Map<string, string[]>();
-          for (const assignment of assignments) {
-            const roleNames = rolesByUserId.get(assignment.user_id) ?? [];
-            roleNames.push(assignment.role.name);
-            rolesByUserId.set(assignment.user_id, roleNames);
-          }
-
-          return {
-            data: users.map((user) =>
-              toUserResponse(user, rolesByUserId.get(user.id) ?? []),
-            ),
+          return toUserListResponse({
+            users,
+            assignments,
             total,
             page,
             limit,
-            total_pages: Math.ceil(total / limit),
-          };
+          });
         }),
       );
 
-      // Welcome emails reuse the password-reset machinery: the `flow=welcome`
-      // marker in `redirectTo` is what flips the template. Failures only log —
-      // user creation must never roll back because an email could not be sent.
-      const requestWelcomeEmail = (email: string) =>
-        Effect.gen(function* () {
-          const headers = yield* BetterAuthHeaders;
-          const redirectTo = welcomeRedirectUrl(headers.get('origin'));
-          yield* Effect.tryPromise(() =>
-            betterAuth.api.requestPasswordReset({
-              body: { email, redirectTo },
-              headers,
-              // better-auth only forwards ctx.request to the sendResetPassword
-              // hook; without it the email loses the Accept-Language locale.
-              request: new Request(redirectTo, { headers }),
-            }),
-          );
-        }).pipe(
-          Effect.catchAll((cause) =>
-            Effect.logError({
-              messageKey: 'email.welcomeRequestFailed',
-              to: email,
-              cause,
-            } satisfies LogPayload),
-          ),
-        );
+      const userWriteWorkflows = makeUserWriteWorkflows({
+        repository: usersRepository,
+        createAuthUser: (body) =>
+          betterAuth.api.createUser({
+            body,
+          }) as Promise<BetterAuthCreateUserResponse>,
+        requestWelcomeEmail: (email) =>
+          requestWelcomeEmail({
+            email,
+            requestPasswordReset: (request) =>
+              betterAuth.api.requestPasswordReset(request),
+          }),
+        requireTenantMember,
+        getBetterAuthUser,
+        getUser,
+        clearCacheForUser: rolesService.clearCacheForUser,
+      });
 
       const createUser = trace.traced('createUser', (dto: CreateUserDto) =>
-          Effect.gen(function* () {
-            const tenantId = yield* requireRequestTenantId;
-
-            yield* usersRepository.validateRoleIds(dto.roles, tenantId);
-            const result = yield* tryAsync(
-              'create user in auth provider',
-              () =>
-                betterAuth.api.createUser({
-                  body: {
-                    email: dto.email,
-                    name: dto.name,
-                    password: dto.password,
-                    data: { emailVerified: true },
-                  } satisfies BetterAuthCreateUserBody,
-                }) as Promise<BetterAuthCreateUserResponse>,
-            );
-          const userId = result.user.id;
-
-          yield* Effect.gen(function* () {
-            yield* usersRepository.createTenantMembership(userId, tenantId);
-            yield* usersRepository.replaceUserRoles(
-              userId,
-              dto.roles,
-              tenantId,
-            );
-            yield* rolesService.clearCacheForUser(userId);
-          }).pipe(
-            Effect.tapError(() =>
-              Effect.all(
-                [
-                  usersRepository.deleteUserRoles(userId, tenantId),
-                  usersRepository.deleteTenantMembership(userId, tenantId),
-                  usersRepository.deleteBetterAuthUser(userId),
-                ],
-                { discard: true },
-              ).pipe(Effect.ignore),
-            ),
-          );
-
-          yield* Effect.forkDaemon(requestWelcomeEmail(dto.email));
-
-          const roleEntities = yield* usersRepository.findUserRoles(
-            userId,
-            tenantId,
-          );
-
-          return toUserResponse(
-            result.user,
-            roleEntities.map((roleEntity) => roleEntity.role.name),
-          );
-        }),
+        userWriteWorkflows.createUser(dto),
       );
 
       const updateRoles = trace.traced(
         'updateRoles',
-        (userId: string, roleIds: string[]) =>
-          Effect.gen(function* () {
-            const tenantId = yield* requireTenantMemberOrFail(userId);
-            yield* getBetterAuthUserOrFail(userId);
-            yield* usersRepository.replaceUserRoles(userId, roleIds, tenantId);
-
-            yield* rolesService.clearCacheForUser(userId);
-
-            return yield* getUser(userId);
-          }),
+        userWriteWorkflows.updateRoles,
         (userId) => ({ attributes: { userId } }),
       );
 
       const banUser = trace.traced(
         'banUser',
-        (userId: string, dto: BanUserDto) =>
-          Effect.gen(function* () {
-            yield* requireTenantMemberOrFail(userId);
-            yield* getBetterAuthUserOrFail(userId);
-            yield* usersRepository.banBetterAuthUser(userId, {
-              reason: dto.reason,
-              expiresAt: dto.expiresAt,
-            });
-
-            return yield* getUser(userId);
-          }),
+        userWriteWorkflows.banUser,
         (userId) => ({ attributes: { userId } }),
       );
 
       const unbanUser = trace.traced(
         'unbanUser',
-        (userId: string) =>
-          Effect.gen(function* () {
-            yield* requireTenantMemberOrFail(userId);
-            yield* getBetterAuthUserOrFail(userId);
-            yield* usersRepository.unbanBetterAuthUser(userId);
-
-            return yield* getUser(userId);
-          }),
+        userWriteWorkflows.unbanUser,
         (userId) => ({ attributes: { userId } }),
       );
 
       const deleteUser = trace.traced(
         'deleteUser',
-        (userId: string) =>
-          Effect.gen(function* () {
-            const tenantId = yield* requireTenantMemberOrFail(userId);
-            yield* getBetterAuthUserOrFail(userId);
-            yield* usersRepository.deleteUserRoles(userId, tenantId);
-            yield* usersRepository.deleteTenantMembership(userId, tenantId);
-            const hasRemainingTenantMemberships =
-              yield* usersRepository.hasTenantMemberships(userId);
-
-            if (!hasRemainingTenantMemberships) {
-              yield* usersRepository.deleteBetterAuthUser(userId);
-            }
-          }),
+        userWriteWorkflows.deleteUser,
         (userId) => ({ attributes: { userId } }),
       );
 
       const revokeSessions = trace.traced(
         'revokeSessions',
-        (userId: string) =>
-          Effect.gen(function* () {
-            yield* requireTenantMemberOrFail(userId);
-            yield* getBetterAuthUserOrFail(userId);
-            yield* usersRepository.deleteBetterAuthSessions(userId);
-          }),
+        userWriteWorkflows.revokeSessions,
         (userId) => ({ attributes: { userId } }),
       );
 

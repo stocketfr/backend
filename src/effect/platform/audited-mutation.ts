@@ -1,26 +1,45 @@
 import { type HttpServerResponse } from '@effect/platform';
 import { Effect } from 'effect';
-import type {
-  AuditAction,
-  AuditEntityType,
-} from '@stocket/types/audit-logs';
+import type { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
 import { AuditLogWriter } from './audit/index';
-import { respondJson } from './http/errors';
+import { respondEmpty, respondJson } from './http/errors';
 
-type EntityIdResolver<A> = string | ((result: A) => string);
+type EntityIdResolver<A> =
+  | string
+  | readonly string[]
+  | ((result: A) => string | readonly string[]);
 
-export interface AuditedMutationOptions<A, B = A> {
+interface BaseAuditedMutationOptions<A> {
   readonly action: AuditAction;
   readonly entityType: AuditEntityType;
   readonly entityId: EntityIdResolver<A>;
+}
+
+interface JsonAuditedMutationOptions<
+  A,
+  B = A,
+> extends BaseAuditedMutationOptions<A> {
+  readonly response?: 'json';
   readonly mapResponse?: (result: A) => B;
   readonly responseOptions?: HttpServerResponse.Options.WithContentType;
 }
 
-const resolveEntityId = <A>(
+interface EmptyAuditedMutationOptions<A> extends BaseAuditedMutationOptions<A> {
+  readonly response: 'empty';
+  readonly responseOptions?: HttpServerResponse.Options.WithContent;
+}
+
+export type AuditedMutationOptions<A, B = A> =
+  | JsonAuditedMutationOptions<A, B>
+  | EmptyAuditedMutationOptions<A>;
+
+const resolveEntityIds = <A>(
   entityId: EntityIdResolver<A>,
   result: A,
-): string => (typeof entityId === 'function' ? entityId(result) : entityId);
+): readonly string[] => {
+  const resolved = typeof entityId === 'function' ? entityId(result) : entityId;
+  return typeof resolved === 'string' ? [resolved] : resolved;
+};
 
 export const respondAuditedMutation = <A, E, R, B = A>(
   mutation: Effect.Effect<A, E, R>,
@@ -30,16 +49,29 @@ export const respondAuditedMutation = <A, E, R, B = A>(
     const auditLogWriter = yield* AuditLogWriter;
     const auditedMutation = mutation.pipe(
       Effect.tap((result) =>
-        auditLogWriter.log({
-          action: options.action,
-          entityType: options.entityType,
-          entityId: resolveEntityId(options.entityId, result),
-        }),
-      ),
-      Effect.map((result) =>
-        options.mapResponse ? options.mapResponse(result) : result,
+        Effect.forEach(
+          resolveEntityIds(options.entityId, result),
+          (entityId) =>
+            auditLogWriter.log({
+              action: options.action,
+              entityType: options.entityType,
+              entityId,
+            }),
+          { discard: true },
+        ),
       ),
     );
 
-    return yield* respondJson(auditedMutation, options.responseOptions);
+    if (options.response === 'empty') {
+      return yield* respondEmpty(auditedMutation, options.responseOptions);
+    }
+
+    return yield* respondJson(
+      auditedMutation.pipe(
+        Effect.map((result) =>
+          options.mapResponse ? options.mapResponse(result) : result,
+        ),
+      ),
+      options.responseOptions,
+    );
   });

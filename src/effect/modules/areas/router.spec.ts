@@ -81,11 +81,16 @@ const makeHandler = (
   service: Partial<Context.Tag.Service<typeof AreasService>>,
   permissions: Partial<Record<Resource, Permission[]>> = fullPermissions,
 ) => {
-  const wrappedRouter = areasRouter.pipe(HttpRouter.catchAllCause(respondCause));
+  const wrappedRouter = areasRouter.pipe(
+    HttpRouter.catchAllCause(respondCause),
+  );
   const app = Effect.runSync(HttpRouter.toHttpApp(wrappedRouter));
 
   const envLayer = Layer.mergeAll(
-    Layer.succeed(AreasService, service as Context.Tag.Service<typeof AreasService>),
+    Layer.succeed(
+      AreasService,
+      service as Context.Tag.Service<typeof AreasService>,
+    ),
     betterAuthLayer,
     permissionProviderLayer(permissions),
     auditLayer,

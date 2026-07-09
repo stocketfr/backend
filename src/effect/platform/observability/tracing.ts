@@ -1,19 +1,21 @@
 import { NodeSdk } from '@effect/opentelemetry';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { readTracingRuntimeConfig } from '../config/observability-config';
 
-export const TracingLive = NodeSdk.layer(() => ({
-  resource: {
-    serviceName: 'stocket-api',
-    attributes: {
-      'deployment.environment': process.env.NODE_ENV,
+export const TracingLive = NodeSdk.layer(() => {
+  const config = readTracingRuntimeConfig();
+  return {
+    resource: {
+      serviceName: 'stocket-api',
+      attributes: {
+        'deployment.environment': config.deploymentEnvironment,
+      },
     },
-  },
-  spanProcessor: new BatchSpanProcessor(
-    new OTLPTraceExporter({
-      url:
-        process.env.OTEL_EXPORTER_OTLP_ENDPOINT ??
-        'http://localhost:4318/v1/traces',
-    }),
-  ),
-}));
+    spanProcessor: new BatchSpanProcessor(
+      new OTLPTraceExporter({
+        url: config.otlpTraceEndpoint,
+      }),
+    ),
+  };
+});
