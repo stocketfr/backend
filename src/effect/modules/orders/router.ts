@@ -9,7 +9,6 @@ import {
 } from '@stocket/types/orders';
 import { Permission, Resource } from '@stocket/types/auth';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
-import { FeatureKey } from '@stocket/types/features';
 import { respondAuditedMutation } from '../../platform/audited-mutation';
 import {
   jsonBody,
@@ -20,13 +19,10 @@ import {
   tenantRoute,
 } from '../../platform/http/tenant-route';
 import { makeMessageResponse } from '../../platform/observability/messages';
-import { FeaturesService } from '../features/service';
+import { requireOrdersFeature } from './access';
 import { OrdersService } from './service';
 
 const OrderPathParams = Schema.Struct({ id: OrderIdSchema });
-const requireOrdersFeature = Effect.flatMap(FeaturesService, (features) =>
-  features.requireFeature(FeatureKey.ORDERS),
-);
 
 export const ordersRouter = HttpRouter.empty.pipe(
   HttpRouter.get(

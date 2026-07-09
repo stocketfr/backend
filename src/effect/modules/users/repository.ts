@@ -7,6 +7,7 @@ import { executeRows } from '../../platform/db/execute-rows';
 import { TenantQuery } from '../../platform/tenancy/tenant-query';
 import { userRoles, roles, members } from '../../platform/db/schema';
 import { UsersInfrastructureError } from './users.errors';
+import { TenantUserRowSchema } from './types';
 
 const tryAsync = makeTryAsync(
   (action, cause) =>
@@ -16,19 +17,6 @@ const tryAsync = makeTryAsync(
       messageKey: 'users.repositoryFailed',
     }),
 );
-
-const TenantUserRowSchema = Schema.Struct({
-  id: Schema.String,
-  name: Schema.NullOr(Schema.String),
-  email: Schema.NullOr(Schema.String),
-  image: Schema.NullOr(Schema.String),
-  banned: Schema.NullOr(Schema.Boolean),
-  banReason: Schema.NullOr(Schema.String),
-  banExpires: Schema.NullOr(Schema.Date),
-  createdAt: Schema.Date,
-});
-
-export type TenantUserRow = Schema.Schema.Type<typeof TenantUserRowSchema>;
 
 const TenantUserCountRowSchema = Schema.Struct({
   total: Schema.Number,

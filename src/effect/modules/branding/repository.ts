@@ -8,8 +8,6 @@ import { TenantQuery } from '../../platform/tenancy/tenant-query';
 import { BRANDING_SETTINGS_ID, DEFAULT_BRANDING } from './branding.constants';
 import { BrandingInfrastructureError } from './branding.errors';
 
-export type BrandingSettingsRow = typeof brandingSettings.$inferSelect;
-
 const tryAsync = makeTryAsync(
   (action, cause) =>
     new BrandingInfrastructureError({

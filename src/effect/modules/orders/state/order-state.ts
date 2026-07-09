@@ -1,9 +1,8 @@
 import { OrderStatus } from '@stocket/types/orders';
-import type { orders } from '../../../platform/db/schema';
+import type { OrderRow } from '../types';
 
-type Order = typeof orders.$inferSelect;
 type OrderStatusTimestampField = Extract<
-  keyof Order,
+  keyof OrderRow,
   'confirmed_at' | 'shipped_at' | 'delivered_at'
 >;
 
@@ -18,7 +17,7 @@ export abstract class OrderState {
     }
   }
 
-  validateEntry(_order: Order): void {
+  validateEntry(_order: OrderRow): void {
     // No-op by default. Override in subclasses to add entry guards
     // e.g. ShippedState could verify all items are packed.
   }

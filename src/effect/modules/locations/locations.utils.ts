@@ -1,18 +1,32 @@
-import type { LocationResponseDto } from '@stocket/types/locations';
-import type { locations } from '../../platform/db/schema';
+import type {
+  CreateLocationDto,
+  UpdateLocationDto,
+} from '@stocket/types/locations';
+import { pickDefined } from '../../platform/effect/pick-defined';
+import type {
+  LocationCreateValues,
+  LocationUpdateValues,
+} from './types';
 
-type Location = typeof locations.$inferSelect;
+export const toLocationCreateValues = (
+  dto: CreateLocationDto,
+): LocationCreateValues => ({
+  name: dto.name,
+  type: dto.type,
+  address: dto.address ?? '',
+  contact_person: dto.contact_person ?? '',
+  phone: dto.phone ?? '',
+  is_active: dto.is_active ?? true,
+});
 
-export function toLocationResponseDto(location: Location): LocationResponseDto {
-  return {
-    id: location.id,
-    name: location.name,
-    type: location.type,
-    address: location.address,
-    contact_person: location.contact_person,
-    phone: location.phone,
-    is_active: location.is_active,
-    created_at: location.created_at,
-    updated_at: location.updated_at,
-  };
-}
+export const toLocationUpdateValues = (
+  dto: UpdateLocationDto,
+): LocationUpdateValues =>
+  pickDefined<LocationUpdateValues>([
+    ['name', dto.name],
+    ['type', dto.type],
+    ['address', dto.address],
+    ['contact_person', dto.contact_person],
+    ['phone', dto.phone],
+    ['is_active', dto.is_active],
+  ]);

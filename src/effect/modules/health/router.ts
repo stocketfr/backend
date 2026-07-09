@@ -2,7 +2,8 @@ import { HttpApiBuilder } from '@effect/platform';
 import { Effect } from 'effect';
 import { AppApi } from '../../http/api';
 import { ServiceDown } from './api';
-import { HealthService, type HealthCheckResponse } from './service';
+import { HealthService } from './service';
+import type { HealthCheckResponse } from './types';
 
 /**
  * HttpApiBuilder implementation for the health group.

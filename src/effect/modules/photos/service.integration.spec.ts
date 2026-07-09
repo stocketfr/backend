@@ -9,12 +9,13 @@ import {
 import { photos, categories, products } from '../../platform/db/schema';
 import { randomUUID } from 'node:crypto';
 import type { DrizzleDb } from '../../platform/db/drizzle';
-import { PhotosService, type UploadedFile } from './service';
+import { PhotosService } from './service';
 import {
   makeInMemoryStorageAdapter,
   StorageAdapter,
   type InMemoryStorageAdapter,
 } from '../../platform/storage';
+import type { UploadedFile } from './types';
 
 // Valid magic-byte headers, padded so that they pass matchesMagicBytes
 // (JPEG requires 0xff 0xd8 0xff at offset 0; PNG requires 0x89 0x50 0x4e 0x47).

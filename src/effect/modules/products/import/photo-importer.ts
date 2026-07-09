@@ -1,9 +1,10 @@
 import { Effect } from 'effect';
 import type { PhotoResponseDto } from '@stocket/types/photos';
-import { PhotosService, type UploadedFile } from '../../photos/service';
+import { PhotosService } from '../../photos/service';
+import type { UploadedFile } from '../../photos/types';
 import { toError } from '../../../platform/effect/to-error';
 import { makeServiceTracer } from '../../../platform/observability/service-tracer';
-import { isSupportedSortlyPhotoUrl } from './utils';
+import { isSupportedSortlyPhotoUrl } from './utils/csv';
 
 const MAX_REMOTE_PHOTO_SIZE = 10 * 1024 * 1024;
 const PHOTO_FETCH_TIMEOUT_MS = 15_000;

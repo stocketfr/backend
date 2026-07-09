@@ -1,9 +1,5 @@
-import type {
-  CreateStockMovementSchema,
-  StockMovementQueryDto,
-} from '@stocket/types/stock-movements';
+import type { StockMovementQueryDto } from '@stocket/types/stock-movements';
 import { toPaginatedResponse } from '@stocket/types/common';
-import type { Schema } from 'effect';
 import { Effect } from 'effect';
 import { makeEnsureExistsById } from '../../platform/effect/existence';
 import { makeGetOrFail } from '../../platform/effect/from-null-or';
@@ -12,19 +8,13 @@ import { LocationsService } from '../locations/service';
 import { ProductsService } from '../products/service';
 import { StockMovementsRepository } from './repository';
 import {
-  InvalidDestinationLocation,
-  InvalidSourceLocation,
-  InvalidStockMovementOrder,
-  InvalidStockMovementProduct,
   StockMovementLocationNotFound,
   StockMovementNotFound,
   StockMovementProductNotFound,
 } from './stock-movements.errors';
-import { toStockMovementResponseDto } from './stock-movements.utils';
-
-type CreateStockMovementDto = Schema.Schema.Type<
-  typeof CreateStockMovementSchema
->;
+import { toStockMovementResponseDto } from './mappers';
+import type { CreateStockMovementDto } from './types';
+import { makeStockMovementWriteWorkflows } from './write';
 
 export class StockMovementsService extends Effect.Service<StockMovementsService>()(
   '@stocket/effect/stock-movements/StockMovementsService',
@@ -66,42 +56,6 @@ export class StockMovementsService extends Effect.Service<StockMovementsService>
           }),
       );
 
-      const ensureProductForCreate = makeEnsureExistsById(
-        productsService.existsById,
-        (productId) =>
-          new InvalidStockMovementProduct({
-            productId,
-            messageKey: 'stockMovements.productNotFound',
-          }),
-      );
-
-      const ensureSourceLocationForCreate = makeEnsureExistsById(
-        locationsService.existsById,
-        (locationId) =>
-          new InvalidSourceLocation({
-            locationId,
-            messageKey: 'stockMovements.sourceLocationNotFound',
-          }),
-      );
-
-      const ensureDestinationLocationForCreate = makeEnsureExistsById(
-        locationsService.existsById,
-        (locationId) =>
-          new InvalidDestinationLocation({
-            locationId,
-            messageKey: 'stockMovements.destinationLocationNotFound',
-          }),
-      );
-
-      const ensureOrderForCreate = makeEnsureExistsById(
-        repository.orderExistsById,
-        (orderId) =>
-          new InvalidStockMovementOrder({
-            orderId,
-            messageKey: 'stockMovements.orderNotFound',
-          }),
-      );
-
       const findAllPaginated = (query: StockMovementQueryDto) =>
         Effect.map(repository.findAllPaginated(query), (result) =>
           toPaginatedResponse(result, toStockMovementResponseDto),
@@ -136,40 +90,14 @@ export class StockMovementsService extends Effect.Service<StockMovementsService>
           }),
         );
 
+      const stockMovementWriteWorkflows = makeStockMovementWriteWorkflows({
+        repository,
+        productExists: productsService.existsById,
+        locationExists: locationsService.existsById,
+      });
+
       const create = (dto: CreateStockMovementDto, userId: string) =>
-        Effect.gen(function* () {
-          yield* ensureProductForCreate(dto.product_id);
-
-          if (dto.from_location_id) {
-            yield* ensureSourceLocationForCreate(dto.from_location_id);
-          }
-
-          if (dto.to_location_id) {
-            yield* ensureDestinationLocationForCreate(dto.to_location_id);
-          }
-
-          if (dto.order_id) {
-            yield* ensureOrderForCreate(dto.order_id);
-          }
-
-          const stockMovement = yield* repository.create({
-            product_id: dto.product_id,
-            from_location_id: dto.from_location_id ?? null,
-            to_location_id: dto.to_location_id ?? null,
-            quantity: dto.quantity,
-            reason: dto.reason,
-            order_id: dto.order_id ?? null,
-            reference_number: dto.reference_number ?? null,
-            cost_per_unit: dto.cost_per_unit ?? null,
-            notes: dto.notes ?? null,
-            user_id: userId,
-          });
-
-          const stockMovementWithRelations = yield* getMovementOrFail(
-            stockMovement.id,
-          );
-          return toStockMovementResponseDto(stockMovementWithRelations);
-        }).pipe(
+        stockMovementWriteWorkflows.create(dto, userId).pipe(
           trace.span('create', {
             attributes: { productId: dto.product_id },
           }),

@@ -24,11 +24,6 @@ const tryAsync = makeTryAsync(
     }),
 );
 
-export type TenantEntitlementProfileRow =
-  typeof tenantEntitlementProfiles.$inferSelect;
-export type TenantFeatureOverrideRow =
-  typeof tenantFeatureOverrides.$inferSelect;
-
 export class FeaturesRepository extends Effect.Service<FeaturesRepository>()(
   '@stocket/effect/features/FeaturesRepository',
   {

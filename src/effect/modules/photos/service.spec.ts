@@ -1,5 +1,5 @@
 import { Effect, Layer } from 'effect';
-import { PhotosService, type UploadedFile } from './service';
+import { PhotosService } from './service';
 import { PhotosRepository } from './repository';
 import type { photos } from '../../platform/db/schema';
 import { makeTestLayer } from '../../testing/utils';
@@ -9,6 +9,7 @@ import {
   type InMemoryStorageAdapter,
 } from '../../platform/storage';
 import { PhotosInfrastructureError } from './photos.errors';
+import type { UploadedFile } from './types';
 
 type PhotoEntity = typeof photos.$inferSelect;
 type CreatePhotoInput = Parameters<PhotosRepository['create']>[0];

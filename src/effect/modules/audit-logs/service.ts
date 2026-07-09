@@ -6,29 +6,15 @@ import {
 } from '@stocket/types/audit-logs';
 import { toPaginatedResponse } from '@stocket/types/common';
 import { makeGetOrFail } from '../../platform/effect/from-null-or';
-import type { auditLogs } from '../../platform/db/schema';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
-import type { AuditLogQueryOptions, AuditLogRowWithUser } from './repository';
+import type { AuditLogQueryOptions } from './repository';
 import {
   AuditLogNotFound,
   type AuditLogsInfrastructureError,
 } from './audit-logs.errors';
 import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { AuditLogsRepository } from './repository';
-
-type AuditLog = typeof auditLogs.$inferSelect | AuditLogRowWithUser;
-
-const toAuditLogResponseDto = (auditLog: AuditLog): AuditLogResponseDto => ({
-  id: auditLog.id,
-  user_id: auditLog.user_id,
-  user_name: 'user_name' in auditLog ? auditLog.user_name : null,
-  action: auditLog.action,
-  entity_type: auditLog.entity_type,
-  entity_id: auditLog.entity_id,
-  changes: auditLog.changes as AuditLogResponseDto['changes'],
-  user_agent: auditLog.user_agent,
-  created_at: auditLog.created_at,
-});
+import { toAuditLogResponseDto } from './mappers';
 
 export class AuditLogsService extends Effect.Service<AuditLogsService>()(
   '@stocket/effect/audit-logs/AuditLogsService',

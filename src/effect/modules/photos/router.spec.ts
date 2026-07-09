@@ -34,7 +34,8 @@ import {
   PhotosInfrastructureError,
 } from './photos.errors';
 import { makePhotosRouterHarness } from './__fixtures__/router-harness';
-import { PhotosService, type UploadedFile } from './service';
+import { PhotosService } from './service';
+import type { UploadedFile } from './types';
 
 // ---------------------------------------------------------------------------
 // Module mocks — must be declared before imports that use them are resolved.

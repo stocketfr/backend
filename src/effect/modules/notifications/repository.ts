@@ -23,7 +23,12 @@ import {
 } from '../../platform/db/schema';
 import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { NotificationsInfrastructureError } from './notifications.errors';
-import type { NotificationEventKind, NotificationStatus } from './types';
+import type {
+  NotificationEventKind,
+  NotificationStatus,
+  PreferenceInput,
+  StoredPreferenceRow,
+} from './types';
 
 // A tenant user eligible for an alert, plus their stored email preference
 // for the category (null when they've never set one — resolved via effectivePref).
@@ -32,12 +37,6 @@ export interface AudienceCandidate {
   readonly email: string | null;
   readonly locale: string | null;
   readonly emailEnabled: boolean | null;
-}
-
-export interface StoredPreferenceRow {
-  readonly category: string;
-  readonly channel: string;
-  readonly enabled: boolean;
 }
 
 // A product/location below its reorder point for one tenant (drives low-stock
@@ -58,12 +57,6 @@ export interface RecordPendingParams {
   readonly category: NotificationCategory;
   readonly channel: NotificationChannel;
   readonly dedupeKey: string | null;
-}
-
-export interface PreferenceInput {
-  readonly category: NotificationCategory;
-  readonly channel: NotificationChannel;
-  readonly enabled: boolean;
 }
 
 const tryAsync = makeTryAsync(

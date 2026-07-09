@@ -3,7 +3,8 @@ import { Effect, Layer } from 'effect';
 import { OrderStatus } from '@stocket/types/orders';
 import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { InventoryRepository } from '../inventory/repository';
-import { OrderItemsRepository, OrdersRepository } from '../orders/repository';
+import { OrderItemsRepository } from '../orders/order-items.repository';
+import { OrdersRepository } from '../orders/repository';
 import { StockMovementsRepository } from '../stock-movements/repository';
 import { FulfillmentService } from './service';
 

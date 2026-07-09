@@ -13,15 +13,12 @@ import {
 import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { areas, locations } from '../../platform/db/schema';
+import { AreasInfrastructureError } from './areas.errors';
 import {
-  AreaLocationNotFound,
-  AreaParentLocationMismatch,
-  AreasInfrastructureError,
-  ParentAreaNotFound,
-} from './areas.errors';
-
-type AreaRow = typeof areas.$inferSelect;
-type AreaWithChildren = AreaRow & { children?: AreaWithChildren[] };
+  validateAreaReferences,
+  type AreaReferenceLookup,
+} from './reference-validation';
+import type { AreaWithChildren } from './types';
 
 const tryAsync = makeTryAsync(
   (action, cause) =>
@@ -46,6 +43,39 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
           eq(areas.location_id, locations.id),
           tenantScope.tenantPredicate(locations),
         );
+      const referenceLookup: AreaReferenceLookup = {
+        locationExists: (locationId) =>
+          Effect.gen(function* () {
+            const where = yield* tenantQuery.whereTenantId(
+              locations,
+              locationId,
+            );
+            const locationRows = yield* tryAsync(
+              'validate area location',
+              async () =>
+                db
+                  .select({ id: locations.id })
+                  .from(locations)
+                  .where(where)
+                  .limit(1),
+            );
+            return locationRows.length > 0;
+          }),
+        findParentArea: (parentId) =>
+          Effect.gen(function* () {
+            const where = yield* tenantQuery.whereTenantId(areas, parentId);
+            const parentRows = yield* tryAsync(
+              'validate parent area',
+              async () =>
+                db
+                  .select({ id: areas.id, location_id: areas.location_id })
+                  .from(areas)
+                  .where(where)
+                  .limit(1),
+            );
+            return parentRows[0] ?? null;
+          }),
+      };
 
       const loadChildrenRecursively = (
         area: AreaWithChildren,
@@ -67,78 +97,12 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
           });
         });
 
-      const validateAreaReferences = (
-        dto: { location_id?: string; parent_id?: string | null },
-        currentLocationId?: string,
-      ) =>
-        Effect.gen(function* () {
-          const effectiveLocationId = dto.location_id ?? currentLocationId;
-
-          if (dto.location_id) {
-            const where = yield* tenantQuery.whereTenantId(
-              locations,
-              dto.location_id,
-            );
-            const locationRows = yield* tryAsync(
-              'validate area location',
-              async () =>
-                db
-                  .select({ id: locations.id })
-                  .from(locations)
-                  .where(where)
-                  .limit(1),
-            );
-            if (locationRows.length === 0) {
-              return yield* Effect.fail(
-                new AreaLocationNotFound({
-                  locationId: dto.location_id,
-                  messageKey: 'areas.locationNotFound',
-                }),
-              );
-            }
-          }
-
-          if (dto.parent_id) {
-            const where = yield* tenantQuery.whereTenantId(
-              areas,
-              dto.parent_id,
-            );
-            const parentRows = yield* tryAsync(
-              'validate parent area',
-              async () =>
-                db
-                  .select({ id: areas.id, location_id: areas.location_id })
-                  .from(areas)
-                  .where(where)
-                  .limit(1),
-            );
-            const parent = parentRows[0];
-            if (!parent) {
-              return yield* Effect.fail(
-                new ParentAreaNotFound({
-                  parentId: dto.parent_id,
-                  messageKey: 'areas.parentNotFound',
-                }),
-              );
-            }
-            if (
-              effectiveLocationId !== undefined &&
-              parent.location_id !== effectiveLocationId
-            ) {
-              return yield* Effect.fail(
-                new AreaParentLocationMismatch({
-                  parentId: dto.parent_id,
-                  locationId: effectiveLocationId,
-                  messageKey: 'areas.parentLocationMismatch',
-                }),
-              );
-            }
-          }
-        });
-
       const create = (dto: CreateAreaDto) =>
         Effect.gen(function* () {
-          yield* validateAreaReferences(dto);
+          yield* validateAreaReferences({
+            lookup: referenceLookup,
+            dto,
+          });
           const values = yield* tenantQuery.insertValues({
             ...dto,
             parent_id: dto.parent_id ?? null,
@@ -269,7 +233,11 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
 
           if (!existing[0]) return null;
 
-          yield* validateAreaReferences(dto, existing[0].area.location_id);
+          yield* validateAreaReferences({
+            lookup: referenceLookup,
+            dto,
+            currentLocationId: existing[0].area.location_id,
+          });
 
           return yield* tryAsync('update area', async () => {
             await db

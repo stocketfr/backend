@@ -1,62 +1,25 @@
-import * as crypto from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import type { PhotoResponseDto } from '@stocket/types/photos';
 import { fromNullOr } from '../../platform/effect/from-null-or';
-import { StorageAdapter, type StorageError } from '../../platform/storage';
+import { StorageAdapter } from '../../platform/storage';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
-import { toPhotoResponseDto } from './photos.utils';
+import { toPhotoResponseDto } from './mappers';
 import {
-  InvalidPhotoMimeType,
+  type InvalidPhotoMimeType,
   PhotoFileNotFound,
   PhotoNotFound,
-  PhotoTooLarge,
-  PhotosInfrastructureError,
+  type PhotoTooLarge,
+  type PhotosInfrastructureError,
 } from './photos.errors';
 import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { PhotosRepository } from './repository';
-
-const ALLOWED_MIMETYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif',
-];
-
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
-
-const MIME_EXT_MAP: Record<string, string> = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-  'image/gif': '.gif',
-};
-
-const MAGIC_SIGNATURES: Record<string, { bytes: number[]; offset: number }[]> =
-  {
-    'image/jpeg': [{ bytes: [0xff, 0xd8, 0xff], offset: 0 }],
-    'image/png': [{ bytes: [0x89, 0x50, 0x4e, 0x47], offset: 0 }],
-    'image/gif': [{ bytes: [0x47, 0x49, 0x46, 0x38], offset: 0 }],
-    'image/webp': [
-      { bytes: [0x52, 0x49, 0x46, 0x46], offset: 0 },
-      { bytes: [0x57, 0x45, 0x42, 0x50], offset: 8 },
-    ],
-  };
-
-function matchesMagicBytes(buffer: Buffer, declaredMime: string): boolean {
-  const signatures = MAGIC_SIGNATURES[declaredMime];
-  if (!signatures) return false;
-
-  return signatures.every(({ bytes, offset }) =>
-    bytes.every((byte, i) => buffer[offset + i] === byte),
-  );
-}
-
-export interface UploadedFile {
-  readonly originalname: string;
-  readonly mimetype: string;
-  readonly size: number;
-  readonly buffer: Buffer;
-}
+import type { PhotoFileResult, UploadedFile } from './types';
+import { makePhotoUploadWorkflow } from './upload';
+import {
+  mapPhotoStorageDeleteError,
+  mapPhotoStorageReadError,
+} from './storage-errors';
 
 export class PhotosService extends Effect.Service<PhotosService>()(
   '@stocket/effect/photos/PhotosService',
@@ -70,35 +33,17 @@ export class PhotosService extends Effect.Service<PhotosService>()(
         layer: 'service',
       });
 
-      const getExtFromMime = (mimetype: string): string =>
-        MIME_EXT_MAP[mimetype] ?? '.bin';
-
       const findPhotoOrFail = (id: string) =>
         fromNullOr(
           repository.findById(id),
           () => new PhotoNotFound({ id, messageKey: 'photos.notFound' }),
         );
 
-      const mapStorageWriteError = (cause: StorageError) =>
-        new PhotosInfrastructureError({
-          action: 'write photo object',
-          cause,
-          messageKey: 'photos.writeFailed',
-        });
-
-      const mapStorageReadError = (cause: StorageError) =>
-        new PhotosInfrastructureError({
-          action: 'read photo object',
-          cause,
-          messageKey: 'photos.readFailed',
-        });
-
-      const mapStorageDeleteError = (cause: StorageError) =>
-        new PhotosInfrastructureError({
-          action: 'delete photo object',
-          cause,
-          messageKey: 'photos.deleteFailed',
-        });
+      const photoUploadWorkflow = makePhotoUploadWorkflow({
+        repository,
+        storage,
+        makeObjectId: randomUUID,
+      });
 
       const uploadPhoto = (
         productId: string,
@@ -110,66 +55,10 @@ export class PhotosService extends Effect.Service<PhotosService>()(
         | PhotoTooLarge
         | PhotosInfrastructureError
         | TenantNotResolved
-      > => {
-        if (!ALLOWED_MIMETYPES.includes(file.mimetype)) {
-          return Effect.fail(
-            new InvalidPhotoMimeType({
-              mimetype: file.mimetype,
-              messageKey: 'photos.invalidMimeType',
-              messageArgs: { allowedTypes: ALLOWED_MIMETYPES.join(', ') },
-            }),
-          );
-        }
-
-        if (!matchesMagicBytes(file.buffer, file.mimetype)) {
-          return Effect.fail(
-            new InvalidPhotoMimeType({
-              mimetype: file.mimetype,
-              messageKey: 'photos.invalidMimeType',
-              messageArgs: { allowedTypes: ALLOWED_MIMETYPES.join(', ') },
-            }),
-          );
-        }
-
-        if (file.size > MAX_FILE_SIZE) {
-          return Effect.fail(
-            new PhotoTooLarge({
-              size: file.size,
-              maxSize: MAX_FILE_SIZE,
-              messageKey: 'photos.tooLarge',
-              messageArgs: { maxSize: MAX_FILE_SIZE },
-            }),
-          );
-        }
-
-        const ext = getExtFromMime(file.mimetype);
-        const objectKey = `products/${productId}/photos/${crypto.randomUUID()}${ext}`;
-
-        return Effect.gen(function* () {
-          yield* storage
-            .putObject(objectKey, file.buffer, { contentType: file.mimetype })
-            .pipe(Effect.mapError(mapStorageWriteError));
-
-          const photo = yield* Effect.gen(function* () {
-            const existingCount = yield* repository.countByProductId(productId);
-            return yield* repository.create({
-              product_id: productId,
-              filename: file.originalname,
-              mimetype: file.mimetype,
-              size: file.size,
-              storage_path: objectKey,
-              display_order: existingCount,
-              uploaded_by: userId ?? null,
-            });
-          }).pipe(
-            Effect.tapError(() =>
-              Effect.ignore(storage.deleteObject(objectKey)),
-            ),
-          );
-
-          return toPhotoResponseDto(photo);
-        }).pipe(trace.span('uploadPhoto', { attributes: { productId } }));
-      };
+      > =>
+        photoUploadWorkflow
+          .uploadPhoto(productId, file, userId)
+          .pipe(trace.span('uploadPhoto', { attributes: { productId } }));
 
       const findByProductId = (
         productId: string,
@@ -184,7 +73,7 @@ export class PhotosService extends Effect.Service<PhotosService>()(
       const getFile = (
         id: string,
       ): Effect.Effect<
-        { bytes: Uint8Array; mimetype: string; filename: string },
+        PhotoFileResult,
         | PhotoFileNotFound
         | PhotoNotFound
         | PhotosInfrastructureError
@@ -204,7 +93,7 @@ export class PhotosService extends Effect.Service<PhotosService>()(
               ),
             ),
             Effect.catchTag('StorageError', (cause) =>
-              Effect.fail(mapStorageReadError(cause)),
+              Effect.fail(mapPhotoStorageReadError(cause)),
             ),
           );
 
@@ -225,7 +114,7 @@ export class PhotosService extends Effect.Service<PhotosService>()(
           const photo = yield* findPhotoOrFail(id);
           yield* storage
             .deleteObject(photo.storage_path)
-            .pipe(Effect.mapError(mapStorageDeleteError));
+            .pipe(Effect.mapError(mapPhotoStorageDeleteError));
           yield* repository.delete(id);
         }).pipe(trace.span('deletePhoto', { attributes: { id } }));
 

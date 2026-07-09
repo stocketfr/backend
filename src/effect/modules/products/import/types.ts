@@ -10,8 +10,13 @@ import type {
   ProductImportResultDto,
   ProductImportWarningDto,
 } from '@stocket/types/products';
-import type { areas, categories, locations } from '../../../platform/db/schema';
-import type { ProductRow } from '../products.utils';
+import type {
+  areas,
+  categories,
+  inventory,
+  locations,
+} from '../../../platform/db/schema';
+import type { ProductRow } from '../types';
 
 export type {
   ProductImportAiProposalDto,
@@ -162,6 +167,7 @@ export interface NormalizedProductImportRow {
 export type ImportCategoryRow = typeof categories.$inferSelect;
 export type ImportLocationRow = typeof locations.$inferSelect;
 export type ImportAreaRow = typeof areas.$inferSelect;
+export type ImportInventoryRow = typeof inventory.$inferSelect;
 export type ImportProductRow = ProductRow;
 
 export interface ImportCaches {

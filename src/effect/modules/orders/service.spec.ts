@@ -4,7 +4,8 @@ import { OrderStatus, type CreateOrder } from '@stocket/types/orders';
 import { ClientsService } from '../clients/service';
 import { ProductsService } from '../products/service';
 import { OrdersService } from './service';
-import { OrderItemsRepository, OrdersRepository } from './repository';
+import { OrderItemsRepository } from './order-items.repository';
+import { OrdersRepository } from './repository';
 
 const makeOrderEntity = (overrides: Record<string, any> = {}) => ({
   id: 'order-1',
@@ -98,7 +99,7 @@ const makeMockOrdersRepository = (
 
 const makeMockOrderItemsRepository = (
   overrides: Partial<
-    Record<keyof import('./repository').OrderItemsRepository, Mock>
+    Record<keyof import('./order-items.repository').OrderItemsRepository, Mock>
   > = {},
 ) => ({
   findByOrderId: vi

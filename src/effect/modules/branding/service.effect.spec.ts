@@ -28,7 +28,8 @@ import {
   POWERED_BY,
 } from './branding.constants';
 import { BrandingService } from './service';
-import { BrandingRepository, type BrandingSettingsRow } from './repository';
+import { BrandingRepository } from './repository';
+import type { BrandingSettingsRow } from './types';
 import { CurrentRequestContext } from '../../platform/http/request-context';
 
 const tenantRequestContext = {

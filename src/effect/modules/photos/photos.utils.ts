@@ -1,17 +1,46 @@
-import type { PhotoResponseDto } from '@stocket/types/photos';
-import type { photos } from '../../platform/db/schema';
+import type {
+  PhotoCreateValues,
+  PhotoCreateValuesOptions,
+} from './types';
+import {
+  PHOTO_MAGIC_SIGNATURES,
+  PHOTO_MIME_EXTENSIONS,
+} from './types';
 
-type Photo = typeof photos.$inferSelect;
+export const getPhotoExtension = (mimetype: string): string =>
+  PHOTO_MIME_EXTENSIONS[mimetype] ?? '.bin';
 
-export function toPhotoResponseDto(photo: Photo): PhotoResponseDto {
-  return {
-    id: photo.id,
-    product_id: photo.product_id,
-    filename: photo.filename,
-    mimetype: photo.mimetype,
-    size: photo.size,
-    uploaded_by: photo.uploaded_by,
-    display_order: photo.display_order,
-    created_at: photo.created_at,
-  };
+export function matchesMagicBytes(
+  buffer: Buffer,
+  declaredMime: string,
+): boolean {
+  const signatures = PHOTO_MAGIC_SIGNATURES[declaredMime];
+  if (!signatures) return false;
+
+  return signatures.every(({ bytes, offset }) =>
+    bytes.every((byte, index) => buffer[offset + index] === byte),
+  );
 }
+
+export const makePhotoObjectKey = (
+  productId: string,
+  objectId: string,
+  mimetype: string,
+): string =>
+  `products/${productId}/photos/${objectId}${getPhotoExtension(mimetype)}`;
+
+export const toPhotoCreateValues = ({
+  productId,
+  file,
+  objectKey,
+  displayOrder,
+  userId,
+}: PhotoCreateValuesOptions): PhotoCreateValues => ({
+  product_id: productId,
+  filename: file.originalname,
+  mimetype: file.mimetype,
+  size: file.size,
+  storage_path: objectKey,
+  display_order: displayOrder,
+  uploaded_by: userId ?? null,
+});

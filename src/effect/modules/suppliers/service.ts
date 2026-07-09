@@ -1,24 +1,13 @@
 import { Effect } from 'effect';
-import type { Schema } from 'effect';
 import type { SupplierQueryDto } from '@stocket/types/suppliers';
-import type {
-  CreateSupplierSchema,
-  UpdateSupplierSchema,
-} from '@stocket/types/suppliers';
 import { toPaginatedResponse } from '@stocket/types/common';
-import { fromNullOr } from '../../platform/effect/from-null-or';
-import {
-  hasDefinedPatchValues,
-  pickDefined,
-} from '../../platform/effect/pick-defined';
 import { makeReferenceEntityOperations } from '../../platform/reference-data-service';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
-import { toSupplierResponseDto } from './suppliers.utils';
+import { toSupplierResponseDto } from './mappers';
 import { SupplierNotFound } from './suppliers.errors';
 import { SuppliersRepository } from './repository';
-
-type CreateSupplierDto = Schema.Schema.Type<typeof CreateSupplierSchema>;
-type UpdateSupplierDto = Schema.Schema.Type<typeof UpdateSupplierSchema>;
+import type { CreateSupplierDto, UpdateSupplierDto } from './types';
+import { makeSupplierWriteWorkflows } from './write';
 
 export class SuppliersService extends Effect.Service<SuppliersService>()(
   '@stocket/effect/suppliers/SuppliersService',
@@ -51,46 +40,18 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
           .findOne(id)
           .pipe(trace.span('findOne', { attributes: { id } }));
 
+      const supplierWriteWorkflows = makeSupplierWriteWorkflows({
+        repository,
+        getSupplierOrFail: referenceEntity.getOrFail,
+      });
+
       const create = (dto: CreateSupplierDto) =>
-        Effect.map(
-          repository.create({
-            name: dto.name,
-            contact_person: dto.contact_person ?? null,
-            email: dto.email ?? null,
-            phone: dto.phone ?? null,
-            address: dto.address ?? null,
-            website: dto.website ?? null,
-            notes: dto.notes ?? null,
-            is_active: dto.is_active ?? true,
-          }),
-          toSupplierResponseDto,
-        ).pipe(trace.span('create'));
+        supplierWriteWorkflows.create(dto).pipe(trace.span('create'));
 
       const update = (id: string, dto: UpdateSupplierDto) =>
-        Effect.gen(function* () {
-          const updateData = pickDefined<UpdateSupplierDto>([
-            ['name', dto.name],
-            ['contact_person', dto.contact_person],
-            ['email', dto.email],
-            ['phone', dto.phone],
-            ['address', dto.address],
-            ['website', dto.website],
-            ['notes', dto.notes],
-            ['is_active', dto.is_active],
-          ]);
-
-          if (!hasDefinedPatchValues(updateData)) {
-            const supplier = yield* referenceEntity.getOrFail(id);
-            return toSupplierResponseDto(supplier);
-          }
-
-          const updated = yield* fromNullOr(
-            repository.update(id, updateData),
-            () =>
-              new SupplierNotFound({ id, messageKey: 'suppliers.notFound' }),
-          );
-          return toSupplierResponseDto(updated);
-        }).pipe(trace.span('update', { attributes: { id } }));
+        supplierWriteWorkflows
+          .update(id, dto)
+          .pipe(trace.span('update', { attributes: { id } }));
 
       const remove = (id: string) =>
         referenceEntity

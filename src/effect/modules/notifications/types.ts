@@ -1,5 +1,8 @@
 import type { EmailTemplate } from '@stocket/emails';
-import { NotificationCategory } from '@stocket/types/notifications';
+import {
+  NotificationCategory,
+  type NotificationChannel,
+} from '@stocket/types/notifications';
 import type { SupportedLocale } from '../../platform/observability/messages';
 
 type LowStockTemplate = Extract<EmailTemplate, { readonly kind: 'low-stock' }>;
@@ -31,3 +34,15 @@ export const EVENT_CATEGORY: Record<
 > = {
   'low-stock': NotificationCategory.INVENTORY_ALERTS,
 };
+
+export interface StoredPreferenceRow {
+  readonly category: string;
+  readonly channel: string;
+  readonly enabled: boolean;
+}
+
+export interface PreferenceInput {
+  readonly category: NotificationCategory;
+  readonly channel: NotificationChannel;
+  readonly enabled: boolean;
+}

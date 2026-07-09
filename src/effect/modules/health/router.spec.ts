@@ -22,7 +22,8 @@ import { Effect, Layer } from 'effect';
 import { HttpApiBuilder, HttpServer } from '@effect/platform';
 import { AppApi } from '../../http/api';
 import { HealthApiLive } from './router';
-import { HealthService, type HealthCheckResponse } from './service';
+import { HealthService } from './service';
+import type { HealthCheckResponse } from './types';
 
 const okResponse = (
   details: HealthCheckResponse['details'] = {},

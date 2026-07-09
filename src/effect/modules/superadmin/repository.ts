@@ -16,6 +16,12 @@ import {
 import { makeTryAsync } from '../../platform/effect/try-async';
 import { defaultRoleSeedDefinitions } from '../../platform/seed/default-roles';
 import { SuperAdminRepositoryError } from './superadmin.errors';
+import {
+  SuperAdminUserRowSchema,
+  type CreatedTenantResult,
+  type CreateTenantInput,
+  type PlatformAuditEventInput,
+} from './types';
 
 const tryAsync = makeTryAsync(
   (action, cause) =>
@@ -26,56 +32,9 @@ const tryAsync = makeTryAsync(
     }),
 );
 
-const SuperAdminUserRowSchema = Schema.Struct({
-  id: Schema.String,
-  email: Schema.NullOr(Schema.String),
-  name: Schema.NullOr(Schema.String),
-});
-
-export type SuperAdminUserRow = Schema.Schema.Type<
-  typeof SuperAdminUserRowSchema
->;
-
 const ExistsRowSchema = Schema.Struct({
   exists: Schema.Number,
 });
-
-export interface TenantListRow {
-  readonly id: string;
-  readonly name: string;
-  readonly slug: string;
-  readonly primaryHostname: string | null;
-  readonly createdAt: Date;
-}
-
-export interface CreateTenantInput {
-  readonly name: string;
-  readonly slug: string;
-  readonly hostname: string;
-  readonly adminUserId: string;
-}
-
-export interface PlatformAuditEventInput {
-  readonly actorUserId: string;
-  readonly action: string;
-  readonly entityType: string;
-  readonly entityId: string;
-  readonly metadata?: Record<string, unknown>;
-  readonly ipAddress?: string | null;
-  readonly userAgent?: string | null;
-}
-
-export interface CreatedTenantResult {
-  readonly tenant: {
-    readonly id: string;
-    readonly name: string;
-    readonly slug: string;
-    readonly hostname: string;
-  };
-  readonly admin: {
-    readonly id: string;
-  };
-}
 
 export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()(
   '@stocket/effect/superadmin/SuperAdminRepository',

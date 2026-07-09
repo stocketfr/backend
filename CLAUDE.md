@@ -1,3 +1,82 @@
+# Global Agents Config
+
+## Version Control: prefer jj over git
+
+When a repo has a `.jj/` directory (run `jj root` to check), use `jj` instead of `git` for VCS operations. Most of my repos are jj-colocated with git — assume jj unless `jj root` fails.
+
+## Planning First
+
+Do not jump straight into implementation for substantial or ambiguous work:
+
+1. **Understand the problem** — read the relevant code, ask clarifying questions, and make sure you know what's actually going on before proposing changes.
+2. **Draft a lightweight plan** — outline the approach, files involved, and key decisions when the task is non-trivial. A plan can be only two or three bullets when the path is clear.
+3. **Stress-test only when warranted** — use the grill-me skill or equivalent workflow only for complex, high-risk, product/design-heavy, or explicitly requested planning. Do not invoke it for routine code edits, small refactors, simple bug fixes, or tasks where the path is obvious.
+4. **Then implement** — after the plan is clear enough for the task size.
+
+A "trivial" change is a one-liner, a typo fix, a small config/content edit, or something the user explicitly tells you to just do. Trivial changes can be implemented directly. Do not wait for explicit approval after presenting a plan unless the user asked for planning only, the change is risky, or the next step is genuinely ambiguous.
+
+## Verification
+
+Before saying work is complete, run the smallest relevant verification command
+available. Prefer fast local checks first. If verification cannot be run, say
+exactly what was skipped and why.
+
+## Shells
+
+Use POSIX-compatible shell syntax for normal agent tool calls and commands that need to run reliably in project scripts, CI, Makefiles, package scripts, or other standard shell contexts. Use Bash-specific syntax only when the target context is Bash.
+
+Nushell is the primary interactive shell for the user. Prefer Nushell only when generating commands, scripts, or one-liners intended for the user to run interactively, especially when structured-data pipelines are clearer than POSIX text-munging. If using Nushell from a Bash-oriented tool call, invoke it explicitly with `nu -c '...'`.
+
+**Nushell substitutions for user-facing commands:**
+
+- `grep` → `where`, `find`, or `str contains`
+- `awk` / `cut` → `get`, `select`, `columns`
+- `sed` → `str replace`
+- `wc -l` → `length`
+- `sort | uniq -c` → `group-by | transpose`
+- `xargs` → `each { |it| ... }`
+- `jq` → native `from json` + `get` / `where`
+- `head` / `tail` → `first N` / `last N`
+- `find . -name` → `ls **/*pattern*` or `glob`
+
+**When Bash/POSIX is still right:**
+
+- Agent tool calls where Bash/POSIX is the expected execution environment.
+- Target is a Bash/POSIX script, CI step, Makefile, README example, or package script.
+- Tool shells out via `system()` or similar and won't pick up Nushell.
+- Piping to a tool that expects raw text on stdin in a way Nushell would mangle.
+
+## Remote Dev Fleet
+
+Use `fleet list` to see trusted development machines declared by Nix, and read
+`~/.config/fleet/FLEET.md` for host capabilities and placement decisions.
+Prefer `fleet ssh <host>` for interactive tmux work, `fleet shell <host>` for a
+plain SSH shell, and `fleet run <host> <command...>` for non-interactive checks.
+Direct tmux SSH aliases also exist as `tm-<host-or-alias>`, for example
+`ssh tm-main-pc`.
+
+Use `fleet forward <host> <local-port> <remote-port> [remote-host]` for port
+forwards.
+
+Fleet inventory is generated from `modules/fleet/home-manager.nix`; do not edit
+generated `~/.config/fleet/hosts.json`, `~/.config/fleet/FLEET.md`, or SSH
+config directly. Read `modules/fleet/README.md` before adding a host or
+changing the workflow.
+
+Treat fleet machines as trusted internal hosts. SSH agent forwarding is enabled
+for interactive work so Git and agent tools can use your local SSH credentials.
+Scheduled or unattended agent runs must not rely on forwarded SSH credentials;
+interactive sessions only.
+
+## Shared Prompts
+
+Reusable prompts live in `~/.agents/prompts`. Agent-specific prompt or command
+surfaces may symlink those same files into their native locations; prefer editing
+the shared source under `users/maxpw/agents/shared/prompts` instead of copying
+prompt text per agent.
+
+--- project-doc ---
+
 # Stocket API Module
 
 ## Tooling
@@ -9,7 +88,10 @@
 ## Boundaries
 
 - Keep feature work under `src/effect/modules/<feature>/` and follow the existing router/service/repository/schema/error split.
-- For large feature-specific workflows, prefer a subfolder under the module (for example `products/import/`) with its own `service.ts`, `repository.ts`, `types.ts`, `utils.ts`, and tests so normal module behavior stays readable.
+- Normal persisted feature modules should use the same top-level file roles: `router.ts` for HTTP wiring, `service.ts` for orchestration and the public Effect interface, `repository.ts` for persistence, `<feature>.errors.ts` for typed errors, `types.ts` for module-local types, and `<feature>.utils.ts` for pure helpers. Do not create empty or pass-through files just for symmetry.
+- Use recognized optional files instead of ad hoc helper names: `access.ts` for `require*` auth/role/feature/permission checks, `mappers.ts` for representation translation across seams, and `utils/` for split pure helper domains once `<feature>.utils.ts` mixes distinct concerns.
+- Keep `utils` pure: parsing, normalization, formatting, comparison, duplicate detection, and small mappers are fine; anything that reads context, checks permissions, calls services/repositories, opens transactions, or fails with workflow-specific typed errors belongs in `service.ts`, `access.ts`, or another named workflow file.
+- For large feature-specific workflows, prefer a subfolder under the module (for example `products/import/`) with its own `router.ts`, `service.ts`, `repository.ts`, `types.ts`, `utils.ts`, optional `access.ts`/`mappers.ts`, and tests so normal module behavior stays readable.
 - Keep `service.ts` focused on orchestration. Move module-local row aliases, options, caches, DTO re-exports, and literal tuples to `types.ts`; move pure parsing, normalization, formatting, comparison, and duplicate-detection helpers to `utils.ts`.
 - Before adding new row types, literal lists, parsers, or fixture blocks, search for existing equivalents and reuse or centralize them when the behavior is shared.
 - Cross-module access should normally go through services, not another module's repository.
@@ -59,7 +141,7 @@
 
 When request/response shapes change:
 
-1. Update `../packages/types`.
+1. Update `packages/types`.
 2. Run `pnpm --filter @stocket/types barrels && pnpm --filter @stocket/types build`.
 3. Use the workspace-linked types directly from the backend.
 
