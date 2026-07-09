@@ -30,8 +30,7 @@ describe('requestWelcomeEmail', () => {
       expect(calls[0]).toMatchObject({
         body: {
           email: 'new-user@example.com',
-          redirectTo:
-            'https://app.stocket.test/reset-password?flow=welcome',
+          redirectTo: 'https://app.stocket.test/reset-password?flow=welcome',
         },
         headers,
       });

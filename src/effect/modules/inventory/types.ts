@@ -12,9 +12,7 @@ import type {
   products,
 } from '../../platform/db/schema';
 
-export type InventoryQueryDto = Schema.Schema.Type<
-  typeof InventoryQuerySchema
->;
+export type InventoryQueryDto = Schema.Schema.Type<typeof InventoryQuerySchema>;
 export type CreateInventoryDto = Schema.Schema.Type<
   typeof CreateInventorySchema
 >;

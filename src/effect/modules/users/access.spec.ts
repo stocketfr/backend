@@ -91,20 +91,22 @@ describe('user access helpers', () => {
     }),
   );
 
-  it.effect('fails with UserNotFound when the user is not a tenant member', () =>
-    Effect.gen(function* () {
-      const repository = makeRepository({
-        hasTenantMembership: () => Effect.succeed(false),
-      });
+  it.effect(
+    'fails with UserNotFound when the user is not a tenant member',
+    () =>
+      Effect.gen(function* () {
+        const repository = makeRepository({
+          hasTenantMembership: () => Effect.succeed(false),
+        });
 
-      const error = yield* Effect.flip(
-        withTenantContext(requireTenantMemberOrFail(repository, 'user-1')),
-      );
+        const error = yield* Effect.flip(
+          withTenantContext(requireTenantMemberOrFail(repository, 'user-1')),
+        );
 
-      expect(error).toMatchObject({
-        _tag: 'UserNotFound',
-        id: 'user-1',
-      });
-    }),
+        expect(error).toMatchObject({
+          _tag: 'UserNotFound',
+          id: 'user-1',
+        });
+      }),
   );
 });

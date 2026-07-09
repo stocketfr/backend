@@ -6,10 +6,7 @@ import { InventoryRepository } from '../inventory/repository';
 import { OrderItemsRepository } from '../orders/order-items.repository';
 import { OrdersRepository } from '../orders/repository';
 import { StockMovementsRepository } from '../stock-movements/repository';
-import {
-  FulfillmentNotImplemented,
-  type FulfillmentError,
-} from './errors';
+import { FulfillmentNotImplemented, type FulfillmentError } from './errors';
 import { confirmOrder } from './confirm';
 import {
   ensurePickableOrder,

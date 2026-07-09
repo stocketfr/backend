@@ -87,27 +87,29 @@ describe('makeSupplierWriteWorkflows', () => {
     }),
   );
 
-  it.effect('returns the current supplier without writing an empty update', () =>
-    Effect.gen(function* () {
-      let updateCalled = false;
-      const existing = makeSupplier({ name: 'Existing Supplies' });
-      const repository = makeRepository({
-        update: () =>
-          Effect.sync(() => {
-            updateCalled = true;
-            return makeSupplier();
-          }),
-      });
-      const workflows = makeSupplierWriteWorkflows({
-        repository,
-        getSupplierOrFail: () => Effect.succeed(existing),
-      });
+  it.effect(
+    'returns the current supplier without writing an empty update',
+    () =>
+      Effect.gen(function* () {
+        let updateCalled = false;
+        const existing = makeSupplier({ name: 'Existing Supplies' });
+        const repository = makeRepository({
+          update: () =>
+            Effect.sync(() => {
+              updateCalled = true;
+              return makeSupplier();
+            }),
+        });
+        const workflows = makeSupplierWriteWorkflows({
+          repository,
+          getSupplierOrFail: () => Effect.succeed(existing),
+        });
 
-      const result = yield* workflows.update('supplier-1', {});
+        const result = yield* workflows.update('supplier-1', {});
 
-      expect(result.name).toBe('Existing Supplies');
-      expect(updateCalled).toBe(false);
-    }),
+        expect(result.name).toBe('Existing Supplies');
+        expect(updateCalled).toBe(false);
+      }),
   );
 
   it.effect('updates changed supplier fields', () =>

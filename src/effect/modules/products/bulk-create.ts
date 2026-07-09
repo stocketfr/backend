@@ -20,13 +20,14 @@ interface BulkCreateDependencies {
   ) => (error: E) => E | SkuAlreadyExists;
 }
 
-export const makeBulkCreateProducts = ({
-  repository,
-  categoriesService,
-  suppliersService,
-  validatePriceNotBelowCost,
-  mapSkuUniqueViolation,
-}: BulkCreateDependencies) =>
+export const makeBulkCreateProducts =
+  ({
+    repository,
+    categoriesService,
+    suppliersService,
+    validatePriceNotBelowCost,
+    mapSkuUniqueViolation,
+  }: BulkCreateDependencies) =>
   (bulkDto: BulkCreateProductsDto, userId?: string) =>
     Effect.gen(function* () {
       const result = createBulkResultBuilder();

@@ -72,53 +72,69 @@ const makeRepository = (
 });
 
 describe('makeStockMovementWriteWorkflows', () => {
-  it.effect('validates references, creates, reloads relations, and returns a DTO', () =>
-    Effect.gen(function* () {
-      const calls: string[] = [];
-      let capturedCreate: StockMovementCreateValues | undefined;
-      const repository = makeRepository({
-        create: (values) =>
+  it.effect(
+    'validates references, creates, reloads relations, and returns a DTO',
+    () =>
+      Effect.gen(function* () {
+        const calls: string[] = [];
+        let capturedCreate: StockMovementCreateValues | undefined;
+        const repository = makeRepository({
+          create: (values) =>
+            Effect.sync(() => {
+              calls.push('create');
+              capturedCreate = values;
+              return makeStockMovementRow({
+                id: 'stock-movement-created',
+                ...values,
+              });
+            }),
+          findById: (id) =>
+            Effect.sync(() => {
+              calls.push(`find:${id}`);
+              return makeStockMovementWithRelations({
+                id,
+                quantity: 4,
+                order_id: 'order-1',
+              });
+            }),
+          orderExistsById: (orderId) =>
+            Effect.sync(() => {
+              calls.push(`order:${orderId}`);
+              return true;
+            }),
+        });
+        const productExists: ProductExists = (productId) =>
           Effect.sync(() => {
-            calls.push('create');
-            capturedCreate = values;
-            return makeStockMovementRow({
-              id: 'stock-movement-created',
-              ...values,
-            });
-          }),
-        findById: (id) =>
-          Effect.sync(() => {
-            calls.push(`find:${id}`);
-            return makeStockMovementWithRelations({
-              id,
-              quantity: 4,
-              order_id: 'order-1',
-            });
-          }),
-        orderExistsById: (orderId) =>
-          Effect.sync(() => {
-            calls.push(`order:${orderId}`);
+            calls.push(`product:${productId}`);
             return true;
-          }),
-      });
-      const productExists: ProductExists = (productId) =>
-        Effect.sync(() => {
-          calls.push(`product:${productId}`);
-          return true;
+          });
+        const locationExists: LocationExists = (locationId) =>
+          Effect.sync(() => {
+            calls.push(`location:${locationId}`);
+            return true;
+          });
+        const workflows = makeStockMovementWriteWorkflows({
+          repository,
+          productExists,
+          locationExists,
         });
-      const locationExists: LocationExists = (locationId) =>
-        Effect.sync(() => {
-          calls.push(`location:${locationId}`);
-          return true;
-        });
-      const workflows = makeStockMovementWriteWorkflows({
-        repository,
-        productExists,
-        locationExists,
-      });
 
-      const result = yield* workflows.create(
-        {
+        const result = yield* workflows.create(
+          {
+            product_id: 'product-1',
+            from_location_id: 'location-1',
+            to_location_id: 'location-2',
+            quantity: 4,
+            reason: StockMovementReason.INTERNAL_TRANSFER,
+            order_id: 'order-1',
+            reference_number: 'REF-1',
+            cost_per_unit: 12.5,
+            notes: 'Transfer',
+          },
+          'user-1',
+        );
+
+        expect(capturedCreate).toEqual({
           product_id: 'product-1',
           from_location_id: 'location-1',
           to_location_id: 'location-2',
@@ -128,84 +144,72 @@ describe('makeStockMovementWriteWorkflows', () => {
           reference_number: 'REF-1',
           cost_per_unit: 12.5,
           notes: 'Transfer',
-        },
-        'user-1',
-      );
-
-      expect(capturedCreate).toEqual({
-        product_id: 'product-1',
-        from_location_id: 'location-1',
-        to_location_id: 'location-2',
-        quantity: 4,
-        reason: StockMovementReason.INTERNAL_TRANSFER,
-        order_id: 'order-1',
-        reference_number: 'REF-1',
-        cost_per_unit: 12.5,
-        notes: 'Transfer',
-        user_id: 'user-1',
-      });
-      expect(calls).toEqual([
-        'product:product-1',
-        'location:location-1',
-        'location:location-2',
-        'order:order-1',
-        'create',
-        'find:stock-movement-created',
-      ]);
-      expect(result).toMatchObject({
-        id: 'stock-movement-created',
-        product_id: 'product-1',
-        quantity: 4,
-      });
-    }),
+          user_id: 'user-1',
+        });
+        expect(calls).toEqual([
+          'product:product-1',
+          'location:location-1',
+          'location:location-2',
+          'order:order-1',
+          'create',
+          'find:stock-movement-created',
+        ]);
+        expect(result).toMatchObject({
+          id: 'stock-movement-created',
+          product_id: 'product-1',
+          quantity: 4,
+        });
+      }),
   );
 
-  it.effect('writes nullable optional references for a minimal create DTO', () =>
-    Effect.gen(function* () {
-      let capturedCreate: StockMovementCreateValues | undefined;
-      let locationCheckCalled = false;
-      let orderCheckCalled = false;
-      const workflows = makeStockMovementWriteWorkflows({
-        repository: makeRepository({
-          create: (values) =>
+  it.effect(
+    'writes nullable optional references for a minimal create DTO',
+    () =>
+      Effect.gen(function* () {
+        let capturedCreate: StockMovementCreateValues | undefined;
+        let locationCheckCalled = false;
+        let orderCheckCalled = false;
+        const workflows = makeStockMovementWriteWorkflows({
+          repository: makeRepository({
+            create: (values) =>
+              Effect.sync(() => {
+                capturedCreate = values;
+                return makeStockMovementRow(values);
+              }),
+            orderExistsById: () =>
+              Effect.sync(() => {
+                orderCheckCalled = true;
+                return true;
+              }),
+          }),
+          productExists: () => Effect.succeed(true),
+          locationExists: () =>
             Effect.sync(() => {
-              capturedCreate = values;
-              return makeStockMovementRow(values);
-            }),
-          orderExistsById: () =>
-            Effect.sync(() => {
-              orderCheckCalled = true;
+              locationCheckCalled = true;
               return true;
             }),
-        }),
-        productExists: () => Effect.succeed(true),
-        locationExists: () =>
-          Effect.sync(() => {
-            locationCheckCalled = true;
-            return true;
-          }),
-      });
+        });
 
-      yield* workflows.create(
-        {
-          product_id: 'product-1',
-          quantity: 1,
-          reason: StockMovementReason.COUNT_CORRECTION,
-        },
-        'user-1',
-      );
+        yield* workflows.create(
+          {
+            product_id: 'product-1',
+            quantity: 1,
+            reason: StockMovementReason.COUNT_CORRECTION,
+          },
+          'user-1',
+        );
 
-      expect(capturedCreate).toMatchObject({
-        from_location_id: null,
-        to_location_id: null,
-        order_id: null,
-        reference_number: null,
-        cost_per_unit: null,
-        notes: null,
-      });
-      expect(locationCheckCalled).toBe(false);
-      expect(orderCheckCalled).toBe(false);
-    }),
+        expect(capturedCreate).toMatchObject({
+          from_location_id: null,
+          to_location_id: null,
+          order_id: null,
+          reference_number: null,
+          cost_per_unit: null,
+          notes: null,
+        });
+        expect(locationCheckCalled).toBe(false);
+        expect(orderCheckCalled).toBe(false);
+      }),
   );
 
   it.effect('fails before writing when the product does not exist', () =>
@@ -242,89 +246,93 @@ describe('makeStockMovementWriteWorkflows', () => {
     }),
   );
 
-  it.effect('uses source and destination specific errors for missing locations', () =>
-    Effect.gen(function* () {
-      const sourceMissing = makeStockMovementWriteWorkflows({
-        repository: makeRepository(),
-        productExists: () => Effect.succeed(true),
-        locationExists: (locationId) =>
-          Effect.succeed(locationId !== 'missing-source'),
-      });
-      const destinationMissing = makeStockMovementWriteWorkflows({
-        repository: makeRepository(),
-        productExists: () => Effect.succeed(true),
-        locationExists: (locationId) =>
-          Effect.succeed(locationId !== 'missing-destination'),
-      });
+  it.effect(
+    'uses source and destination specific errors for missing locations',
+    () =>
+      Effect.gen(function* () {
+        const sourceMissing = makeStockMovementWriteWorkflows({
+          repository: makeRepository(),
+          productExists: () => Effect.succeed(true),
+          locationExists: (locationId) =>
+            Effect.succeed(locationId !== 'missing-source'),
+        });
+        const destinationMissing = makeStockMovementWriteWorkflows({
+          repository: makeRepository(),
+          productExists: () => Effect.succeed(true),
+          locationExists: (locationId) =>
+            Effect.succeed(locationId !== 'missing-destination'),
+        });
 
-      const sourceError = yield* Effect.flip(
-        sourceMissing.create(
-          {
-            product_id: 'product-1',
-            from_location_id: 'missing-source',
-            quantity: 1,
-            reason: StockMovementReason.INTERNAL_TRANSFER,
-          },
-          'user-1',
-        ),
-      );
-      const destinationError = yield* Effect.flip(
-        destinationMissing.create(
-          {
-            product_id: 'product-1',
-            to_location_id: 'missing-destination',
-            quantity: 1,
-            reason: StockMovementReason.INTERNAL_TRANSFER,
-          },
-          'user-1',
-        ),
-      );
+        const sourceError = yield* Effect.flip(
+          sourceMissing.create(
+            {
+              product_id: 'product-1',
+              from_location_id: 'missing-source',
+              quantity: 1,
+              reason: StockMovementReason.INTERNAL_TRANSFER,
+            },
+            'user-1',
+          ),
+        );
+        const destinationError = yield* Effect.flip(
+          destinationMissing.create(
+            {
+              product_id: 'product-1',
+              to_location_id: 'missing-destination',
+              quantity: 1,
+              reason: StockMovementReason.INTERNAL_TRANSFER,
+            },
+            'user-1',
+          ),
+        );
 
-      expect(sourceError).toMatchObject({
-        _tag: 'InvalidSourceLocation',
-        locationId: 'missing-source',
-      });
-      expect(destinationError).toMatchObject({
-        _tag: 'InvalidDestinationLocation',
-        locationId: 'missing-destination',
-      });
-    }),
+        expect(sourceError).toMatchObject({
+          _tag: 'InvalidSourceLocation',
+          locationId: 'missing-source',
+        });
+        expect(destinationError).toMatchObject({
+          _tag: 'InvalidDestinationLocation',
+          locationId: 'missing-destination',
+        });
+      }),
   );
 
-  it.effect('fails before writing when the order does not belong to the tenant', () =>
-    Effect.gen(function* () {
-      let createCalled = false;
-      const workflows = makeStockMovementWriteWorkflows({
-        repository: makeRepository({
-          orderExistsById: () => Effect.succeed(false),
-          create: () =>
-            Effect.sync(() => {
-              createCalled = true;
-              return makeStockMovementRow();
-            }),
-        }),
-        productExists: () => Effect.succeed(true),
-        locationExists: () => Effect.succeed(true),
-      });
+  it.effect(
+    'fails before writing when the order does not belong to the tenant',
+    () =>
+      Effect.gen(function* () {
+        let createCalled = false;
+        const workflows = makeStockMovementWriteWorkflows({
+          repository: makeRepository({
+            orderExistsById: () => Effect.succeed(false),
+            create: () =>
+              Effect.sync(() => {
+                createCalled = true;
+                return makeStockMovementRow();
+              }),
+          }),
+          productExists: () => Effect.succeed(true),
+          locationExists: () => Effect.succeed(true),
+        });
 
-      const error = yield* Effect.flip(
-        workflows.create(
-          {
-            product_id: 'product-1',
-            quantity: 1,
-            reason: StockMovementReason.SALE,
-            order_id: 'missing-order',
-          },
-          'user-1',
-        ),
-      );
+        const error = yield* Effect.flip(
+          workflows.create(
+            {
+              product_id: 'product-1',
+              quantity: 1,
+              reason: StockMovementReason.SALE,
+              order_id: 'missing-order',
+            },
+            'user-1',
+          ),
+        );
 
-      expect(error).toMatchObject({
-        _tag: 'InvalidStockMovementOrder',
-        orderId: 'missing-order',
-      });
-      expect(createCalled).toBe(false);
-    }),
+        expect(error).toMatchObject({
+          _tag: 'InvalidStockMovementOrder',
+          orderId: 'missing-order',
+        });
+        expect(createCalled).toBe(false);
+      }),
   );
 
   it.effect('fails if the created stock movement cannot be reloaded', () =>

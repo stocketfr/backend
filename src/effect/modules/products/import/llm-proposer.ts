@@ -8,7 +8,10 @@ import {
   type OpenAiProductImportConfig,
 } from '../../../../config/openai.utils';
 import { makeOpenAiProductImportProposalRequest } from './llm-proposal/request';
-import { extractResponseText, sanitizeLlmProposal } from './llm-proposal/sanitizer';
+import {
+  extractResponseText,
+  sanitizeLlmProposal,
+} from './llm-proposal/sanitizer';
 import { appendWarning, messageFromUnknown } from './llm-proposal/shared';
 import { makeProductImportProposal } from './utils/proposal';
 

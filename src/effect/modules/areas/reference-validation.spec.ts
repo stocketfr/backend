@@ -85,29 +85,31 @@ describe('validateAreaReferences', () => {
     }),
   );
 
-  it.effect('uses the current location when validating update parent changes', () =>
-    Effect.gen(function* () {
-      yield* validateAreaReferences({
-        lookup: lookup(),
-        dto: { parent_id: 'parent-1' },
-        currentLocationId: 'location-1',
-      });
-
-      const error = yield* Effect.flip(
-        validateAreaReferences({
-          lookup: lookup({
-            parent: { id: 'parent-1', location_id: 'other-location' },
-          }),
+  it.effect(
+    'uses the current location when validating update parent changes',
+    () =>
+      Effect.gen(function* () {
+        yield* validateAreaReferences({
+          lookup: lookup(),
           dto: { parent_id: 'parent-1' },
           currentLocationId: 'location-1',
-        }),
-      );
+        });
 
-      expect(error).toMatchObject({
-        _tag: 'AreaParentLocationMismatch',
-        parentId: 'parent-1',
-        locationId: 'location-1',
-      });
-    }),
+        const error = yield* Effect.flip(
+          validateAreaReferences({
+            lookup: lookup({
+              parent: { id: 'parent-1', location_id: 'other-location' },
+            }),
+            dto: { parent_id: 'parent-1' },
+            currentLocationId: 'location-1',
+          }),
+        );
+
+        expect(error).toMatchObject({
+          _tag: 'AreaParentLocationMismatch',
+          parentId: 'parent-1',
+          locationId: 'location-1',
+        });
+      }),
   );
 });

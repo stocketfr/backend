@@ -1,8 +1,6 @@
 import { Effect, Schedule } from 'effect';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  NotificationCategory,
-} from '@stocket/types/notifications';
+import { NotificationCategory } from '@stocket/types/notifications';
 import { defaultMailer } from '../../../email/default-mailer';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { CurrentRequestContext } from '../../platform/http/request-context';
@@ -120,10 +118,12 @@ export class NotificationsService extends Effect.Service<NotificationsService>()
 
       // Self-service preference read, shaped into the API response DTO.
       const getPreferences = (userId: string) =>
-        repository.findPreferences(userId).pipe(
-          Effect.map(toNotificationPreferencesResponse),
-          trace.span('getPreferences'),
-        );
+        repository
+          .findPreferences(userId)
+          .pipe(
+            Effect.map(toNotificationPreferencesResponse),
+            trace.span('getPreferences'),
+          );
 
       const updatePreferences = (
         userId: string,

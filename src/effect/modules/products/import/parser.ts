@@ -4,10 +4,7 @@ import type {
   CsvParseResult,
   ProductImportFormat,
 } from './types';
-import {
-  detectProductImportFormat,
-  parseCsvContent,
-} from './utils/csv';
+import { detectProductImportFormat, parseCsvContent } from './utils/csv';
 import {
   ProductImportCsvParseFailed,
   ProductImportUnsupportedFormat,

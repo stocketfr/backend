@@ -1,9 +1,6 @@
 import { describe, expect, it } from '@effect/vitest';
 import { Effect } from 'effect';
-import {
-  makeAreaWriteWorkflows,
-  type AreaWriteRepository,
-} from './write';
+import { makeAreaWriteWorkflows, type AreaWriteRepository } from './write';
 
 const NOW = new Date('2026-01-01T00:00:00.000Z');
 
@@ -51,54 +48,56 @@ const makeWorkflows = ({
   });
 
 describe('makeAreaWriteWorkflows', () => {
-  it.effect('creates an area after validating the location and parent area', () =>
-    Effect.gen(function* () {
-      let checkedLocation: string | undefined;
-      let capturedCreate: AreaCreateData | undefined;
-      const repository = makeRepository({
-        findById: (id) =>
-          Effect.succeed(
-            id === 'parent-1'
-              ? makeArea({ id: 'parent-1', location_id: 'loc-1' })
-              : null,
-          ),
-        create: (data) =>
-          Effect.sync(() => {
-            capturedCreate = data;
-            return makeArea({
-              id: 'area-new',
-              location_id: data.location_id,
-              parent_id: data.parent_id ?? null,
-              name: data.name,
-            });
-          }),
-      });
-      const workflows = makeWorkflows({
-        repository,
-        locationExists: (locationId) =>
-          Effect.sync(() => {
-            checkedLocation = locationId;
-            return true;
-          }),
-      });
+  it.effect(
+    'creates an area after validating the location and parent area',
+    () =>
+      Effect.gen(function* () {
+        let checkedLocation: string | undefined;
+        let capturedCreate: AreaCreateData | undefined;
+        const repository = makeRepository({
+          findById: (id) =>
+            Effect.succeed(
+              id === 'parent-1'
+                ? makeArea({ id: 'parent-1', location_id: 'loc-1' })
+                : null,
+            ),
+          create: (data) =>
+            Effect.sync(() => {
+              capturedCreate = data;
+              return makeArea({
+                id: 'area-new',
+                location_id: data.location_id,
+                parent_id: data.parent_id ?? null,
+                name: data.name,
+              });
+            }),
+        });
+        const workflows = makeWorkflows({
+          repository,
+          locationExists: (locationId) =>
+            Effect.sync(() => {
+              checkedLocation = locationId;
+              return true;
+            }),
+        });
 
-      const result = yield* workflows.create({
-        location_id: 'loc-1',
-        parent_id: 'parent-1',
-        name: 'Zone B',
-      });
+        const result = yield* workflows.create({
+          location_id: 'loc-1',
+          parent_id: 'parent-1',
+          name: 'Zone B',
+        });
 
-      expect(checkedLocation).toBe('loc-1');
-      expect(capturedCreate).toEqual({
-        location_id: 'loc-1',
-        parent_id: 'parent-1',
-        name: 'Zone B',
-      });
-      expect(result).toMatchObject({
-        id: 'area-new',
-        parent_id: 'parent-1',
-      });
-    }),
+        expect(checkedLocation).toBe('loc-1');
+        expect(capturedCreate).toEqual({
+          location_id: 'loc-1',
+          parent_id: 'parent-1',
+          name: 'Zone B',
+        });
+        expect(result).toMatchObject({
+          id: 'area-new',
+          parent_id: 'parent-1',
+        });
+      }),
   );
 
   it.effect('rejects parent areas from a different location', () =>

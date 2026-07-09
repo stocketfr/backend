@@ -46,14 +46,12 @@ const row = (
   ...overrides,
 });
 
-const categoryRow = (
-  overrides: {
-    readonly id: string;
-    readonly name: string;
-    readonly parent_id: string | null;
-    readonly description?: string | null;
-  },
-): ImportCategoryRow => ({
+const categoryRow = (overrides: {
+  readonly id: string;
+  readonly name: string;
+  readonly parent_id: string | null;
+  readonly description?: string | null;
+}): ImportCategoryRow => ({
   id: overrides.id,
   tenant_id: 'tenant-1',
   name: overrides.name,
@@ -63,13 +61,11 @@ const categoryRow = (
   updated_at: now,
 });
 
-const locationRow = (
-  overrides: {
-    readonly id: string;
-    readonly name: string;
-    readonly type?: LocationType;
-  },
-): ImportLocationRow => ({
+const locationRow = (overrides: {
+  readonly id: string;
+  readonly name: string;
+  readonly type?: LocationType;
+}): ImportLocationRow => ({
   id: overrides.id,
   tenant_id: 'tenant-1',
   name: overrides.name,
@@ -82,14 +78,12 @@ const locationRow = (
   updated_at: now,
 });
 
-const areaRow = (
-  overrides: {
-    readonly id: string;
-    readonly location_id: string;
-    readonly name: string;
-    readonly parent_id: string | null;
-  },
-): ImportAreaRow => ({
+const areaRow = (overrides: {
+  readonly id: string;
+  readonly location_id: string;
+  readonly name: string;
+  readonly parent_id: string | null;
+}): ImportAreaRow => ({
   id: overrides.id,
   tenant_id: 'tenant-1',
   location_id: overrides.location_id,
@@ -145,16 +139,12 @@ const makeTargetState = () => {
     findLocationByName: (name) =>
       Effect.sync(() => {
         calls.findLocationByName++;
-        return (
-          locations.find((location) => location.name === name) ?? null
-        );
+        return locations.find((location) => location.name === name) ?? null;
       }),
     findLocationById: (locationId) =>
       Effect.sync(() => {
         calls.findLocationById++;
-        return (
-          locations.find((location) => location.id === locationId) ?? null
-        );
+        return locations.find((location) => location.id === locationId) ?? null;
       }),
     createLocation: (data) =>
       Effect.sync(() => {

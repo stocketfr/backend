@@ -97,39 +97,41 @@ const makeSkuUniqueViolation = () =>
 
 describe('makeProductWriteWorkflows', () => {
   describe('create', () => {
-    it.effect('validates references, creates the row, and reloads relations', () =>
-      Effect.gen(function* () {
-        let validated = 0;
-        let capturedCreate: ProductCreateData | undefined;
-        const repository = makeRepository({
-          create: (data) =>
+    it.effect(
+      'validates references, creates the row, and reloads relations',
+      () =>
+        Effect.gen(function* () {
+          let validated = 0;
+          let capturedCreate: ProductCreateData | undefined;
+          const repository = makeRepository({
+            create: (data) =>
+              Effect.sync(() => {
+                capturedCreate = data;
+                return makeProduct({ id: 'created-product' });
+              }),
+            findById: (id) =>
+              Effect.succeed(makeProduct({ id, created_by: 'user-1' })),
+          });
+          const workflows = makeWorkflows(repository, () =>
             Effect.sync(() => {
-              capturedCreate = data;
-              return makeProduct({ id: 'created-product' });
+              validated++;
             }),
-          findById: (id) =>
-            Effect.succeed(makeProduct({ id, created_by: 'user-1' })),
-        });
-        const workflows = makeWorkflows(repository, () =>
-          Effect.sync(() => {
-            validated++;
-          }),
-        );
+          );
 
-        const result = yield* workflows.create(createDto, 'user-1');
+          const result = yield* workflows.create(createDto, 'user-1');
 
-        expect(validated).toBe(1);
-        expect(capturedCreate).toMatchObject({
-          sku: 'SKU-001',
-          created_by: 'user-1',
-          updated_by: 'user-1',
-        });
-        expect(result).toMatchObject({
-          id: 'created-product',
-          sku: 'SKU-001',
-          created_by: 'user-1',
-        });
-      }),
+          expect(validated).toBe(1);
+          expect(capturedCreate).toMatchObject({
+            sku: 'SKU-001',
+            created_by: 'user-1',
+            updated_by: 'user-1',
+          });
+          expect(result).toMatchObject({
+            id: 'created-product',
+            sku: 'SKU-001',
+            created_by: 'user-1',
+          });
+        }),
     );
 
     it.effect('maps product SKU unique violations to the domain error', () =>
@@ -194,26 +196,28 @@ describe('makeProductWriteWorkflows', () => {
       }),
     );
 
-    it.effect('returns the existing product without writing an empty patch', () =>
-      Effect.gen(function* () {
-        let updateCalled = false;
-        const repository = makeRepository({
-          update: () =>
-            Effect.sync(() => {
-              updateCalled = true;
-              return makeProduct();
-            }),
-        });
-        const workflows = makeWorkflows(repository);
+    it.effect(
+      'returns the existing product without writing an empty patch',
+      () =>
+        Effect.gen(function* () {
+          let updateCalled = false;
+          const repository = makeRepository({
+            update: () =>
+              Effect.sync(() => {
+                updateCalled = true;
+                return makeProduct();
+              }),
+          });
+          const workflows = makeWorkflows(repository);
 
-        const result = yield* workflows.update('prod-1', {});
+          const result = yield* workflows.update('prod-1', {});
 
-        expect(updateCalled).toBe(false);
-        expect(result).toMatchObject({
-          id: 'prod-1',
-          sku: 'SKU-001',
-        });
-      }),
+          expect(updateCalled).toBe(false);
+          expect(result).toMatchObject({
+            id: 'prod-1',
+            sku: 'SKU-001',
+          });
+        }),
     );
   });
 });

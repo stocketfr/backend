@@ -150,9 +150,7 @@ const inventoryRow = (
   ...overrides,
 });
 
-const makePhotoImporter = (
-  failingUrls: ReadonlySet<string> = new Set(),
-) => {
+const makePhotoImporter = (failingUrls: ReadonlySet<string> = new Set()) => {
   const calls: Array<{
     readonly productId: string;
     readonly url: string;
@@ -262,7 +260,8 @@ const makeImportState = () => {
         areas.push(area);
         return area;
       }),
-    findProductBySku: (sku) => Effect.sync(() => productsBySku.get(sku) ?? null),
+    findProductBySku: (sku) =>
+      Effect.sync(() => productsBySku.get(sku) ?? null),
     createProduct: (data) =>
       Effect.sync(() => {
         calls.createProduct++;
@@ -287,7 +286,9 @@ const makeImportState = () => {
       }),
     findInventoryByProductLocationAndArea: (productId, locationId, areaId) =>
       Effect.sync(
-        () => inventoryByKey.get(inventoryKey(productId, locationId, areaId)) ?? null,
+        () =>
+          inventoryByKey.get(inventoryKey(productId, locationId, areaId)) ??
+          null,
       ),
     hasAreaScopedInventoryForProductAndLocation: () =>
       Effect.sync(() => hasAreaScopedInventory),
@@ -299,7 +300,11 @@ const makeImportState = () => {
           ...data,
         });
         inventoryByKey.set(
-          inventoryKey(inventory.product_id, inventory.location_id, inventory.area_id),
+          inventoryKey(
+            inventory.product_id,
+            inventory.location_id,
+            inventory.area_id,
+          ),
           inventory,
         );
         return inventory;
@@ -312,7 +317,11 @@ const makeImportState = () => {
             inventoryByKey.delete(key);
             const updated = inventoryRow({ ...inventory, ...data });
             inventoryByKey.set(
-              inventoryKey(updated.product_id, updated.location_id, updated.area_id),
+              inventoryKey(
+                updated.product_id,
+                updated.location_id,
+                updated.area_id,
+              ),
               updated,
             );
             return updated;
@@ -337,43 +346,45 @@ const makeImportState = () => {
 };
 
 describe('importProductRow', () => {
-  it.effect('creates category, location, product, and inventory records for a new row', () =>
-    Effect.gen(function* () {
-      const state = makeImportState();
-      const { importer } = makePhotoImporter();
-      const result = makeEmptyProductImportResult();
-      const caches = makeCaches();
+  it.effect(
+    'creates category, location, product, and inventory records for a new row',
+    () =>
+      Effect.gen(function* () {
+        const state = makeImportState();
+        const { importer } = makePhotoImporter();
+        const result = makeEmptyProductImportResult();
+        const caches = makeCaches();
 
-      yield* importProductRow({
-        repository: state.repository,
-        photoImporter: importer,
-        row: row(),
-        caches,
-        result,
-        expiryDate: null,
-        userId: TEST_USER_ID,
-        approvedPlan: undefined,
-      });
+        yield* importProductRow({
+          repository: state.repository,
+          photoImporter: importer,
+          row: row(),
+          caches,
+          result,
+          expiryDate: null,
+          userId: TEST_USER_ID,
+          approvedPlan: undefined,
+        });
 
-      const product = state.productsBySku.get('SKU-1');
-      expect(product).toBeDefined();
-      if (!product) return;
-      expect(result.categoriesCreated).toBe(1);
-      expect(result.locationsCreated).toBe(1);
-      expect(result.productsCreated).toBe(1);
-      expect(result.inventoryRecordsCreated).toBe(1);
-      expect(product).toMatchObject({
-        name: 'Same Product',
-        category_id: 'cat-1',
-        standard_price: 12.5,
-        reorder_point: 2,
-        created_by: TEST_USER_ID,
-        updated_by: TEST_USER_ID,
-      });
-      expect(
-        state.inventoryByKey.get(state.inventoryKey(product.id, 'loc-1')),
-      ).toMatchObject({ quantity: 7, area_id: null });
-    }),
+        const product = state.productsBySku.get('SKU-1');
+        expect(product).toBeDefined();
+        if (!product) return;
+        expect(result.categoriesCreated).toBe(1);
+        expect(result.locationsCreated).toBe(1);
+        expect(result.productsCreated).toBe(1);
+        expect(result.inventoryRecordsCreated).toBe(1);
+        expect(product).toMatchObject({
+          name: 'Same Product',
+          category_id: 'cat-1',
+          standard_price: 12.5,
+          reorder_point: 2,
+          created_by: TEST_USER_ID,
+          updated_by: TEST_USER_ID,
+        });
+        expect(
+          state.inventoryByKey.get(state.inventoryKey(product.id, 'loc-1')),
+        ).toMatchObject({ quantity: 7, area_id: null });
+      }),
   );
 
   it.effect('updates changed existing products and inventory records', () =>
@@ -432,94 +443,98 @@ describe('importProductRow', () => {
     }),
   );
 
-  it.effect('fails before product writes when root inventory conflicts with area inventory', () =>
-    Effect.gen(function* () {
-      const state = makeImportState();
-      const { importer } = makePhotoImporter();
-      const result = makeEmptyProductImportResult();
-      const caches = makeCaches();
-      state.locations.push(locationRow({ id: 'loc-1', name: 'Warehouse' }));
-      state.productsBySku.set(
-        'SKU-1',
-        productRow({
-          id: 'prod-1',
-          sku: 'SKU-1',
-          name: 'Old Product',
-          category_id: 'cat-1',
-        }),
-      );
-      state.setHasAreaScopedInventory(true);
+  it.effect(
+    'fails before product writes when root inventory conflicts with area inventory',
+    () =>
+      Effect.gen(function* () {
+        const state = makeImportState();
+        const { importer } = makePhotoImporter();
+        const result = makeEmptyProductImportResult();
+        const caches = makeCaches();
+        state.locations.push(locationRow({ id: 'loc-1', name: 'Warehouse' }));
+        state.productsBySku.set(
+          'SKU-1',
+          productRow({
+            id: 'prod-1',
+            sku: 'SKU-1',
+            name: 'Old Product',
+            category_id: 'cat-1',
+          }),
+        );
+        state.setHasAreaScopedInventory(true);
 
-      const error = yield* Effect.flip(
-        importProductRow({
+        const error = yield* Effect.flip(
+          importProductRow({
+            repository: state.repository,
+            photoImporter: importer,
+            row: row({ category_path: 'Drinks' }),
+            caches,
+            result,
+            expiryDate: null,
+            userId: TEST_USER_ID,
+            approvedPlan: undefined,
+          }),
+        );
+
+        expect(error).toMatchObject({
+          _tag: 'ProductInfrastructureError',
+          messageKey: 'products.importAreaScopedInventoryConflict',
+        });
+        expect(result.categoriesCreated).toBe(0);
+        expect(result.productsUpdated).toBe(0);
+        expect(state.calls.createCategory).toBe(0);
+        expect(state.calls.updateProduct).toBe(0);
+        expect(state.calls.createInventory).toBe(0);
+      }),
+  );
+
+  it.effect(
+    'imports supported photos once and records unsupported or failed URLs',
+    () =>
+      Effect.gen(function* () {
+        const state = makeImportState();
+        const failingUrl = 'https://lnk.sortly.co/fail';
+        const { importer, calls } = makePhotoImporter(new Set([failingUrl]));
+        const result = makeEmptyProductImportResult();
+        const caches = makeCaches();
+
+        yield* importProductRow({
           repository: state.repository,
           photoImporter: importer,
-          row: row({ category_path: 'Drinks' }),
+          row: row({
+            location: '',
+            photo_urls: [
+              'https://lnk.sortly.co/ok',
+              failingUrl,
+              'https://example.com/nope',
+              'https://lnk.sortly.co/ok',
+            ],
+          }),
           caches,
           result,
           expiryDate: null,
           userId: TEST_USER_ID,
           approvedPlan: undefined,
-        }),
-      );
+        });
 
-      expect(error).toMatchObject({
-        _tag: 'ProductInfrastructureError',
-        messageKey: 'products.importAreaScopedInventoryConflict',
-      });
-      expect(result.categoriesCreated).toBe(0);
-      expect(result.productsUpdated).toBe(0);
-      expect(state.calls.createCategory).toBe(0);
-      expect(state.calls.updateProduct).toBe(0);
-      expect(state.calls.createInventory).toBe(0);
-    }),
-  );
-
-  it.effect('imports supported photos once and records unsupported or failed URLs', () =>
-    Effect.gen(function* () {
-      const state = makeImportState();
-      const failingUrl = 'https://lnk.sortly.co/fail';
-      const { importer, calls } = makePhotoImporter(new Set([failingUrl]));
-      const result = makeEmptyProductImportResult();
-      const caches = makeCaches();
-
-      yield* importProductRow({
-        repository: state.repository,
-        photoImporter: importer,
-        row: row({
-          location: '',
-          photo_urls: [
-            'https://lnk.sortly.co/ok',
-            failingUrl,
-            'https://example.com/nope',
-            'https://lnk.sortly.co/ok',
-          ],
-        }),
-        caches,
-        result,
-        expiryDate: null,
-        userId: TEST_USER_ID,
-        approvedPlan: undefined,
-      });
-
-      expect(result.photosCreated).toBe(1);
-      expect(result.photosSkipped).toBe(2);
-      expect(calls.map((call) => call.url)).toEqual([
-        'https://lnk.sortly.co/ok',
-        failingUrl,
-      ]);
-      expect(result.errors).toEqual([
-        {
-          row: 2,
-          error:
-            'Photo import failed for "https://lnk.sortly.co/fail": download failed',
-        },
-        {
-          row: 2,
-          error:
-            'Photo import failed for "https://example.com/nope": Unsupported Sortly photo URL',
-        },
-      ]);
-    }),
+        expect(result.photosCreated).toBe(1);
+        expect(result.photosSkipped).toBe(2);
+        expect(calls.map((call) => call.url)).toEqual([
+          'https://lnk.sortly.co/ok',
+          failingUrl,
+        ]);
+        expect(result.errors).toEqual([
+          {
+            row: 2,
+            error:
+              'Photo import failed for "https://lnk.sortly.co/fail": download failed',
+          },
+          {
+            row: 2,
+            error:
+              'Photo import failed for "https://example.com/nope": Unsupported Sortly photo URL',
+          },
+        ]);
+      }),
   );
 });

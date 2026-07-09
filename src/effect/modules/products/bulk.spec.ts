@@ -1,9 +1,6 @@
 import { describe, expect, it } from '@effect/vitest';
 import { Effect } from 'effect';
-import {
-  makeProductBulkWorkflows,
-  type ProductBulkRepository,
-} from './bulk';
+import { makeProductBulkWorkflows, type ProductBulkRepository } from './bulk';
 import type { ProductWithRelations } from './types';
 
 const now = new Date('2026-01-01T00:00:00.000Z');

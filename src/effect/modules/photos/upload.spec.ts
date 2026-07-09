@@ -2,10 +2,7 @@ import { describe, expect, it } from '@effect/vitest';
 import { Effect } from 'effect';
 import { makeInMemoryStorageAdapter } from '../../platform/storage';
 import { PhotosInfrastructureError } from './photos.errors';
-import {
-  makePhotoUploadWorkflow,
-  type PhotoUploadRepository,
-} from './upload';
+import { makePhotoUploadWorkflow, type PhotoUploadRepository } from './upload';
 import type { PhotoCreateValues, PhotoEntity, UploadedFile } from './types';
 
 const now = new Date('2026-03-01T00:00:00.000Z');
@@ -98,34 +95,36 @@ describe('makePhotoUploadWorkflow', () => {
     }),
   );
 
-  it.effect('rejects files whose bytes do not match the declared MIME type', () =>
-    Effect.gen(function* () {
-      const storage = makeInMemoryStorageAdapter();
-      let createCalled = false;
-      const workflow = makePhotoUploadWorkflow({
-        repository: makeRepository({
-          create: () =>
-            Effect.sync(() => {
-              createCalled = true;
-              return makePhoto();
-            }),
-        }),
-        storage,
-        makeObjectId: () => 'object-1',
-      });
+  it.effect(
+    'rejects files whose bytes do not match the declared MIME type',
+    () =>
+      Effect.gen(function* () {
+        const storage = makeInMemoryStorageAdapter();
+        let createCalled = false;
+        const workflow = makePhotoUploadWorkflow({
+          repository: makeRepository({
+            create: () =>
+              Effect.sync(() => {
+                createCalled = true;
+                return makePhoto();
+              }),
+          }),
+          storage,
+          makeObjectId: () => 'object-1',
+        });
 
-      const error = yield* Effect.flip(
-        workflow.uploadPhoto(
-          'product-1',
-          makeUpload({ buffer: Buffer.from('not an image') }),
-          'user-1',
-        ),
-      );
+        const error = yield* Effect.flip(
+          workflow.uploadPhoto(
+            'product-1',
+            makeUpload({ buffer: Buffer.from('not an image') }),
+            'user-1',
+          ),
+        );
 
-      expect(error).toMatchObject({ _tag: 'InvalidPhotoMimeType' });
-      expect(createCalled).toBe(false);
-      expect(storage.store.size).toBe(0);
-    }),
+        expect(error).toMatchObject({ _tag: 'InvalidPhotoMimeType' });
+        expect(createCalled).toBe(false);
+        expect(storage.store.size).toBe(0);
+      }),
   );
 
   it.effect('removes the stored object when metadata insertion fails', () =>

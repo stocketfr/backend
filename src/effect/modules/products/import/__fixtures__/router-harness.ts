@@ -12,7 +12,10 @@ import { ProductImportUnsupportedFormat } from '../../products.errors';
 import { productImportRouter } from '../router';
 import { ProductImportService } from '../service';
 
-export { FAKE_USER_ID, makeFakeSession } from '../../../../testing/router-harness';
+export {
+  FAKE_USER_ID,
+  makeFakeSession,
+} from '../../../../testing/router-harness';
 
 export interface ProductImportRouterHarnessOptions {
   readonly importService?: Record<string, unknown>;

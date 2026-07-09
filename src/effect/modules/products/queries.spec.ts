@@ -1,9 +1,6 @@
 import { SortOrder } from '@stocket/types/common';
 import { ProductSortField } from '@stocket/types/products';
-import {
-  buildProductFilters,
-  mapProductRow,
-} from './queries';
+import { buildProductFilters, mapProductRow } from './queries';
 import type { ProductQueryDto, ProductWithRelations } from './types';
 
 const query = (overrides: Partial<ProductQueryDto> = {}): ProductQueryDto => ({

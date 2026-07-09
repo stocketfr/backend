@@ -39,25 +39,27 @@ describe('validateOrderStatusTransition', () => {
     ),
   );
 
-  it.effect('maps invalid state-machine transitions to the order domain error', () =>
-    Effect.gen(function* () {
-      const error = yield* Effect.flip(
-        validateOrderStatusTransition(
-          makeOrder({ status: OrderStatus.DELIVERED }),
-          OrderStatus.DRAFT,
-        ),
-      );
+  it.effect(
+    'maps invalid state-machine transitions to the order domain error',
+    () =>
+      Effect.gen(function* () {
+        const error = yield* Effect.flip(
+          validateOrderStatusTransition(
+            makeOrder({ status: OrderStatus.DELIVERED }),
+            OrderStatus.DRAFT,
+          ),
+        );
 
-      expect(error).toMatchObject({
-        _tag: 'InvalidOrderStatusTransition',
-        from: OrderStatus.DELIVERED,
-        to: OrderStatus.DRAFT,
-        messageArgs: {
+        expect(error).toMatchObject({
+          _tag: 'InvalidOrderStatusTransition',
           from: OrderStatus.DELIVERED,
           to: OrderStatus.DRAFT,
-        },
-      });
-    }),
+          messageArgs: {
+            from: OrderStatus.DELIVERED,
+            to: OrderStatus.DRAFT,
+          },
+        });
+      }),
   );
 });
 

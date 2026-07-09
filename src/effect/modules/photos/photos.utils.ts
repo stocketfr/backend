@@ -1,11 +1,5 @@
-import type {
-  PhotoCreateValues,
-  PhotoCreateValuesOptions,
-} from './types';
-import {
-  PHOTO_MAGIC_SIGNATURES,
-  PHOTO_MIME_EXTENSIONS,
-} from './types';
+import type { PhotoCreateValues, PhotoCreateValuesOptions } from './types';
+import { PHOTO_MAGIC_SIGNATURES, PHOTO_MIME_EXTENSIONS } from './types';
 
 export const getPhotoExtension = (mimetype: string): string =>
   PHOTO_MIME_EXTENSIONS[mimetype] ?? '.bin';

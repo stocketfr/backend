@@ -22,10 +22,7 @@ import { ProductsRepository } from './repository';
 import { validateProductReferences } from './references';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { makeBulkCreateProducts } from './bulk-create';
-import {
-  mapSkuUniqueViolation,
-  validatePriceNotBelowCost,
-} from './validation';
+import { mapSkuUniqueViolation, validatePriceNotBelowCost } from './validation';
 import { makeProductWriteWorkflows } from './write';
 import { makeProductBulkWorkflows } from './bulk';
 import { makeProductCategoryWorkflows } from './category-products';

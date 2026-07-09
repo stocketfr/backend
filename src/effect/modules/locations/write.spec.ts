@@ -84,27 +84,29 @@ describe('makeLocationWriteWorkflows', () => {
     }),
   );
 
-  it.effect('returns the current location without writing an empty update', () =>
-    Effect.gen(function* () {
-      let updateCalled = false;
-      const existing = makeLocation({ name: 'Existing Warehouse' });
-      const repository = makeRepository({
-        update: () =>
-          Effect.sync(() => {
-            updateCalled = true;
-            return makeLocation();
-          }),
-      });
-      const workflows = makeLocationWriteWorkflows({
-        repository,
-        getLocationOrFail: () => Effect.succeed(existing),
-      });
+  it.effect(
+    'returns the current location without writing an empty update',
+    () =>
+      Effect.gen(function* () {
+        let updateCalled = false;
+        const existing = makeLocation({ name: 'Existing Warehouse' });
+        const repository = makeRepository({
+          update: () =>
+            Effect.sync(() => {
+              updateCalled = true;
+              return makeLocation();
+            }),
+        });
+        const workflows = makeLocationWriteWorkflows({
+          repository,
+          getLocationOrFail: () => Effect.succeed(existing),
+        });
 
-      const result = yield* workflows.update('location-1', {});
+        const result = yield* workflows.update('location-1', {});
 
-      expect(result.name).toBe('Existing Warehouse');
-      expect(updateCalled).toBe(false);
-    }),
+        expect(result.name).toBe('Existing Warehouse');
+        expect(updateCalled).toBe(false);
+      }),
   );
 
   it.effect('updates changed location fields', () =>

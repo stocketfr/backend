@@ -62,7 +62,12 @@ export const importProductPhotos = (
           Effect.matchEffect({
             onFailure: (error) =>
               Effect.sync(() => {
-                pushPhotoImportError(result, row, url, formatImportError(error));
+                pushPhotoImportError(
+                  result,
+                  row,
+                  url,
+                  formatImportError(error),
+                );
               }),
             onSuccess: () =>
               Effect.sync(() => {

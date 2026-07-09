@@ -231,25 +231,30 @@ describe('tenant import helpers', () => {
     }),
   );
 
-  it.effect('fails product import when the import result contains row errors', () =>
-    Effect.gen(function* () {
-      const service: Pick<TenantImportProductService, 'importFromCsvContent'> = {
-        importFromCsvContent: () =>
-          Effect.succeed(
-            importResult({
-              errors: [{ row: 2, error: 'Invalid SKU' }],
-            }),
-          ),
-      };
+  it.effect(
+    'fails product import when the import result contains row errors',
+    () =>
+      Effect.gen(function* () {
+        const service: Pick<
+          TenantImportProductService,
+          'importFromCsvContent'
+        > = {
+          importFromCsvContent: () =>
+            Effect.succeed(
+              importResult({
+                errors: [{ row: 2, error: 'Invalid SKU' }],
+              }),
+            ),
+        };
 
-      const error = yield* Effect.flip(
-        importProductsForTenant(created, productImport, actor, service),
-      );
+        const error = yield* Effect.flip(
+          importProductsForTenant(created, productImport, actor, service),
+        );
 
-      expect(error).toMatchObject({
-        _tag: 'TenantImportInvalid',
-        details: 'Row 2: Invalid SKU',
-      });
-    }),
+        expect(error).toMatchObject({
+          _tag: 'TenantImportInvalid',
+          details: 'Row 2: Invalid SKU',
+        });
+      }),
   );
 });

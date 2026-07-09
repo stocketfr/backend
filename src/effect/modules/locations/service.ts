@@ -77,8 +77,7 @@ export class LocationsService extends Effect.Service<LocationsService>()(
       ): Effect.Effect<
         LocationResponseDto,
         LocationsInfrastructureError | TenantNotResolved
-      > =>
-        locationWriteWorkflows.create(dto).pipe(trace.span('create'));
+      > => locationWriteWorkflows.create(dto).pipe(trace.span('create'));
 
       const update = (
         id: string,

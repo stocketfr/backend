@@ -74,9 +74,7 @@ const product = (): ImportProductRow => ({
   deleted_by: null,
 });
 
-const makePhotoImporter = (
-  failingUrls: ReadonlySet<string> = new Set(),
-) => {
+const makePhotoImporter = (failingUrls: ReadonlySet<string> = new Set()) => {
   const calls: Array<{
     readonly productId: string;
     readonly url: string;
@@ -117,57 +115,59 @@ describe('row photo import helpers', () => {
     ]);
   });
 
-  it.effect('imports supported photos once and records unsupported or failed URLs', () =>
-    Effect.gen(function* () {
-      const failingUrl = 'https://lnk.sortly.co/fail';
-      const { importer, calls } = makePhotoImporter(new Set([failingUrl]));
-      const result = makeEmptyProductImportResult();
-      const caches = makeCaches();
+  it.effect(
+    'imports supported photos once and records unsupported or failed URLs',
+    () =>
+      Effect.gen(function* () {
+        const failingUrl = 'https://lnk.sortly.co/fail';
+        const { importer, calls } = makePhotoImporter(new Set([failingUrl]));
+        const result = makeEmptyProductImportResult();
+        const caches = makeCaches();
 
-      yield* importProductPhotos(
-        importer,
-        product(),
-        row({
-          photo_urls: [
-            'https://lnk.sortly.co/ok',
-            failingUrl,
-            'https://example.com/nope',
-            'https://lnk.sortly.co/ok',
-          ],
-        }),
-        caches,
-        result,
-        TEST_USER_ID,
-      );
+        yield* importProductPhotos(
+          importer,
+          product(),
+          row({
+            photo_urls: [
+              'https://lnk.sortly.co/ok',
+              failingUrl,
+              'https://example.com/nope',
+              'https://lnk.sortly.co/ok',
+            ],
+          }),
+          caches,
+          result,
+          TEST_USER_ID,
+        );
 
-      expect(result.photosCreated).toBe(1);
-      expect(result.photosSkipped).toBe(2);
-      expect(calls).toEqual([
-        {
-          productId: 'prod-1',
-          url: 'https://lnk.sortly.co/ok',
-          photoIndex: 0,
-          userId: TEST_USER_ID,
-        },
-        {
-          productId: 'prod-1',
-          url: failingUrl,
-          photoIndex: 1,
-          userId: TEST_USER_ID,
-        },
-      ]);
-      expect(result.errors).toEqual([
-        {
-          row: 2,
-          error:
-            'Photo import failed for "https://lnk.sortly.co/fail": download failed',
-        },
-        {
-          row: 2,
-          error:
-            'Photo import failed for "https://example.com/nope": Unsupported Sortly photo URL',
-        },
-      ]);
-    }),
+        expect(result.photosCreated).toBe(1);
+        expect(result.photosSkipped).toBe(2);
+        expect(calls).toEqual([
+          {
+            productId: 'prod-1',
+            url: 'https://lnk.sortly.co/ok',
+            photoIndex: 0,
+            userId: TEST_USER_ID,
+          },
+          {
+            productId: 'prod-1',
+            url: failingUrl,
+            photoIndex: 1,
+            userId: TEST_USER_ID,
+          },
+        ]);
+        expect(result.errors).toEqual([
+          {
+            row: 2,
+            error:
+              'Photo import failed for "https://lnk.sortly.co/fail": download failed',
+          },
+          {
+            row: 2,
+            error:
+              'Photo import failed for "https://example.com/nope": Unsupported Sortly photo URL',
+          },
+        ]);
+      }),
   );
 });

@@ -205,9 +205,9 @@ export const makeCreateTenantWorkflow = ({
           ),
           Effect.tapError(() =>
             adminCreatedHere
-              ? usersRepository.deleteBetterAuthUser(adminUserId).pipe(
-                  Effect.ignore,
-                )
+              ? usersRepository
+                  .deleteBetterAuthUser(adminUserId)
+                  .pipe(Effect.ignore)
               : Effect.void,
           ),
         );
@@ -243,9 +243,9 @@ export const makeCreateTenantWorkflow = ({
             ),
             Effect.tapError(() =>
               adminCreatedHere
-                ? usersRepository.deleteBetterAuthUser(adminUserId).pipe(
-                    Effect.ignore,
-                  )
+                ? usersRepository
+                    .deleteBetterAuthUser(adminUserId)
+                    .pipe(Effect.ignore)
                 : Effect.void,
             ),
           )
@@ -253,7 +253,10 @@ export const makeCreateTenantWorkflow = ({
 
       if (adminCreatedHere) {
         yield* Effect.forkDaemon(
-          requestTenantAdminWelcomeEmail(normalizedEmail, created.tenant.hostname),
+          requestTenantAdminWelcomeEmail(
+            normalizedEmail,
+            created.tenant.hostname,
+          ),
         );
       }
 

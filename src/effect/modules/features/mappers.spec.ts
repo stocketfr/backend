@@ -59,9 +59,11 @@ describe('feature mappers', () => {
   });
 
   it('applies active overrides and preserves override response metadata', () => {
-    const result = buildTenantFeaturesResponse(tenantId, profile(PlanKey.FREE), [
-      override(true, new Date('2030-01-01T00:00:00.000Z')),
-    ]);
+    const result = buildTenantFeaturesResponse(
+      tenantId,
+      profile(PlanKey.FREE),
+      [override(true, new Date('2030-01-01T00:00:00.000Z'))],
+    );
 
     expect(result.features[FeatureKey.SMART_IMPORT]).toBe(true);
     expect(result.overrides).toEqual([
@@ -77,9 +79,11 @@ describe('feature mappers', () => {
   });
 
   it('ignores expired overrides for effective feature states', () => {
-    const result = buildTenantFeaturesResponse(tenantId, profile(PlanKey.GROWTH), [
-      override(false, new Date('2020-01-01T00:00:00.000Z')),
-    ]);
+    const result = buildTenantFeaturesResponse(
+      tenantId,
+      profile(PlanKey.GROWTH),
+      [override(false, new Date('2020-01-01T00:00:00.000Z'))],
+    );
 
     expect(result.features[FeatureKey.SMART_IMPORT]).toBe(true);
   });

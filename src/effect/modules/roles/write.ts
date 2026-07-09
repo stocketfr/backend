@@ -166,7 +166,11 @@ export const makeRoleWriteWorkflows = ({
           is_system: true,
         });
 
-        yield* repository.replacePermissions(tenantId, role.id, seed.permissions);
+        yield* repository.replacePermissions(
+          tenantId,
+          role.id,
+          seed.permissions,
+        );
       }),
     ).pipe(Effect.asVoid);
 

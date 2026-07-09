@@ -55,7 +55,9 @@ const makeInventory = (
   ...overrides,
 });
 
-const makeArea = (overrides: Partial<AreaResponseDto> = {}): AreaResponseDto => ({
+const makeArea = (
+  overrides: Partial<AreaResponseDto> = {},
+): AreaResponseDto => ({
   id: AREA_ID,
   location_id: LOCATION_ID,
   parent_id: null,
@@ -88,12 +90,8 @@ const makeWorkflows = ({
 }: {
   readonly repository: InventoryWriteRepository;
   readonly area?: AreaResponseDto;
-  readonly ensureProductExists?: (
-    productId: string,
-  ) => Effect.Effect<void>;
-  readonly ensureLocationExists?: (
-    locationId: string,
-  ) => Effect.Effect<void>;
+  readonly ensureProductExists?: (productId: string) => Effect.Effect<void>;
+  readonly ensureLocationExists?: (locationId: string) => Effect.Effect<void>;
   readonly getInventoryOrFail?: (
     id: string,
   ) => Effect.Effect<InventoryWithRelations>;
@@ -109,52 +107,54 @@ const makeWorkflows = ({
   });
 
 describe('makeInventoryWriteWorkflows', () => {
-  it.effect('creates inventory after validating product, location, and area', () =>
-    Effect.gen(function* () {
-      let productValidated = 0;
-      let locationValidated = 0;
-      let capturedCreate: InventoryCreateData | undefined;
-      const repository = makeRepository({
-        create: (data) =>
-          Effect.sync(() => {
-            capturedCreate = data;
-            return makeInventory({ id: 'inventory-created' });
-          }),
-      });
-      const workflows = makeWorkflows({
-        repository,
-        ensureProductExists: () =>
-          Effect.sync(() => {
-            productValidated++;
-          }),
-        ensureLocationExists: () =>
-          Effect.sync(() => {
-            locationValidated++;
-          }),
-        getInventoryOrFail: (id) =>
-          Effect.succeed(makeInventory({ id, area_id: AREA_ID })),
-      });
+  it.effect(
+    'creates inventory after validating product, location, and area',
+    () =>
+      Effect.gen(function* () {
+        let productValidated = 0;
+        let locationValidated = 0;
+        let capturedCreate: InventoryCreateData | undefined;
+        const repository = makeRepository({
+          create: (data) =>
+            Effect.sync(() => {
+              capturedCreate = data;
+              return makeInventory({ id: 'inventory-created' });
+            }),
+        });
+        const workflows = makeWorkflows({
+          repository,
+          ensureProductExists: () =>
+            Effect.sync(() => {
+              productValidated++;
+            }),
+          ensureLocationExists: () =>
+            Effect.sync(() => {
+              locationValidated++;
+            }),
+          getInventoryOrFail: (id) =>
+            Effect.succeed(makeInventory({ id, area_id: AREA_ID })),
+        });
 
-      const result = yield* workflows.create(createDto);
+        const result = yield* workflows.create(createDto);
 
-      expect(productValidated).toBe(1);
-      expect(locationValidated).toBe(1);
-      expect(capturedCreate).toEqual({
-        product_id: PRODUCT_ID,
-        location_id: LOCATION_ID,
-        area_id: AREA_ID,
-        quantity: 10,
-        batch_number: 'BATCH-NEW',
-        expiry_date: createDto.expiry_date,
-        cost_per_unit: 7.5,
-        received_date: createDto.received_date,
-      });
-      expect(result).toMatchObject({
-        id: 'inventory-created',
-        area_id: AREA_ID,
-        quantity: 25,
-      });
-    }),
+        expect(productValidated).toBe(1);
+        expect(locationValidated).toBe(1);
+        expect(capturedCreate).toEqual({
+          product_id: PRODUCT_ID,
+          location_id: LOCATION_ID,
+          area_id: AREA_ID,
+          quantity: 10,
+          batch_number: 'BATCH-NEW',
+          expiry_date: createDto.expiry_date,
+          cost_per_unit: 7.5,
+          received_date: createDto.received_date,
+        });
+        expect(result).toMatchObject({
+          id: 'inventory-created',
+          area_id: AREA_ID,
+          quantity: 25,
+        });
+      }),
   );
 
   it.effect('updates location and area only after checking uniqueness', () =>

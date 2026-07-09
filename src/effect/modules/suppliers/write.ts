@@ -63,9 +63,8 @@ export const makeSupplierWriteWorkflows = <GetError, GetContext>({
         return toSupplierResponseDto(supplier);
       }
 
-      const updated = yield* fromNullOr(
-        repository.update(id, updateData),
-        () => makeSupplierNotFound(id),
+      const updated = yield* fromNullOr(repository.update(id, updateData), () =>
+        makeSupplierNotFound(id),
       );
 
       return toSupplierResponseDto(updated);

@@ -72,8 +72,7 @@ describe('notification delivery workflows', () => {
         eventKind: 'low-stock',
         category: NotificationCategory.INVENTORY_ALERTS,
         channel: NotificationChannel.EMAIL,
-        dedupeKey:
-          'low-stock:product-1:location-1:user-1:email:2026-03-01',
+        dedupeKey: 'low-stock:product-1:location-1:user-1:email:2026-03-01',
       });
       expect(sendEmail).toHaveBeenCalledWith({
         to: 'user@example.test',

@@ -68,9 +68,7 @@ describe('notification service helpers', () => {
   });
 
   it('describes thrown and object-shaped errors without dropping message text', () => {
-    expect(describeError(new Error('provider failed'))).toBe(
-      'provider failed',
-    );
+    expect(describeError(new Error('provider failed'))).toBe('provider failed');
     expect(describeError({ message: 'ledger failed' })).toBe('ledger failed');
     expect(describeError(404)).toBe('404');
   });
@@ -116,14 +114,14 @@ describe('effectivePref (D6 default policy)', () => {
 
 describe('shouldSendEmail', () => {
   it('uses the effective email preference policy for nullable stored values', () => {
-    expect(
-      shouldSendEmail(NotificationCategory.INVENTORY_ALERTS, null),
-    ).toBe(true);
-    expect(
-      shouldSendEmail(NotificationCategory.INVENTORY_ALERTS, false),
-    ).toBe(false);
-    expect(
-      shouldSendEmail(NotificationCategory.INVENTORY_ALERTS, true),
-    ).toBe(true);
+    expect(shouldSendEmail(NotificationCategory.INVENTORY_ALERTS, null)).toBe(
+      true,
+    );
+    expect(shouldSendEmail(NotificationCategory.INVENTORY_ALERTS, false)).toBe(
+      false,
+    );
+    expect(shouldSendEmail(NotificationCategory.INVENTORY_ALERTS, true)).toBe(
+      true,
+    );
   });
 });

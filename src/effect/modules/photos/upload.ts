@@ -14,15 +14,8 @@ import {
 } from './photos.utils';
 import { toPhotoResponseDto } from './mappers';
 import { mapPhotoStorageWriteError } from './storage-errors';
-import type {
-  PhotoCreateValues,
-  PhotoEntity,
-  UploadedFile,
-} from './types';
-import {
-  ALLOWED_PHOTO_MIME_TYPES,
-  MAX_PHOTO_FILE_SIZE,
-} from './types';
+import type { PhotoCreateValues, PhotoEntity, UploadedFile } from './types';
+import { ALLOWED_PHOTO_MIME_TYPES, MAX_PHOTO_FILE_SIZE } from './types';
 
 export interface PhotoUploadRepository {
   readonly countByProductId: (
@@ -30,7 +23,10 @@ export interface PhotoUploadRepository {
   ) => Effect.Effect<number, PhotosInfrastructureError | TenantNotResolved>;
   readonly create: (
     values: PhotoCreateValues,
-  ) => Effect.Effect<PhotoEntity, PhotosInfrastructureError | TenantNotResolved>;
+  ) => Effect.Effect<
+    PhotoEntity,
+    PhotosInfrastructureError | TenantNotResolved
+  >;
 }
 
 interface PhotoUploadWorkflowOptions {
@@ -114,9 +110,7 @@ export const makePhotoUploadWorkflow = ({
           }),
         );
       }).pipe(
-        Effect.tapError(() =>
-          Effect.ignore(storage.deleteObject(objectKey)),
-        ),
+        Effect.tapError(() => Effect.ignore(storage.deleteObject(objectKey))),
       );
 
       return toPhotoResponseDto(photo);

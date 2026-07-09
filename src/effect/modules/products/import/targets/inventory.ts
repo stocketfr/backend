@@ -8,10 +8,7 @@ import type {
   ProductImportPlan,
   ProductImportResultDto,
 } from '../types';
-import {
-  findLocationMapping,
-  getDefaultLocationName,
-} from '../plan';
+import { findLocationMapping, getDefaultLocationName } from '../plan';
 import { normalizeStorageLocationName } from '../storage-location/utils';
 import {
   type ImportInventoryTarget,

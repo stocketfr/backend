@@ -149,61 +149,65 @@ describe('makeRoleWriteWorkflows', () => {
     }),
   );
 
-  it.effect('updates fields, replaces permissions, clears cache, and reloads', () =>
-    Effect.gen(function* () {
-      let capturedUpdate:
-        | {
-            readonly id: string;
-            readonly tenantId: string;
-            readonly data: RoleUpdateData;
-          }
-        | undefined;
-      let clearCacheCalls = 0;
-      const repository = makeRepository({
-        findById: (id) =>
-          Effect.succeed(
-            makeRole({
-              id,
-              name: capturedUpdate ? 'Manager Updated' : 'Manager',
-              description: capturedUpdate ? 'New description' : 'Old description',
+  it.effect(
+    'updates fields, replaces permissions, clears cache, and reloads',
+    () =>
+      Effect.gen(function* () {
+        let capturedUpdate:
+          | {
+              readonly id: string;
+              readonly tenantId: string;
+              readonly data: RoleUpdateData;
+            }
+          | undefined;
+        let clearCacheCalls = 0;
+        const repository = makeRepository({
+          findById: (id) =>
+            Effect.succeed(
+              makeRole({
+                id,
+                name: capturedUpdate ? 'Manager Updated' : 'Manager',
+                description: capturedUpdate
+                  ? 'New description'
+                  : 'Old description',
+              }),
+            ),
+          update: (id, checkedTenantId, data) =>
+            Effect.sync(() => {
+              capturedUpdate = { id, tenantId: checkedTenantId, data };
             }),
-          ),
-        update: (id, checkedTenantId, data) =>
-          Effect.sync(() => {
-            capturedUpdate = { id, tenantId: checkedTenantId, data };
-          }),
-      });
-      const workflows = makeRoleWriteWorkflows({
-        repository,
-        clearAllCache: () =>
-          Effect.sync(() => {
-            clearCacheCalls += 1;
-          }),
-      });
+        });
+        const workflows = makeRoleWriteWorkflows({
+          repository,
+          clearAllCache: () =>
+            Effect.sync(() => {
+              clearCacheCalls += 1;
+            }),
+        });
 
-      const result = yield* workflows.update(
-        'role-1',
-        {
-          name: 'Manager Updated',
-          description: 'New description',
-          permissions: [
-            { resource: Resource.ROLES, permission: Permission.WRITE },
-          ],
-        },
-        tenantId,
-      );
+        const result = yield* workflows.update(
+          'role-1',
+          {
+            name: 'Manager Updated',
+            description: 'New description',
+            permissions: [
+              { resource: Resource.ROLES, permission: Permission.WRITE },
+            ],
+          },
+          tenantId,
+        );
 
-      expect(capturedUpdate).toEqual({
-        id: 'role-1',
-        tenantId,
-        data: {
-          name: 'Manager Updated',
-          description: 'New description',
-        },
-      });
-      expect(clearCacheCalls).toBe(1);
-      expect(result.name).toBe('Manager Updated');
-    }),
+        expect(capturedUpdate).toEqual({
+          id: 'role-1',
+          tenantId,
+          data: {
+            name: 'Manager Updated',
+            description: 'New description',
+          },
+        });
+        expect(clearCacheCalls).toBe(1);
+        expect(result.name).toBe('Manager Updated');
+      }),
   );
 
   it.effect('rejects duplicate renamed roles before updating', () =>
@@ -233,37 +237,39 @@ describe('makeRoleWriteWorkflows', () => {
     }),
   );
 
-  it.effect('prevents deleting system roles and clears cache after custom role deletion', () =>
-    Effect.gen(function* () {
-      let deletedRoleId: string | undefined;
-      let clearCacheCalls = 0;
-      const workflows = makeRoleWriteWorkflows({
-        repository: makeRepository({
-          findById: (id) =>
-            Effect.succeed(makeRole({ id, is_system: id === 'system-role' })),
-          delete: (id) =>
-            Effect.sync(() => {
-              deletedRoleId = id;
-            }),
-        }),
-        clearAllCache: () =>
-          Effect.sync(() => {
-            clearCacheCalls += 1;
+  it.effect(
+    'prevents deleting system roles and clears cache after custom role deletion',
+    () =>
+      Effect.gen(function* () {
+        let deletedRoleId: string | undefined;
+        let clearCacheCalls = 0;
+        const workflows = makeRoleWriteWorkflows({
+          repository: makeRepository({
+            findById: (id) =>
+              Effect.succeed(makeRole({ id, is_system: id === 'system-role' })),
+            delete: (id) =>
+              Effect.sync(() => {
+                deletedRoleId = id;
+              }),
           }),
-      });
+          clearAllCache: () =>
+            Effect.sync(() => {
+              clearCacheCalls += 1;
+            }),
+        });
 
-      const error = yield* Effect.flip(
-        workflows.delete('system-role', tenantId),
-      );
-      yield* workflows.delete('custom-role', tenantId);
+        const error = yield* Effect.flip(
+          workflows.delete('system-role', tenantId),
+        );
+        yield* workflows.delete('custom-role', tenantId);
 
-      expect(error).toMatchObject({
-        _tag: 'SystemRoleDeletionForbidden',
-        id: 'system-role',
-      });
-      expect(deletedRoleId).toBe('custom-role');
-      expect(clearCacheCalls).toBe(1);
-    }),
+        expect(error).toMatchObject({
+          _tag: 'SystemRoleDeletionForbidden',
+          id: 'system-role',
+        });
+        expect(deletedRoleId).toBe('custom-role');
+        expect(clearCacheCalls).toBe(1);
+      }),
   );
 
   it.effect('seeds only missing default roles', () =>

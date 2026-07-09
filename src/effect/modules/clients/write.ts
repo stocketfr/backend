@@ -2,10 +2,7 @@ import { Effect } from 'effect';
 import { fromNullOr } from '../../platform/effect/from-null-or';
 import { hasDefinedPatchValues } from '../../platform/effect/pick-defined';
 import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
-import {
-  toClientCreateValues,
-  toClientUpdateValues,
-} from './clients.utils';
+import { toClientCreateValues, toClientUpdateValues } from './clients.utils';
 import { toClientResponseDto } from './mappers';
 import {
   ClientEmailAlreadyExists,
@@ -29,7 +26,10 @@ export interface ClientWriteRepository {
   >;
   readonly create: (
     values: ClientCreateValues,
-  ) => Effect.Effect<ClientEntity, ClientsInfrastructureError | TenantNotResolved>;
+  ) => Effect.Effect<
+    ClientEntity,
+    ClientsInfrastructureError | TenantNotResolved
+  >;
   readonly update: (
     id: string,
     values: ClientUpdateValues,
@@ -88,9 +88,8 @@ export const makeClientWriteWorkflows = <GetError, GetContext>({
         yield* failIfEmailTaken(repository, dto.email);
       }
 
-      const updated = yield* fromNullOr(
-        repository.update(id, updateData),
-        () => makeClientNotFound(id),
+      const updated = yield* fromNullOr(repository.update(id, updateData), () =>
+        makeClientNotFound(id),
       );
 
       return toClientResponseDto(updated);

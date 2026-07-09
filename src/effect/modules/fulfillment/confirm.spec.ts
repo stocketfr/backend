@@ -71,65 +71,67 @@ const makeRepository = (
 };
 
 describe('confirmOrder', () => {
-  it.effect('confirms a draft order, reloads it, and returns the fulfillment view', () =>
-    Effect.gen(function* () {
-      let update:
-        | {
-            readonly orderId: string;
-            readonly status: OrderStatus;
-            readonly confirmedAt: Date;
-            readonly assignedTo: string;
-          }
-        | undefined;
-      const repository = makeRepository({
-        update: (orderId, data) =>
-          Effect.sync(() => {
-            update = {
-              orderId,
-              status: data.status,
-              confirmedAt: data.confirmed_at,
-              assignedTo: data.assigned_to,
-            };
-          }),
-        findByIdWithRelations: () =>
-          Effect.succeed(
-            update
-              ? makeOrder({
-                  status: update.status,
-                  confirmed_at: update.confirmedAt,
-                  assigned_to: update.assignedTo,
-                })
-              : makeOrder(),
-          ),
-      });
+  it.effect(
+    'confirms a draft order, reloads it, and returns the fulfillment view',
+    () =>
+      Effect.gen(function* () {
+        let update:
+          | {
+              readonly orderId: string;
+              readonly status: OrderStatus;
+              readonly confirmedAt: Date;
+              readonly assignedTo: string;
+            }
+          | undefined;
+        const repository = makeRepository({
+          update: (orderId, data) =>
+            Effect.sync(() => {
+              update = {
+                orderId,
+                status: data.status,
+                confirmedAt: data.confirmed_at,
+                assignedTo: data.assigned_to,
+              };
+            }),
+          findByIdWithRelations: () =>
+            Effect.succeed(
+              update
+                ? makeOrder({
+                    status: update.status,
+                    confirmed_at: update.confirmedAt,
+                    assigned_to: update.assignedTo,
+                  })
+                : makeOrder(),
+            ),
+        });
 
-      const result = yield* confirmOrder({
-        repository,
-        orderId: 'order-1',
-        actorId: 'user-2',
-        now: () => confirmedAt,
-      });
+        const result = yield* confirmOrder({
+          repository,
+          orderId: 'order-1',
+          actorId: 'user-2',
+          now: () => confirmedAt,
+        });
 
-      expect(update).toEqual({
-        orderId: 'order-1',
-        status: OrderStatus.CONFIRMED,
-        confirmedAt,
-        assignedTo: 'user-2',
-      });
-      expect(result).toMatchObject({
-        orderId: 'order-1',
-        status: OrderStatus.CONFIRMED,
-        confirmedAt,
-        items: [
-          {
-            orderItemId: 'item-1',
-            quantity: 5,
-            quantityPicked: 0,
-            quantityPacked: 0,
-          },
-        ],
-      });
-    }),
+        expect(update).toEqual({
+          orderId: 'order-1',
+          status: OrderStatus.CONFIRMED,
+          confirmedAt,
+          assignedTo: 'user-2',
+        });
+        expect(result).toMatchObject({
+          orderId: 'order-1',
+          status: OrderStatus.CONFIRMED,
+          confirmedAt,
+          items: [
+            {
+              orderItemId: 'item-1',
+              quantity: 5,
+              quantityPicked: 0,
+              quantityPacked: 0,
+            },
+          ],
+        });
+      }),
   );
 
   it.effect('rejects non-draft orders before updating', () =>

@@ -9,10 +9,7 @@ import { makeGetOrFail } from '../../platform/effect/from-null-or';
 import { LocationsService } from '../locations/service';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { toAreaResponseDto } from './mappers';
-import {
-  AreaNotFound,
-  type AreasInfrastructureError,
-} from './areas.errors';
+import { AreaNotFound, type AreasInfrastructureError } from './areas.errors';
 import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { AreasRepository } from './repository';
 import { makeAreaWriteWorkflows } from './write';
@@ -83,10 +80,7 @@ export class AreasService extends Effect.Service<AreasService>()(
               ),
         ).pipe(trace.span('findByIdWithChildren', { attributes: { id } }));
 
-      const update = (
-        id: string,
-        dto: UpdateAreaDto,
-      ) =>
+      const update = (id: string, dto: UpdateAreaDto) =>
         areaWriteWorkflows
           .update(id, dto)
           .pipe(trace.span('update', { attributes: { id } }));

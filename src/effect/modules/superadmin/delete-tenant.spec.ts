@@ -30,48 +30,50 @@ const makeRepository = (
 });
 
 describe('makeDeleteTenantWorkflow', () => {
-  it.live('deletes a tenant, invalidates features, and records platform audit', () =>
-    Effect.gen(function* () {
-      let deletedTenantId: string | undefined;
-      let invalidatedTenantId: string | undefined;
-      let auditInput: PlatformAuditEventInput | undefined;
-      const workflow = makeDeleteTenantWorkflow({
-        repository: makeRepository({
-          deleteTenant: (id) =>
-            Effect.sync(() => {
-              deletedTenantId = id;
-              return deletedTenant;
-            }),
-          recordPlatformAuditEvent: (input) =>
-            Effect.sync(() => {
-              auditInput = input;
-            }),
-        }),
-        invalidateTenant: (id) =>
-          Effect.sync(() => {
-            invalidatedTenantId = id;
+  it.live(
+    'deletes a tenant, invalidates features, and records platform audit',
+    () =>
+      Effect.gen(function* () {
+        let deletedTenantId: string | undefined;
+        let invalidatedTenantId: string | undefined;
+        let auditInput: PlatformAuditEventInput | undefined;
+        const workflow = makeDeleteTenantWorkflow({
+          repository: makeRepository({
+            deleteTenant: (id) =>
+              Effect.sync(() => {
+                deletedTenantId = id;
+                return deletedTenant;
+              }),
+            recordPlatformAuditEvent: (input) =>
+              Effect.sync(() => {
+                auditInput = input;
+              }),
           }),
-      });
+          invalidateTenant: (id) =>
+            Effect.sync(() => {
+              invalidatedTenantId = id;
+            }),
+        });
 
-      yield* workflow.deleteTenant(tenantId, actor);
-      yield* Effect.sleep('1 millis');
+        yield* workflow.deleteTenant(tenantId, actor);
+        yield* Effect.sleep('1 millis');
 
-      expect(deletedTenantId).toBe(tenantId);
-      expect(invalidatedTenantId).toBe(tenantId);
-      expect(auditInput).toEqual({
-        actorUserId: 'superadmin-1',
-        action: 'tenant.delete',
-        entityType: 'tenant',
-        entityId: tenantId,
-        metadata: {
-          name: 'Acme France',
-          slug: 'acme',
-          primaryHostname: 'acme.localhost:3000',
-        },
-        ipAddress: '127.0.0.1',
-        userAgent: 'vitest',
-      });
-    }),
+        expect(deletedTenantId).toBe(tenantId);
+        expect(invalidatedTenantId).toBe(tenantId);
+        expect(auditInput).toEqual({
+          actorUserId: 'superadmin-1',
+          action: 'tenant.delete',
+          entityType: 'tenant',
+          entityId: tenantId,
+          metadata: {
+            name: 'Acme France',
+            slug: 'acme',
+            primaryHostname: 'acme.localhost:3000',
+          },
+          ipAddress: '127.0.0.1',
+          userAgent: 'vitest',
+        });
+      }),
   );
 
   it.effect('fails with TenantNotFound before invalidating or auditing', () =>

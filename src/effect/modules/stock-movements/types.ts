@@ -9,7 +9,11 @@ export type CreateStockMovementDto = Schema.Schema.Type<
 export type StockMovementRow = typeof stockMovements.$inferSelect;
 
 export type StockMovementWithRelations = StockMovementRow & {
-  readonly product: { readonly id: string; readonly name: string; readonly sku: string } | null;
+  readonly product: {
+    readonly id: string;
+    readonly name: string;
+    readonly sku: string;
+  } | null;
   readonly fromLocation: { readonly id: string; readonly name: string } | null;
   readonly toLocation: { readonly id: string; readonly name: string } | null;
 };

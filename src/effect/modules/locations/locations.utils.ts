@@ -3,10 +3,7 @@ import type {
   UpdateLocationDto,
 } from '@stocket/types/locations';
 import { pickDefined } from '../../platform/effect/pick-defined';
-import type {
-  LocationCreateValues,
-  LocationUpdateValues,
-} from './types';
+import type { LocationCreateValues, LocationUpdateValues } from './types';
 
 export const toLocationCreateValues = (
   dto: CreateLocationDto,

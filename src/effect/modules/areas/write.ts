@@ -1,8 +1,5 @@
 import { Effect } from 'effect';
-import type {
-  CreateAreaDto,
-  UpdateAreaDto,
-} from '@stocket/types/areas';
+import type { CreateAreaDto, UpdateAreaDto } from '@stocket/types/areas';
 import { makeGetOrFail } from '../../platform/effect/from-null-or';
 import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import type { AreasRepository } from './repository';

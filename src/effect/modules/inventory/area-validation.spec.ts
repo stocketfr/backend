@@ -1,18 +1,13 @@
 import { Effect } from 'effect';
 import { describe, expect, it } from '@effect/vitest';
 import type { AreaResponseDto } from '@stocket/types/areas';
-import {
-  AreaNotFound,
-  AreasInfrastructureError,
-} from '../areas/areas.errors';
+import { AreaNotFound, AreasInfrastructureError } from '../areas/areas.errors';
 import {
   getAreaForInventoryLocation,
   type InventoryAreaLookup,
 } from './area-validation';
 
-const area = (
-  overrides: Partial<AreaResponseDto> = {},
-): AreaResponseDto => ({
+const area = (overrides: Partial<AreaResponseDto> = {}): AreaResponseDto => ({
   id: 'area-1',
   location_id: 'location-1',
   parent_id: null,
@@ -26,7 +21,10 @@ const area = (
 });
 
 const lookup = (
-  effect: Effect.Effect<AreaResponseDto, AreaNotFound | AreasInfrastructureError>,
+  effect: Effect.Effect<
+    AreaResponseDto,
+    AreaNotFound | AreasInfrastructureError
+  >,
 ): InventoryAreaLookup => ({
   findById: () => effect,
 });
@@ -68,27 +66,29 @@ describe('getAreaForInventoryLocation', () => {
     }),
   );
 
-  it.effect('maps area infrastructure failures to inventory infrastructure failures', () =>
-    Effect.gen(function* () {
-      const cause = new AreasInfrastructureError({
-        action: 'load area',
-        messageKey: 'areas.infrastructureFailed',
-      });
+  it.effect(
+    'maps area infrastructure failures to inventory infrastructure failures',
+    () =>
+      Effect.gen(function* () {
+        const cause = new AreasInfrastructureError({
+          action: 'load area',
+          messageKey: 'areas.infrastructureFailed',
+        });
 
-      const error = yield* Effect.flip(
-        getAreaForInventoryLocation(
-          lookup(Effect.fail(cause)),
-          'area-1',
-          'location-1',
-        ),
-      );
+        const error = yield* Effect.flip(
+          getAreaForInventoryLocation(
+            lookup(Effect.fail(cause)),
+            'area-1',
+            'location-1',
+          ),
+        );
 
-      expect(error).toMatchObject({
-        _tag: 'InventoryInfrastructureError',
-        action: 'load inventory area',
-        cause,
-      });
-    }),
+        expect(error).toMatchObject({
+          _tag: 'InventoryInfrastructureError',
+          action: 'load inventory area',
+          cause,
+        });
+      }),
   );
 
   it.effect('fails when the area belongs to a different location', () =>

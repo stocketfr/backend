@@ -56,7 +56,10 @@ export interface UserWriteRepository {
   readonly findUserRoles: (
     userId: string,
     tenantId: string,
-  ) => Effect.Effect<ReadonlyArray<UserRoleAssignment>, UsersInfrastructureError>;
+  ) => Effect.Effect<
+    ReadonlyArray<UserRoleAssignment>,
+    UsersInfrastructureError
+  >;
   readonly banBetterAuthUser: (
     userId: string,
     options: { readonly reason?: string; readonly expiresAt?: string | null },

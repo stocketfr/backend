@@ -1,8 +1,5 @@
 import type { ProductImportPreviewDto } from '@stocket/types/products';
-import {
-  extractResponseText,
-  sanitizeLlmProposal,
-} from './sanitizer';
+import { extractResponseText, sanitizeLlmProposal } from './sanitizer';
 
 const preview: ProductImportPreviewDto = {
   format: 'sortly-items',

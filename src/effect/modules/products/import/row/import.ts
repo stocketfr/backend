@@ -36,14 +36,12 @@ interface ProductImportInventoryValues {
   readonly area_id: string | null;
 }
 
-interface ProductImportInventoryCreateValues
-  extends ProductImportInventoryValues {
+interface ProductImportInventoryCreateValues extends ProductImportInventoryValues {
   readonly product_id: string;
   readonly location_id: string;
 }
 
-export interface ProductImportRowRepository
-  extends ProductImportTargetRepository {
+export interface ProductImportRowRepository extends ProductImportTargetRepository {
   readonly findProductBySku: (
     sku: string,
   ) => Effect.Effect<ImportProductRow | null, ProductImportTargetError>;

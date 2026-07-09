@@ -52,7 +52,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
         userId,
       }: ImportProductsFromCsvOptions): Effect.Effect<
         ProductImportResultDto,
-          ProductImportCsvParseFailed | ProductImportUnsupportedFormat
+        ProductImportCsvParseFailed | ProductImportUnsupportedFormat
       > =>
         Effect.gen(function* () {
           const { parsed, format } = yield* parseAndDetectProductImportFormat({

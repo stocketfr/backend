@@ -6,15 +6,13 @@ import {
   parseProductImportNumber,
 } from '../utils/value-parsers';
 
-export interface ProductImportProductCreateValues
-  extends ProductImportValues {
+export interface ProductImportProductCreateValues extends ProductImportValues {
   readonly sku: string;
   readonly created_by: string;
   readonly updated_by: string;
 }
 
-export interface ProductImportProductUpdateValues
-  extends ProductImportValues {
+export interface ProductImportProductUpdateValues extends ProductImportValues {
   readonly updated_by: string;
 }
 

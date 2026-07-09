@@ -15,10 +15,7 @@ import type { UserNotFound, UsersInfrastructureError } from './users.errors';
 import { UsersRepository } from './repository';
 import { toUserResponse } from './mappers';
 import { resolveUserListWindow, toUserListResponse } from './list';
-import {
-  getBetterAuthUserOrFail,
-  requireTenantMemberOrFail,
-} from './access';
+import { getBetterAuthUserOrFail, requireTenantMemberOrFail } from './access';
 import { requestWelcomeEmail } from './welcome-email';
 import { makeUserWriteWorkflows } from './write';
 import type { BetterAuthCreateUserResponse } from './types';

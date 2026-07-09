@@ -99,7 +99,9 @@ const makeRepositories = (
     },
     orderItemsRepository: {
       findByIds: () =>
-        Effect.sync(() => (options.items === undefined ? [item] : options.items)),
+        Effect.sync(() =>
+          options.items === undefined ? [item] : options.items,
+        ),
       incrementPicked: (_orderItemId, quantity) =>
         Effect.sync(() => {
           const rows = options.incrementRows ?? 1;
@@ -155,41 +157,47 @@ describe('ensurePickableOrder', () => {
 });
 
 describe('pickOrder', () => {
-  it.effect('transitions confirmed orders, picks inventory, and records stock movement', () =>
-    Effect.gen(function* () {
-      const state = makeRepositories();
+  it.effect(
+    'transitions confirmed orders, picks inventory, and records stock movement',
+    () =>
+      Effect.gen(function* () {
+        const state = makeRepositories();
 
-      const result = yield* pickOrder({
-        repositories: state.repositories,
-        input: {
+        const result = yield* pickOrder({
+          repositories: state.repositories,
+          input: {
+            orderId: 'order-1',
+            actorId: 'user-2',
+            picks: [
+              {
+                orderItemId: 'item-1',
+                inventoryId: 'inventory-1',
+                quantity: 2,
+              },
+            ],
+          },
+        });
+
+        expect(result).toMatchObject({
           orderId: 'order-1',
-          actorId: 'user-2',
-          picks: [
-            { orderItemId: 'item-1', inventoryId: 'inventory-1', quantity: 2 },
-          ],
-        },
-      });
-
-      expect(result).toMatchObject({
-        orderId: 'order-1',
-        status: OrderStatus.PICKING,
-        items: [{ orderItemId: 'item-1', quantityPicked: 2 }],
-      });
-      expect(state.updates).toEqual([{ status: OrderStatus.PICKING }]);
-      expect(state.inventoryAdjustments).toEqual([
-        { inventoryId: 'inventory-1', adjustment: -2 },
-      ]);
-      expect(state.stockMovements).toEqual([
-        {
-          product_id: 'product-1',
-          from_location_id: 'location-1',
-          quantity: 2,
-          reason: StockMovementReason.SALE,
-          order_id: 'order-1',
-          user_id: 'user-2',
-        },
-      ]);
-    }),
+          status: OrderStatus.PICKING,
+          items: [{ orderItemId: 'item-1', quantityPicked: 2 }],
+        });
+        expect(state.updates).toEqual([{ status: OrderStatus.PICKING }]);
+        expect(state.inventoryAdjustments).toEqual([
+          { inventoryId: 'inventory-1', adjustment: -2 },
+        ]);
+        expect(state.stockMovements).toEqual([
+          {
+            product_id: 'product-1',
+            from_location_id: 'location-1',
+            quantity: 2,
+            reason: StockMovementReason.SALE,
+            order_id: 'order-1',
+            user_id: 'user-2',
+          },
+        ]);
+      }),
   );
 
   it.effect('fails when a picked item does not belong to the order', () =>
@@ -222,29 +230,35 @@ describe('pickOrder', () => {
     }),
   );
 
-  it.effect('fails when the atomic picked quantity increment rejects the pick', () =>
-    Effect.gen(function* () {
-      const state = makeRepositories({ incrementRows: 0 });
+  it.effect(
+    'fails when the atomic picked quantity increment rejects the pick',
+    () =>
+      Effect.gen(function* () {
+        const state = makeRepositories({ incrementRows: 0 });
 
-      const error = yield* Effect.flip(
-        pickOrder({
-          repositories: state.repositories,
-          input: {
-            orderId: 'order-1',
-            actorId: 'user-2',
-            picks: [
-              { orderItemId: 'item-1', inventoryId: 'inventory-1', quantity: 9 },
-            ],
-          },
-        }),
-      );
+        const error = yield* Effect.flip(
+          pickOrder({
+            repositories: state.repositories,
+            input: {
+              orderId: 'order-1',
+              actorId: 'user-2',
+              picks: [
+                {
+                  orderItemId: 'item-1',
+                  inventoryId: 'inventory-1',
+                  quantity: 9,
+                },
+              ],
+            },
+          }),
+        );
 
-      expect(error).toMatchObject({
-        _tag: 'FulfillmentPickFailed',
-        orderItemId: 'item-1',
-        messageKey: 'fulfillment.overPick',
-      });
-      expect(state.stockMovements).toEqual([]);
-    }),
+        expect(error).toMatchObject({
+          _tag: 'FulfillmentPickFailed',
+          orderItemId: 'item-1',
+          messageKey: 'fulfillment.overPick',
+        });
+        expect(state.stockMovements).toEqual([]);
+      }),
   );
 });

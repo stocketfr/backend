@@ -41,10 +41,7 @@ const checkForCycle = (
   repository: CategoryWriteRepository,
   categoryId: string,
   newParentId: string,
-): Effect.Effect<
-  boolean,
-  CategoriesInfrastructureError | TenantNotResolved
-> =>
+): Effect.Effect<boolean, CategoriesInfrastructureError | TenantNotResolved> =>
   Effect.gen(function* () {
     let currentId: string | null = newParentId;
 
@@ -200,9 +197,8 @@ export const makeCategoryWriteWorkflows = ({
         return category;
       }
 
-      return yield* fromNullOr(
-        repository.update(id, updateData),
-        () => makeCategoryNotFound(id),
+      return yield* fromNullOr(repository.update(id, updateData), () =>
+        makeCategoryNotFound(id),
       );
     });
 

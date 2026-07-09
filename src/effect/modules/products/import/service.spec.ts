@@ -13,10 +13,7 @@ import {
   normalizeProductImportRecords,
 } from './utils/csv';
 import { makeProductImportProposal } from './utils/proposal';
-import {
-  parseDate,
-  parseProductImportNumber,
-} from './utils/value-parsers';
+import { parseDate, parseProductImportNumber } from './utils/value-parsers';
 import { ProductImportLlmProposer } from './llm-proposer';
 import { ProductImportPhotoImporter } from './photo-importer';
 import { ProductImportService } from './service';

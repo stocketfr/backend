@@ -2,10 +2,7 @@ import { Effect } from 'effect';
 import type { OrderFulfillmentView } from '@stocket/types/fulfillment';
 import { OrderStatus } from '@stocket/types/orders';
 import type { Order } from '../orders/types';
-import {
-  FulfillmentInvalidTransition,
-  type FulfillmentError,
-} from './errors';
+import { FulfillmentInvalidTransition, type FulfillmentError } from './errors';
 import {
   loadFulfillmentOrderOrFail,
   wrapFulfillmentInfrastructureError,

@@ -52,11 +52,7 @@ interface ProductBulkWorkflowOptions<
   readonly getProductOrFail: (
     id: string,
     includeDeleted?: boolean,
-  ) => Effect.Effect<
-    ProductWithRelations,
-    GetProductError,
-    GetProductContext
-  >;
+  ) => Effect.Effect<ProductWithRelations, GetProductError, GetProductContext>;
 }
 
 export const makeProductBulkWorkflows = <
@@ -71,10 +67,7 @@ export const makeProductBulkWorkflows = <
   GetProductError,
   GetProductContext
 >) => {
-  const bulkUpdateStatus = (
-    bulkDto: BulkUpdateStatusDto,
-    userId?: string,
-  ) =>
+  const bulkUpdateStatus = (bulkDto: BulkUpdateStatusDto, userId?: string) =>
     runBulkByIds({
       ids: bulkDto.ids,
       find: repository.findByIds,

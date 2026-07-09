@@ -11,12 +11,13 @@ import { TenantImportInvalid } from './superadmin.errors';
 import type { CreateTenantActor, CreateTenantProductImport } from './types';
 
 export interface TenantImportProductService<R = never> {
-  readonly previewCsvContent: (
-    input: { readonly content: string },
-  ) => Effect.Effect<ProductImportPreviewDto, unknown, R>;
-  readonly importFromCsvContent: (
-    input: { readonly content: string; readonly userId: string },
-  ) => Effect.Effect<ProductImportResultDto, unknown, R>;
+  readonly previewCsvContent: (input: {
+    readonly content: string;
+  }) => Effect.Effect<ProductImportPreviewDto, unknown, R>;
+  readonly importFromCsvContent: (input: {
+    readonly content: string;
+    readonly userId: string;
+  }) => Effect.Effect<ProductImportResultDto, unknown, R>;
 }
 
 export interface CreatedTenantForImport {
@@ -28,10 +29,7 @@ export interface CreatedTenantForImport {
   readonly admin: { readonly id: string };
 }
 
-export const makeTenantImportInvalid = (
-  details: string,
-  cause?: unknown,
-) =>
+export const makeTenantImportInvalid = (details: string, cause?: unknown) =>
   new TenantImportInvalid({
     details,
     cause,
@@ -97,7 +95,10 @@ export const tenantImportRequestContext = (
 
 export const validateProductImport = <R>(
   productImport: CreateTenantProductImport,
-  productImportService: Pick<TenantImportProductService<R>, 'previewCsvContent'>,
+  productImportService: Pick<
+    TenantImportProductService<R>,
+    'previewCsvContent'
+  >,
 ) =>
   productImportService
     .previewCsvContent({ content: productImport.content })

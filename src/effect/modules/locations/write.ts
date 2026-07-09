@@ -65,9 +65,8 @@ export const makeLocationWriteWorkflows = <GetError, GetContext>({
         return toLocationResponseDto(location);
       }
 
-      const updated = yield* fromNullOr(
-        repository.update(id, updateData),
-        () => makeLocationNotFound(id),
+      const updated = yield* fromNullOr(repository.update(id, updateData), () =>
+        makeLocationNotFound(id),
       );
 
       return toLocationResponseDto(updated);

@@ -52,9 +52,7 @@ export const describeError = (error: unknown): string => {
   return String(error);
 };
 
-export const toEmailTemplate = (
-  event: NotificationEvent,
-): EmailTemplate => ({
+export const toEmailTemplate = (event: NotificationEvent): EmailTemplate => ({
   kind: 'low-stock',
   sku: event.sku,
   productName: event.productName,

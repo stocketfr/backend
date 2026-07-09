@@ -32,7 +32,10 @@ export interface StockMovementWriteRepository {
   >;
   readonly orderExistsById: (
     orderId: string,
-  ) => Effect.Effect<boolean, StockMovementsInfrastructureError | TenantNotResolved>;
+  ) => Effect.Effect<
+    boolean,
+    StockMovementsInfrastructureError | TenantNotResolved
+  >;
 }
 
 interface StockMovementWriteWorkflowOptions<
@@ -65,13 +68,15 @@ const getCreatedMovementOrFail = (
   repository: StockMovementWriteRepository,
   id: string,
 ) =>
-  repository.findById(id).pipe(
-    Effect.flatMap((stockMovement) =>
-      stockMovement
-        ? Effect.succeed(stockMovement)
-        : Effect.fail(makeStockMovementNotFound(id)),
-    ),
-  );
+  repository
+    .findById(id)
+    .pipe(
+      Effect.flatMap((stockMovement) =>
+        stockMovement
+          ? Effect.succeed(stockMovement)
+          : Effect.fail(makeStockMovementNotFound(id)),
+      ),
+    );
 
 export const makeStockMovementWriteWorkflows = <
   ProductError,
@@ -90,40 +95,48 @@ export const makeStockMovementWriteWorkflows = <
 >) => {
   const create = (dto: CreateStockMovementDto, userId: string) =>
     Effect.gen(function* () {
-      yield* ensureExisting(productExists(dto.product_id), () =>
-        new InvalidStockMovementProduct({
-          productId: dto.product_id,
-          messageKey: 'stockMovements.productNotFound',
-        }),
+      yield* ensureExisting(
+        productExists(dto.product_id),
+        () =>
+          new InvalidStockMovementProduct({
+            productId: dto.product_id,
+            messageKey: 'stockMovements.productNotFound',
+          }),
       );
 
       const sourceLocationId = dto.from_location_id;
       if (sourceLocationId) {
-        yield* ensureExisting(locationExists(sourceLocationId), () =>
-          new InvalidSourceLocation({
-            locationId: sourceLocationId,
-            messageKey: 'stockMovements.sourceLocationNotFound',
-          }),
+        yield* ensureExisting(
+          locationExists(sourceLocationId),
+          () =>
+            new InvalidSourceLocation({
+              locationId: sourceLocationId,
+              messageKey: 'stockMovements.sourceLocationNotFound',
+            }),
         );
       }
 
       const destinationLocationId = dto.to_location_id;
       if (destinationLocationId) {
-        yield* ensureExisting(locationExists(destinationLocationId), () =>
-          new InvalidDestinationLocation({
-            locationId: destinationLocationId,
-            messageKey: 'stockMovements.destinationLocationNotFound',
-          }),
+        yield* ensureExisting(
+          locationExists(destinationLocationId),
+          () =>
+            new InvalidDestinationLocation({
+              locationId: destinationLocationId,
+              messageKey: 'stockMovements.destinationLocationNotFound',
+            }),
         );
       }
 
       const orderId = dto.order_id;
       if (orderId) {
-        yield* ensureExisting(repository.orderExistsById(orderId), () =>
-          new InvalidStockMovementOrder({
-            orderId,
-            messageKey: 'stockMovements.orderNotFound',
-          }),
+        yield* ensureExisting(
+          repository.orderExistsById(orderId),
+          () =>
+            new InvalidStockMovementOrder({
+              orderId,
+              messageKey: 'stockMovements.orderNotFound',
+            }),
         );
       }
 

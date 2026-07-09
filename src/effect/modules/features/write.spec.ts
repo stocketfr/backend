@@ -6,7 +6,10 @@ import {
   PlanKey,
   type TenantFeaturesResponseDto,
 } from '@stocket/types/features';
-import { makeFeatureWriteWorkflows, type FeatureWriteRepository } from './write';
+import {
+  makeFeatureWriteWorkflows,
+  type FeatureWriteRepository,
+} from './write';
 
 const tenantId = '00000000-0000-4000-8000-000000000001';
 const actorUserId = 'admin-1';
@@ -39,59 +42,64 @@ const makeRepository = (
 });
 
 describe('makeFeatureWriteWorkflows', () => {
-  it.effect('updates a tenant plan, invalidates cache, and reloads features', () =>
-    Effect.gen(function* () {
-      const calls: string[] = [];
-      let upsertPlan:
-        | {
-            readonly tenantId: string;
-            readonly planKey: PlanKey;
-            readonly actorUserId: string;
-          }
-        | undefined;
-      const workflows = makeFeatureWriteWorkflows({
-        repository: makeRepository({
-          tenantExists: (id) =>
-            Effect.sync(() => {
-              calls.push(`exists:${id}`);
-              return true;
-            }),
-          upsertPlan: (id, planKey, actorId) =>
-            Effect.sync(() => {
-              calls.push('upsertPlan');
-              upsertPlan = { tenantId: id, planKey, actorUserId: actorId };
-            }),
-        }),
-        invalidateTenant: (id) =>
-          Effect.sync(() => {
-            calls.push(`invalidate:${id}`);
+  it.effect(
+    'updates a tenant plan, invalidates cache, and reloads features',
+    () =>
+      Effect.gen(function* () {
+        const calls: string[] = [];
+        let upsertPlan:
+          | {
+              readonly tenantId: string;
+              readonly planKey: PlanKey;
+              readonly actorUserId: string;
+            }
+          | undefined;
+        const workflows = makeFeatureWriteWorkflows({
+          repository: makeRepository({
+            tenantExists: (id) =>
+              Effect.sync(() => {
+                calls.push(`exists:${id}`);
+                return true;
+              }),
+            upsertPlan: (id, planKey, actorId) =>
+              Effect.sync(() => {
+                calls.push('upsertPlan');
+                upsertPlan = { tenantId: id, planKey, actorUserId: actorId };
+              }),
           }),
-        loadFeaturesForTenant: (id) =>
-          Effect.sync(() => {
-            calls.push(`load:${id}`);
-            return featuresResponse({ tenantId: id, planKey: PlanKey.GROWTH });
-          }),
-      });
+          invalidateTenant: (id) =>
+            Effect.sync(() => {
+              calls.push(`invalidate:${id}`);
+            }),
+          loadFeaturesForTenant: (id) =>
+            Effect.sync(() => {
+              calls.push(`load:${id}`);
+              return featuresResponse({
+                tenantId: id,
+                planKey: PlanKey.GROWTH,
+              });
+            }),
+        });
 
-      const result = yield* workflows.setTenantPlan(
-        tenantId,
-        { planKey: PlanKey.GROWTH },
-        actorUserId,
-      );
+        const result = yield* workflows.setTenantPlan(
+          tenantId,
+          { planKey: PlanKey.GROWTH },
+          actorUserId,
+        );
 
-      expect(upsertPlan).toEqual({
-        tenantId,
-        planKey: PlanKey.GROWTH,
-        actorUserId,
-      });
-      expect(calls).toEqual([
-        `exists:${tenantId}`,
-        'upsertPlan',
-        `invalidate:${tenantId}`,
-        `load:${tenantId}`,
-      ]);
-      expect(result.planKey).toBe(PlanKey.GROWTH);
-    }),
+        expect(upsertPlan).toEqual({
+          tenantId,
+          planKey: PlanKey.GROWTH,
+          actorUserId,
+        });
+        expect(calls).toEqual([
+          `exists:${tenantId}`,
+          'upsertPlan',
+          `invalidate:${tenantId}`,
+          `load:${tenantId}`,
+        ]);
+        expect(result.planKey).toBe(PlanKey.GROWTH);
+      }),
   );
 
   it.effect('upserts a feature override and reloads features', () =>

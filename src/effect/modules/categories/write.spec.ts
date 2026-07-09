@@ -41,7 +41,10 @@ describe('makeCategoryWriteWorkflows', () => {
     Effect.gen(function* () {
       let parentChecked: string | undefined;
       let nameCheck:
-        | { readonly name: string; readonly parentId: string | null | undefined }
+        | {
+            readonly name: string;
+            readonly parentId: string | null | undefined;
+          }
         | undefined;
       let capturedCreate: CategoryCreateData | undefined;
       const repository = makeRepository({
@@ -171,23 +174,25 @@ describe('makeCategoryWriteWorkflows', () => {
     }),
   );
 
-  it.effect('returns the existing category without writing an empty update', () =>
-    Effect.gen(function* () {
-      let updateCalled = false;
-      const repository = makeRepository({
-        update: () =>
-          Effect.sync(() => {
-            updateCalled = true;
-            return makeCategory();
-          }),
-      });
-      const workflows = makeCategoryWriteWorkflows({ repository });
+  it.effect(
+    'returns the existing category without writing an empty update',
+    () =>
+      Effect.gen(function* () {
+        let updateCalled = false;
+        const repository = makeRepository({
+          update: () =>
+            Effect.sync(() => {
+              updateCalled = true;
+              return makeCategory();
+            }),
+        });
+        const workflows = makeCategoryWriteWorkflows({ repository });
 
-      const result = yield* workflows.update('cat-1', {});
+        const result = yield* workflows.update('cat-1', {});
 
-      expect(updateCalled).toBe(false);
-      expect(result).toMatchObject({ id: 'cat-1' });
-    }),
+        expect(updateCalled).toBe(false);
+        expect(result).toMatchObject({ id: 'cat-1' });
+      }),
   );
 
   it.effect('deletes only after the category exists', () =>

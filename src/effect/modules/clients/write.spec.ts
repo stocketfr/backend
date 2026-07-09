@@ -1,10 +1,7 @@
 import { describe, expect, it } from '@effect/vitest';
 import { Effect } from 'effect';
 import { ClientStatus } from '@stocket/types/clients';
-import {
-  makeClientWriteWorkflows,
-  type ClientWriteRepository,
-} from './write';
+import { makeClientWriteWorkflows, type ClientWriteRepository } from './write';
 import type { ClientEntity } from './types';
 
 const tenantId = '00000000-0000-4000-8000-000000000001';
@@ -111,7 +108,8 @@ describe('makeClientWriteWorkflows', () => {
     Effect.gen(function* () {
       let createCalled = false;
       const repository = makeRepository({
-        findByEmail: () => Effect.succeed(makeClient({ id: 'client-existing' })),
+        findByEmail: () =>
+          Effect.succeed(makeClient({ id: 'client-existing' })),
         create: () =>
           Effect.sync(() => {
             createCalled = true;

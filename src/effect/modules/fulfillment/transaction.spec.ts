@@ -1,9 +1,6 @@
 import { describe, expect, it } from '@effect/vitest';
 import { Effect } from 'effect';
-import {
-  FulfillmentPickFailed,
-  type FulfillmentError,
-} from './errors';
+import { FulfillmentPickFailed, type FulfillmentError } from './errors';
 import {
   FulfillmentTransactionDefect,
   runFulfillmentEffectAsPromise,

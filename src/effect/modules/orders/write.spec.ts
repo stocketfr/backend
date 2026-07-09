@@ -1,10 +1,7 @@
 import { describe, expect, it } from '@effect/vitest';
 import { Effect } from 'effect';
 import { OrderStatus } from '@stocket/types/orders';
-import {
-  makeOrderWriteWorkflows,
-  type OrderWriteRepository,
-} from './write';
+import { makeOrderWriteWorkflows, type OrderWriteRepository } from './write';
 import type { CreateOrderDto, UpdateOrderDto } from './types';
 import type { OrdersRepository } from './repository';
 
@@ -80,59 +77,61 @@ const makeWorkflows = ({
   });
 
 describe('makeOrderWriteWorkflows', () => {
-  it.effect('creates an order after validating client and product references', () =>
-    Effect.gen(function* () {
-      vi.useFakeTimers().setSystemTime(NOW);
-      let checkedClient: string | undefined;
-      let checkedProduct: string | undefined;
-      let capturedOrder: CreateOrderData | undefined;
-      let capturedItems: CreateOrderItems | undefined;
-      const repository = makeRepository({
-        createWithItems: (order, items) =>
-          Effect.sync(() => {
-            capturedOrder = order;
-            capturedItems = items;
-            return makeOrder({ id: 'created-order' });
-          }),
-      });
-      const workflows = makeWorkflows({
-        repository,
-        clientExists: (clientId) =>
-          Effect.sync(() => {
-            checkedClient = clientId;
-            return true;
-          }),
-        productExists: (productId) =>
-          Effect.sync(() => {
-            checkedProduct = productId;
-            return true;
-          }),
-        getOrderOrFail: (id) => Effect.succeed(makeOrder({ id })),
-      });
+  it.effect(
+    'creates an order after validating client and product references',
+    () =>
+      Effect.gen(function* () {
+        vi.useFakeTimers().setSystemTime(NOW);
+        let checkedClient: string | undefined;
+        let checkedProduct: string | undefined;
+        let capturedOrder: CreateOrderData | undefined;
+        let capturedItems: CreateOrderItems | undefined;
+        const repository = makeRepository({
+          createWithItems: (order, items) =>
+            Effect.sync(() => {
+              capturedOrder = order;
+              capturedItems = items;
+              return makeOrder({ id: 'created-order' });
+            }),
+        });
+        const workflows = makeWorkflows({
+          repository,
+          clientExists: (clientId) =>
+            Effect.sync(() => {
+              checkedClient = clientId;
+              return true;
+            }),
+          productExists: (productId) =>
+            Effect.sync(() => {
+              checkedProduct = productId;
+              return true;
+            }),
+          getOrderOrFail: (id) => Effect.succeed(makeOrder({ id })),
+        });
 
-      const result = yield* workflows.create(createDto, 'user-1');
+        const result = yield* workflows.create(createDto, 'user-1');
 
-      expect(checkedClient).toBe(CLIENT_ID);
-      expect(checkedProduct).toBe(PRODUCT_ID);
-      expect(capturedOrder).toMatchObject({
-        client_id: CLIENT_ID,
-        total_amount: 150,
-        created_by: 'user-1',
-        status: OrderStatus.DRAFT,
-        order_number: 'ORD-20260310-00001',
-      });
-      expect(capturedItems).toEqual([
-        {
-          product_id: PRODUCT_ID,
-          quantity: 5,
-          unit_price: 30,
-          subtotal: 150,
-          notes: null,
-        },
-      ]);
-      expect(result).toMatchObject({ id: 'created-order' });
-      vi.useRealTimers();
-    }),
+        expect(checkedClient).toBe(CLIENT_ID);
+        expect(checkedProduct).toBe(PRODUCT_ID);
+        expect(capturedOrder).toMatchObject({
+          client_id: CLIENT_ID,
+          total_amount: 150,
+          created_by: 'user-1',
+          status: OrderStatus.DRAFT,
+          order_number: 'ORD-20260310-00001',
+        });
+        expect(capturedItems).toEqual([
+          {
+            product_id: PRODUCT_ID,
+            quantity: 5,
+            unit_price: 30,
+            subtotal: 150,
+            notes: null,
+          },
+        ]);
+        expect(result).toMatchObject({ id: 'created-order' });
+        vi.useRealTimers();
+      }),
   );
 
   it.effect('updates only defined mutable order fields', () =>
@@ -200,21 +199,23 @@ describe('makeOrderWriteWorkflows', () => {
     }),
   );
 
-  it.effect('deletes draft orders through the transactional repository method', () =>
-    Effect.gen(function* () {
-      let deletedId: string | undefined;
-      const repository = makeRepository({
-        deleteDraftWithItems: (id) =>
-          Effect.sync(() => {
-            deletedId = id;
-            return 'deleted' as const;
-          }),
-      });
-      const workflows = makeWorkflows({ repository });
+  it.effect(
+    'deletes draft orders through the transactional repository method',
+    () =>
+      Effect.gen(function* () {
+        let deletedId: string | undefined;
+        const repository = makeRepository({
+          deleteDraftWithItems: (id) =>
+            Effect.sync(() => {
+              deletedId = id;
+              return 'deleted' as const;
+            }),
+        });
+        const workflows = makeWorkflows({ repository });
 
-      yield* workflows.delete(ORDER_ID);
+        yield* workflows.delete(ORDER_ID);
 
-      expect(deletedId).toBe(ORDER_ID);
-    }),
+        expect(deletedId).toBe(ORDER_ID);
+      }),
   );
 });

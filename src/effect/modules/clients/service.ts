@@ -1,8 +1,5 @@
 import { Effect } from 'effect';
-import type {
-  ClientResponseDto,
-  ClientQueryDto,
-} from '@stocket/types/clients';
+import type { ClientResponseDto, ClientQueryDto } from '@stocket/types/clients';
 import {
   toPaginatedResponse,
   type PaginationMeta,
@@ -73,8 +70,7 @@ export class ClientsService extends Effect.Service<ClientsService>()(
         | ClientEmailAlreadyExists
         | ClientsInfrastructureError
         | TenantNotResolved
-      > =>
-        clientWriteWorkflows.create(dto).pipe(trace.span('create'));
+      > => clientWriteWorkflows.create(dto).pipe(trace.span('create'));
 
       const update = (
         id: string,
