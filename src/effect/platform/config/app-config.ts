@@ -39,25 +39,27 @@ const appConfig = Config.all({
     Config.map(parseCommaSeparatedList),
   ),
 }).pipe(
-  Config.map(({
-    nodeEnv,
-    betterAuthSecret,
-    e2eSeedSecret,
-    isVitest,
-    corsOrigins,
-  }): AppConfigShape => ({
-    nodeEnv,
-    isProduction: nodeEnv === 'production',
-    isStaging: nodeEnv === 'staging',
-    isDevelopment: nodeEnv === 'development',
-    isTest: nodeEnv === 'test',
-    isVitest,
-    isTestLike: nodeEnv === 'test' || isVitest,
-    isDevLike: nodeEnv !== 'production' && nodeEnv !== 'staging',
-    hasBetterAuthSecret: Option.isSome(betterAuthSecret),
-    e2eSeedSecret: Option.getOrNull(e2eSeedSecret),
-    corsOrigins,
-  })),
+  Config.map(
+    ({
+      nodeEnv,
+      betterAuthSecret,
+      e2eSeedSecret,
+      isVitest,
+      corsOrigins,
+    }): AppConfigShape => ({
+      nodeEnv,
+      isProduction: nodeEnv === 'production',
+      isStaging: nodeEnv === 'staging',
+      isDevelopment: nodeEnv === 'development',
+      isTest: nodeEnv === 'test',
+      isVitest,
+      isTestLike: nodeEnv === 'test' || isVitest,
+      isDevLike: nodeEnv !== 'production' && nodeEnv !== 'staging',
+      hasBetterAuthSecret: Option.isSome(betterAuthSecret),
+      e2eSeedSecret: Option.getOrNull(e2eSeedSecret),
+      corsOrigins,
+    }),
+  ),
 );
 
 export class AppConfig extends Effect.Service<AppConfig>()(

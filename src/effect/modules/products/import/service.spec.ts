@@ -630,12 +630,8 @@ Item,Service Gloves Black,SORT-1,Accessories,3,Bar,2
       'SORT-1-SERVICE-GLOVES-WHITE',
     ]);
 
-    const blackProduct = state.productsBySku.get(
-      'SORT-1-SERVICE-GLOVES-BLACK',
-    );
-    const whiteProduct = state.productsBySku.get(
-      'SORT-1-SERVICE-GLOVES-WHITE',
-    );
+    const blackProduct = state.productsBySku.get('SORT-1-SERVICE-GLOVES-BLACK');
+    const whiteProduct = state.productsBySku.get('SORT-1-SERVICE-GLOVES-WHITE');
     const warehouse = state.locations.find(
       (location) => location.name === 'Warehouse',
     );
@@ -705,7 +701,9 @@ SKU-1,Same Product,Food,Warehouse,8
     );
 
     expect(result.inventoryRecordsUpdated).toBe(1);
-    expect(state.inventoryByKey.get(state.inventoryKey('prod-1', 'loc-1'))).toMatchObject({
+    expect(
+      state.inventoryByKey.get(state.inventoryKey('prod-1', 'loc-1')),
+    ).toMatchObject({
       quantity: 8,
       expiry_date: null,
     });
@@ -761,7 +759,9 @@ SKU-1,Changed Product,Drinks,Warehouse,8
       name: 'Same Product',
       category_id: 'cat-1',
     });
-    expect(state.inventoryByKey.get(state.inventoryKey('prod-1', 'loc-1'))).toMatchObject({
+    expect(
+      state.inventoryByKey.get(state.inventoryKey('prod-1', 'loc-1')),
+    ).toMatchObject({
       quantity: 4,
     });
   });

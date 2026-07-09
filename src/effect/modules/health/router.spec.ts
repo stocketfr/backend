@@ -92,9 +92,7 @@ describe('HealthApiLive', () => {
   describe('GET /ready (public: /health-check/ready)', () => {
     it('returns 200 when the service reports ok', async () => {
       const handler = makeHandler({
-        ready: Effect.succeed(
-          okResponse({ database: { status: 'up' } }),
-        ),
+        ready: Effect.succeed(okResponse({ database: { status: 'up' } })),
       });
       const response = await handler(new Request('http://localhost/ready'));
       expect(response.status).toBe(200);

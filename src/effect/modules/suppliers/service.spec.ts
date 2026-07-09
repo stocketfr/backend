@@ -18,9 +18,7 @@ const makeSupplierEntity = (overrides: Record<string, any> = {}) => ({
   ...overrides,
 });
 
-const makeMockRepository = (
-  overrides: Partial<Record<string, Mock>> = {},
-) => ({
+const makeMockRepository = (overrides: Partial<Record<string, Mock>> = {}) => ({
   findAllPaginated: vi.fn().mockReturnValue(
     Effect.succeed({
       data: [makeSupplierEntity()],
@@ -57,7 +55,9 @@ describe('Effect SuppliersService', () => {
   describe('findAllPaginated', () => {
     it('returns paginated suppliers', async () => {
       const service = await buildService();
-      const result = await run(service.findAllPaginated({ page: 1, limit: 20 }));
+      const result = await run(
+        service.findAllPaginated({ page: 1, limit: 20 }),
+      );
       expect(result.data).toHaveLength(1);
       expect(result.meta).toMatchObject({ page: 1, total: 1 });
     });
@@ -71,7 +71,9 @@ describe('Effect SuppliersService', () => {
     });
 
     it('fails with SupplierNotFound', async () => {
-      const repo = makeMockRepository({ findById: vi.fn().mockReturnValue(Effect.succeed(null)) });
+      const repo = makeMockRepository({
+        findById: vi.fn().mockReturnValue(Effect.succeed(null)),
+      });
       const service = await buildService(repo);
       const error = await fail(service.findOne('missing'));
       expect(error).toMatchObject({ _tag: 'SupplierNotFound' });
@@ -81,7 +83,9 @@ describe('Effect SuppliersService', () => {
   describe('create', () => {
     it('creates a supplier', async () => {
       const service = await buildService();
-      const result = await run(service.create({ name: 'Best Supplies' } as any));
+      const result = await run(
+        service.create({ name: 'Best Supplies' } as any),
+      );
       expect(result).toMatchObject({ id: 'supplier-1' });
     });
   });
@@ -112,7 +116,9 @@ describe('Effect SuppliersService', () => {
     });
 
     it('fails with SupplierNotFound', async () => {
-      const repo = makeMockRepository({ findById: vi.fn().mockReturnValue(Effect.succeed(null)) });
+      const repo = makeMockRepository({
+        findById: vi.fn().mockReturnValue(Effect.succeed(null)),
+      });
       const service = await buildService(repo);
       const error = await fail(service.delete('missing'));
       expect(error).toMatchObject({ _tag: 'SupplierNotFound' });

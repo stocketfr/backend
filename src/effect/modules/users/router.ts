@@ -52,7 +52,11 @@ export const usersRouter = HttpRouter.empty.pipe(
           provideBetterAuthHeaders(
             usersService
               .listUsers(normalizedQuery)
-              .pipe(Effect.map((result) => toPaginatedResponse(result, (user) => user))),
+              .pipe(
+                Effect.map((result) =>
+                  toPaginatedResponse(result, (user) => user),
+                ),
+              ),
           ),
         );
       },

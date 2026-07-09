@@ -163,8 +163,7 @@ const appendWarning = (
 });
 
 const LenientString = Schema.transform(Schema.Unknown, Schema.String, {
-  decode: (value: unknown) =>
-    typeof value === 'string' ? value.trim() : '',
+  decode: (value: unknown) => (typeof value === 'string' ? value.trim() : ''),
   encode: (value) => value,
 });
 
@@ -412,24 +411,20 @@ const nonNegativeIntegerOr = (
 const categoryAction = (
   value: ProductImportCategoryMappingDto['action'] | undefined,
   fallback: ProductImportCategoryMappingDto['action'],
-): ProductImportCategoryMappingDto['action'] =>
-  value ?? fallback;
+): ProductImportCategoryMappingDto['action'] => value ?? fallback;
 
 const supplierAction = (
   value: ProductImportSupplierMappingDto['action'] | undefined,
-): ProductImportSupplierMappingDto['action'] =>
-  value ?? 'ignore';
+): ProductImportSupplierMappingDto['action'] => value ?? 'ignore';
 
 const locationAction = (
   value: ProductImportLocationMappingDto['action'] | undefined,
   fallback: ProductImportLocationMappingDto['action'],
-): ProductImportLocationMappingDto['action'] =>
-  value ?? fallback;
+): ProductImportLocationMappingDto['action'] => value ?? fallback;
 
 const warningSeverity = (
   value: ProductImportWarningDto['severity'] | undefined,
-): ProductImportWarningDto['severity'] =>
-  value ?? 'warning';
+): ProductImportWarningDto['severity'] => value ?? 'warning';
 
 const sanitizeWarnings = (
   llmWarnings: ReadonlyArray<Schema.Schema.Type<typeof RawWarningSchema>>,
@@ -462,7 +457,8 @@ const sanitizeLlmProposal = (
 
   const fallback = makeProductImportProposal(preview);
   const sourceColumn =
-    proposal.productIdentity.sourceColumn || fallback.productIdentity.sourceColumn;
+    proposal.productIdentity.sourceColumn ||
+    fallback.productIdentity.sourceColumn;
   const conflictPolicy =
     proposal.productIdentity.conflictPolicy ??
     fallback.productIdentity.conflictPolicy;

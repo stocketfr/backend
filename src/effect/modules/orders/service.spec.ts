@@ -53,28 +53,38 @@ const makeOrderItemEntity = (overrides: Record<string, any> = {}) => ({
 });
 
 const makeMockOrdersRepository = (
-  overrides: Partial<Record<keyof import('./repository').OrdersRepository, Mock>> = {},
+  overrides: Partial<
+    Record<keyof import('./repository').OrdersRepository, Mock>
+  > = {},
 ) => ({
-  findAllPaginated: vi.fn().mockReturnValue(Effect.succeed({
-    data: [makeOrderEntity({ items: [makeOrderItemEntity()] })],
-    total: 1,
-    page: 1,
-    limit: 20,
-    total_pages: 1,
-  })),
-  findAllPaginatedWithRelations: vi.fn().mockReturnValue(Effect.succeed({
-    data: [makeOrderEntity({ items: [makeOrderItemEntity()] })],
-    total: 1,
-    page: 1,
-    limit: 20,
-    total_pages: 1,
-  })),
-  findById: vi.fn().mockReturnValue(
-    Effect.succeed(makeOrderEntity({ items: [makeOrderItemEntity()] })),
+  findAllPaginated: vi.fn().mockReturnValue(
+    Effect.succeed({
+      data: [makeOrderEntity({ items: [makeOrderItemEntity()] })],
+      total: 1,
+      page: 1,
+      limit: 20,
+      total_pages: 1,
+    }),
   ),
-  findByIdWithRelations: vi.fn().mockReturnValue(
-    Effect.succeed(makeOrderEntity({ items: [makeOrderItemEntity()] })),
+  findAllPaginatedWithRelations: vi.fn().mockReturnValue(
+    Effect.succeed({
+      data: [makeOrderEntity({ items: [makeOrderItemEntity()] })],
+      total: 1,
+      page: 1,
+      limit: 20,
+      total_pages: 1,
+    }),
   ),
+  findById: vi
+    .fn()
+    .mockReturnValue(
+      Effect.succeed(makeOrderEntity({ items: [makeOrderItemEntity()] })),
+    ),
+  findByIdWithRelations: vi
+    .fn()
+    .mockReturnValue(
+      Effect.succeed(makeOrderEntity({ items: [makeOrderItemEntity()] })),
+    ),
   create: vi.fn().mockReturnValue(Effect.succeed(makeOrderEntity())),
   createWithItems: vi.fn().mockReturnValue(Effect.succeed(makeOrderEntity())),
   update: vi.fn().mockReturnValue(Effect.succeed(1)),
@@ -87,9 +97,13 @@ const makeMockOrdersRepository = (
 });
 
 const makeMockOrderItemsRepository = (
-  overrides: Partial<Record<keyof import('./repository').OrderItemsRepository, Mock>> = {},
+  overrides: Partial<
+    Record<keyof import('./repository').OrderItemsRepository, Mock>
+  > = {},
 ) => ({
-  findByOrderId: vi.fn().mockReturnValue(Effect.succeed([makeOrderItemEntity()])),
+  findByOrderId: vi
+    .fn()
+    .mockReturnValue(Effect.succeed([makeOrderItemEntity()])),
   createMany: vi.fn().mockReturnValue(Effect.succeed([makeOrderItemEntity()])),
   deleteByOrderId: vi.fn().mockReturnValue(Effect.void),
   ...overrides,
@@ -136,7 +150,9 @@ describe('Effect OrdersService', () => {
   describe('findAllPaginated', () => {
     it('returns paginated orders', async () => {
       const service = await buildService();
-      const result = await run(service.findAllPaginated({ page: 1, limit: 20 }));
+      const result = await run(
+        service.findAllPaginated({ page: 1, limit: 20 }),
+      );
       expect(result.data).toHaveLength(1);
       expect(result.meta).toMatchObject({ page: 1, total: 1 });
     });
@@ -216,11 +232,7 @@ describe('Effect OrdersService', () => {
       const clientsService = {
         existsById: vi.fn().mockReturnValue(Effect.succeed(false)),
       } as any;
-      const service = await buildService(
-        undefined,
-        undefined,
-        clientsService,
-      );
+      const service = await buildService(undefined, undefined, clientsService);
       const error = await fail(service.create(dto, 'user-1'));
       expect(error).toMatchObject({ _tag: 'ClientNotFound' });
     });
@@ -246,9 +258,11 @@ describe('Effect OrdersService', () => {
         findByIdWithRelations: vi
           .fn()
           .mockReturnValueOnce(Effect.succeed(makeOrderEntity()))
-          .mockReturnValueOnce(Effect.succeed(
-            makeOrderEntity({ delivery_address: 'New Address' }),
-          )),
+          .mockReturnValueOnce(
+            Effect.succeed(
+              makeOrderEntity({ delivery_address: 'New Address' }),
+            ),
+          ),
       });
       const service = await buildService(ordersRepository);
       const result = await run(
@@ -273,15 +287,17 @@ describe('Effect OrdersService', () => {
       const ordersRepository = makeMockOrdersRepository({
         findByIdWithRelations: vi
           .fn()
-          .mockReturnValueOnce(Effect.succeed(
-            makeOrderEntity({ status: OrderStatus.DRAFT }),
-          ))
-          .mockReturnValueOnce(Effect.succeed(
-            makeOrderEntity({
-              status: OrderStatus.CONFIRMED,
-              confirmed_at: new Date('2026-03-10T10:00:00.000Z'),
-            }),
-          )),
+          .mockReturnValueOnce(
+            Effect.succeed(makeOrderEntity({ status: OrderStatus.DRAFT })),
+          )
+          .mockReturnValueOnce(
+            Effect.succeed(
+              makeOrderEntity({
+                status: OrderStatus.CONFIRMED,
+                confirmed_at: new Date('2026-03-10T10:00:00.000Z'),
+              }),
+            ),
+          ),
       });
       const service = await buildService(ordersRepository);
       const result = await run(
@@ -299,9 +315,11 @@ describe('Effect OrdersService', () => {
 
     it('fails for invalid transitions', async () => {
       const ordersRepository = makeMockOrdersRepository({
-        findByIdWithRelations: vi.fn().mockReturnValue(Effect.succeed(
-          makeOrderEntity({ status: OrderStatus.DELIVERED }),
-        )),
+        findByIdWithRelations: vi
+          .fn()
+          .mockReturnValue(
+            Effect.succeed(makeOrderEntity({ status: OrderStatus.DELIVERED })),
+          ),
       });
       const service = await buildService(ordersRepository);
       const error = await fail(
@@ -314,12 +332,17 @@ describe('Effect OrdersService', () => {
   describe('delete', () => {
     it('deletes draft orders', async () => {
       const ordersRepository = makeMockOrdersRepository({
-        findByIdWithRelations: vi.fn().mockReturnValue(Effect.succeed(
-          makeOrderEntity({ status: OrderStatus.DRAFT }),
-        )),
+        findByIdWithRelations: vi
+          .fn()
+          .mockReturnValue(
+            Effect.succeed(makeOrderEntity({ status: OrderStatus.DRAFT })),
+          ),
       });
       const orderItemsRepository = makeMockOrderItemsRepository();
-      const service = await buildService(ordersRepository, orderItemsRepository);
+      const service = await buildService(
+        ordersRepository,
+        orderItemsRepository,
+      );
       await run(service.delete('order-1'));
       expect(orderItemsRepository.deleteByOrderId).not.toHaveBeenCalled();
       expect(ordersRepository.deleteDraftWithItems).toHaveBeenCalledWith(
@@ -329,9 +352,11 @@ describe('Effect OrdersService', () => {
 
     it('fails when deleting a non-draft order', async () => {
       const ordersRepository = makeMockOrdersRepository({
-        findByIdWithRelations: vi.fn().mockReturnValue(Effect.succeed(
-          makeOrderEntity({ status: OrderStatus.CONFIRMED }),
-        )),
+        findByIdWithRelations: vi
+          .fn()
+          .mockReturnValue(
+            Effect.succeed(makeOrderEntity({ status: OrderStatus.CONFIRMED })),
+          ),
       });
       const service = await buildService(ordersRepository);
       const error = await fail(service.delete('order-1'));

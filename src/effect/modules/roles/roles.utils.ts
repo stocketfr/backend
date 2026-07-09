@@ -9,7 +9,9 @@ export interface RoleWithPermissions extends RoleRow {
   permissions: RolePermissionRow[];
 }
 
-export function toRoleResponseDto(entity: RoleWithPermissions): RoleResponseDto {
+export function toRoleResponseDto(
+  entity: RoleWithPermissions,
+): RoleResponseDto {
   return {
     id: entity.id,
     name: entity.name,

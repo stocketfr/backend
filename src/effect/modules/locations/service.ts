@@ -67,9 +67,9 @@ export class LocationsService extends Effect.Service<LocationsService>()(
         LocationResponseDto,
         LocationNotFound | LocationsInfrastructureError | TenantNotResolved
       > =>
-        referenceEntity.findOne(id).pipe(
-          trace.span('findOne', { attributes: { id } }),
-        );
+        referenceEntity
+          .findOne(id)
+          .pipe(trace.span('findOne', { attributes: { id } }));
 
       const create = (
         dto: CreateLocationDto,
@@ -113,7 +113,8 @@ export class LocationsService extends Effect.Service<LocationsService>()(
 
           const updated = yield* fromNullOr(
             repository.update(id, updateData),
-            () => new LocationNotFound({ id, messageKey: 'locations.notFound' }),
+            () =>
+              new LocationNotFound({ id, messageKey: 'locations.notFound' }),
           );
           return toLocationResponseDto(updated);
         }).pipe(trace.span('update', { attributes: { id } }));
@@ -129,19 +130,19 @@ export class LocationsService extends Effect.Service<LocationsService>()(
           .pipe(trace.span('delete', { attributes: { id } }));
 
       const existsById = (id: string) =>
-        referenceEntity.existsById(id).pipe(
-          trace.span('existsById', { attributes: { id } }),
-        );
+        referenceEntity
+          .existsById(id)
+          .pipe(trace.span('existsById', { attributes: { id } }));
 
       const ensureExistsById = (id: string) =>
-        referenceEntity.ensureExistsById(id).pipe(
-          trace.span('ensureExistsById', { attributes: { id } }),
-        );
+        referenceEntity
+          .ensureExistsById(id)
+          .pipe(trace.span('ensureExistsById', { attributes: { id } }));
 
       const ensureExistByIds = (ids: readonly string[]) =>
-        referenceEntity.ensureExistByIds(ids).pipe(
-          trace.span('ensureExistByIds'),
-        );
+        referenceEntity
+          .ensureExistByIds(ids)
+          .pipe(trace.span('ensureExistByIds'));
 
       return {
         findAllPaginated,

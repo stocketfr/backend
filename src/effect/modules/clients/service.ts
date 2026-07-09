@@ -6,7 +6,10 @@ import type {
   CreateClientSchema,
   UpdateClientSchema,
 } from '@stocket/types/clients';
-import { toPaginatedResponse, type PaginationMeta } from '@stocket/types/common';
+import {
+  toPaginatedResponse,
+  type PaginationMeta,
+} from '@stocket/types/common';
 import { fromNullOr } from '../../platform/effect/from-null-or';
 import {
   hasDefinedPatchValues,
@@ -63,15 +66,17 @@ export class ClientsService extends Effect.Service<ClientsService>()(
         ClientResponseDto,
         ClientNotFound | ClientsInfrastructureError | TenantNotResolved
       > =>
-        referenceEntity.findOne(id).pipe(
-          trace.span('findOne', { attributes: { id } }),
-        );
+        referenceEntity
+          .findOne(id)
+          .pipe(trace.span('findOne', { attributes: { id } }));
 
       const create = (
         dto: CreateClientDto,
       ): Effect.Effect<
         ClientResponseDto,
-        ClientEmailAlreadyExists | ClientsInfrastructureError | TenantNotResolved
+        | ClientEmailAlreadyExists
+        | ClientsInfrastructureError
+        | TenantNotResolved
       > =>
         Effect.gen(function* () {
           const existing = yield* repository.findByEmail(dto.email);
@@ -161,19 +166,19 @@ export class ClientsService extends Effect.Service<ClientsService>()(
           .pipe(trace.span('delete', { attributes: { id } }));
 
       const existsById = (id: string) =>
-        referenceEntity.existsById(id).pipe(
-          trace.span('existsById', { attributes: { id } }),
-        );
+        referenceEntity
+          .existsById(id)
+          .pipe(trace.span('existsById', { attributes: { id } }));
 
       const ensureExistsById = (id: string) =>
-        referenceEntity.ensureExistsById(id).pipe(
-          trace.span('ensureExistsById', { attributes: { id } }),
-        );
+        referenceEntity
+          .ensureExistsById(id)
+          .pipe(trace.span('ensureExistsById', { attributes: { id } }));
 
       const ensureExistByIds = (ids: readonly string[]) =>
-        referenceEntity.ensureExistByIds(ids).pipe(
-          trace.span('ensureExistByIds'),
-        );
+        referenceEntity
+          .ensureExistByIds(ids)
+          .pipe(trace.span('ensureExistByIds'));
 
       return {
         findAllPaginated,

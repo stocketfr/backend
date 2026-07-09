@@ -2,10 +2,7 @@ import * as crypto from 'node:crypto';
 import { Effect } from 'effect';
 import type { PhotoResponseDto } from '@stocket/types/photos';
 import { fromNullOr } from '../../platform/effect/from-null-or';
-import {
-  StorageAdapter,
-  type StorageError,
-} from '../../platform/storage';
+import { StorageAdapter, type StorageError } from '../../platform/storage';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import { toPhotoResponseDto } from './photos.utils';
 import {

@@ -180,14 +180,10 @@ describe('Effect RolesService', () => {
       }),
     );
 
-    expect(repository.update).toHaveBeenCalledWith(
-      'role-2',
-      TENANT_ID,
-      {
-        name: 'Manager Updated',
-        description: 'New',
-      },
-    );
+    expect(repository.update).toHaveBeenCalledWith('role-2', TENANT_ID, {
+      name: 'Manager Updated',
+      description: 'New',
+    });
     expect(repository.replacePermissions).toHaveBeenCalledWith(
       TENANT_ID,
       'role-2',

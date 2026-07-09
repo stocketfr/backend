@@ -7,7 +7,9 @@ const IdRow = Schema.Struct({ id: Schema.String });
 
 describe('rowsFromExecuteResult', () => {
   it('reads node-postgres style rows', () => {
-    expect(rowsFromExecuteResult({ rows: [{ id: 'a' }] })).toEqual([{ id: 'a' }]);
+    expect(rowsFromExecuteResult({ rows: [{ id: 'a' }] })).toEqual([
+      { id: 'a' },
+    ]);
   });
 
   it('reads array-shaped execute results', () => {
@@ -25,9 +27,9 @@ describe('executeRows', () => {
       execute: vi.fn(async () => ({ rows: [{ id: 'a' }] })),
     };
 
-    await expect(executeRows(db, sql`SELECT 'a' AS id`, IdRow)).resolves.toEqual(
-      [{ id: 'a' }],
-    );
+    await expect(
+      executeRows(db, sql`SELECT 'a' AS id`, IdRow),
+    ).resolves.toEqual([{ id: 'a' }]);
   });
 
   it('rejects malformed rows instead of trusting the caller', async () => {

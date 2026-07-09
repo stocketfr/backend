@@ -39,13 +39,16 @@ describe('ProductsService Integration', () => {
 
       const result = await run(
         Effect.flatMap(ProductsService, (svc) =>
-          svc.create({
-            category_id: category.id,
-            sku: 'WINE-001',
-            name: 'Château Margaux 2020',
-            standard_price: 250,
-            standard_cost: 180,
-          } as any, TEST_USER_ID),
+          svc.create(
+            {
+              category_id: category.id,
+              sku: 'WINE-001',
+              name: 'Château Margaux 2020',
+              standard_price: 250,
+              standard_cost: 180,
+            } as any,
+            TEST_USER_ID,
+          ),
         ),
       );
 
@@ -182,7 +185,9 @@ describe('ProductsService Integration', () => {
       );
 
       expect(result.category).toMatchObject({ name: 'Wines' });
-      expect(result.primary_supplier).toMatchObject({ name: 'Bordeaux Imports' });
+      expect(result.primary_supplier).toMatchObject({
+        name: 'Bordeaux Imports',
+      });
     });
 
     it('fails for nonexistent product', async () => {
@@ -213,7 +218,10 @@ describe('ProductsService Integration', () => {
     it('rejects SKU change to existing SKU', async () => {
       const category = await seedCategory(db);
       await seedProduct(db, { category_id: category.id, sku: 'TAKEN-SKU' });
-      const product = await seedProduct(db, { category_id: category.id, sku: 'MY-SKU' });
+      const product = await seedProduct(db, {
+        category_id: category.id,
+        sku: 'MY-SKU',
+      });
 
       const error = await fail(
         Effect.flatMap(ProductsService, (svc) =>
@@ -241,7 +249,9 @@ describe('ProductsService Integration', () => {
       const allAfterDelete = await run(
         Effect.flatMap(ProductsService, (svc) => svc.findAll()),
       );
-      expect(allAfterDelete.find((p: any) => p.id === product.id)).toBeUndefined();
+      expect(
+        allAfterDelete.find((p: any) => p.id === product.id),
+      ).toBeUndefined();
 
       // Restore
       const restored = await run(
@@ -254,7 +264,9 @@ describe('ProductsService Integration', () => {
       const allAfterRestore = await run(
         Effect.flatMap(ProductsService, (svc) => svc.findAll()),
       );
-      expect(allAfterRestore.find((p: any) => p.id === product.id)).toBeTruthy();
+      expect(
+        allAfterRestore.find((p: any) => p.id === product.id),
+      ).toBeTruthy();
     });
 
     it('rejects restoring a non-deleted product', async () => {
@@ -286,7 +298,10 @@ describe('ProductsService Integration', () => {
 
     it('findByCategoryTree returns products from parent and child categories', async () => {
       const parent = await seedCategory(db, { name: 'Beverages' });
-      const child = await seedCategory(db, { name: 'Wines', parent_id: parent.id });
+      const child = await seedCategory(db, {
+        name: 'Wines',
+        parent_id: parent.id,
+      });
       await seedProduct(db, { category_id: parent.id, name: 'Water' });
       await seedProduct(db, { category_id: child.id, name: 'Merlot' });
 
@@ -305,13 +320,32 @@ describe('ProductsService Integration', () => {
   describe('findAllPaginated', () => {
     it('paginates and filters by search term', async () => {
       const category = await seedCategory(db);
-      await seedProduct(db, { category_id: category.id, name: 'Champagne Brut', sku: 'CH-001' });
-      await seedProduct(db, { category_id: category.id, name: 'Red Wine', sku: 'RW-001' });
-      await seedProduct(db, { category_id: category.id, name: 'Champagne Rosé', sku: 'CH-002' });
+      await seedProduct(db, {
+        category_id: category.id,
+        name: 'Champagne Brut',
+        sku: 'CH-001',
+      });
+      await seedProduct(db, {
+        category_id: category.id,
+        name: 'Red Wine',
+        sku: 'RW-001',
+      });
+      await seedProduct(db, {
+        category_id: category.id,
+        name: 'Champagne Rosé',
+        sku: 'CH-002',
+      });
 
       const result = await run(
         Effect.flatMap(ProductsService, (svc) =>
-          svc.findAllPaginated({ page: 1, limit: 10, search: 'Champagne', sort_by: 'name', sort_order: 'asc', include_deleted: false } as any),
+          svc.findAllPaginated({
+            page: 1,
+            limit: 10,
+            search: 'Champagne',
+            sort_by: 'name',
+            sort_order: 'asc',
+            include_deleted: false,
+          } as any),
         ),
       );
 

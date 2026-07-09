@@ -11,7 +11,10 @@ import {
 } from '../../testing/test-harness';
 import { auditLogs } from '../db/schema';
 import type { DrizzleDb } from '../db/drizzle';
-import { CurrentRequestContext, type RequestContext } from '../http/request-context';
+import {
+  CurrentRequestContext,
+  type RequestContext,
+} from '../http/request-context';
 import { DEFAULT_TENANT_ID } from '../tenancy/tenant-constants';
 import { makeAuditLogWriter } from '../audit/index';
 

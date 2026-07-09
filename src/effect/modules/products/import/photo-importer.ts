@@ -21,7 +21,8 @@ const normalizeContentType = (value: string | null): string =>
 const makeSortlyPhotoFilename = (
   photoIndex: number,
   mimetype: string,
-): string => `sortly-photo-${photoIndex + 1}${MIME_EXT_MAP[mimetype] ?? '.bin'}`;
+): string =>
+  `sortly-photo-${photoIndex + 1}${MIME_EXT_MAP[mimetype] ?? '.bin'}`;
 
 const readRemotePhoto = (url: string, photoIndex: number) =>
   Effect.tryPromise({
@@ -60,7 +61,9 @@ const readRemotePhoto = (url: string, photoIndex: number) =>
         );
       }
 
-      const mimetype = normalizeContentType(response.headers.get('content-type'));
+      const mimetype = normalizeContentType(
+        response.headers.get('content-type'),
+      );
       return {
         originalname: makeSortlyPhotoFilename(photoIndex, mimetype),
         mimetype,

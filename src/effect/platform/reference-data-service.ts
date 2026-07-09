@@ -1,9 +1,6 @@
 import { Effect } from 'effect';
 import { makeGetOrFail } from './effect/from-null-or';
-import {
-  makeEnsureExistByIds,
-  makeEnsureExistsById,
-} from './effect/existence';
+import { makeEnsureExistByIds, makeEnsureExistsById } from './effect/existence';
 
 export interface ReferenceEntityOperationsOptions<
   Entity extends { readonly id: string },
@@ -59,8 +56,7 @@ export const makeReferenceEntityOperations = <
     options.makeNotFound,
   );
 
-  const findOne = (id: string) =>
-    Effect.map(getOrFail(id), options.toResponse);
+  const findOne = (id: string) => Effect.map(getOrFail(id), options.toResponse);
 
   const remove = (id: string) =>
     Effect.gen(function* () {

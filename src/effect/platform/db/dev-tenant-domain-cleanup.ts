@@ -33,7 +33,9 @@ export async function normalizeDevelopmentTenantDomains(
   const legacyProductionSuffix = `.${LEGACY_PRODUCTION_TENANT_BASE_DOMAIN}`;
   const localhostSuffix = `.${LOCALHOST_TENANT_BASE_DOMAIN}`;
   const localPortSuffix = `.${LOCALHOST_TENANT_BASE_DOMAIN}:${LOCAL_TENANT_PORT}`;
-  const rows = await executeRows(db, sql`
+  const rows = await executeRows(
+    db,
+    sql`
     WITH candidates AS (
       SELECT
         td.id,
@@ -74,7 +76,9 @@ export async function normalizeDevelopmentTenantDomains(
     SELECT
       (SELECT count(*)::int FROM updated) AS updated,
       (SELECT count(*)::int FROM skipped_conflicts) AS skipped_conflicts
-  `, TenantDomainCleanupRowSchema);
+  `,
+    TenantDomainCleanupRowSchema,
+  );
 
   const row = rows[0];
   return {

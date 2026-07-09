@@ -2,7 +2,10 @@ import { Effect, Layer } from 'effect';
 import { asc, eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { categories } from '../db/schema';
-import { CurrentRequestContext, type RequestContext } from '../http/request-context';
+import {
+  CurrentRequestContext,
+  type RequestContext,
+} from '../http/request-context';
 import { TenantQuery } from '../tenancy/tenant-query';
 import {
   getTestDb,

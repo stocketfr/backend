@@ -32,12 +32,15 @@ export const rolesRelations = relations(roles, ({ many }) => ({
   userRoles: many(userRoles),
 }));
 
-export const rolePermissionsRelations = relations(rolePermissions, ({ one }) => ({
-  role: one(roles, {
-    fields: [rolePermissions.role_id],
-    references: [roles.id],
+export const rolePermissionsRelations = relations(
+  rolePermissions,
+  ({ one }) => ({
+    role: one(roles, {
+      fields: [rolePermissions.role_id],
+      references: [roles.id],
+    }),
   }),
-}));
+);
 
 export const userRolesRelations = relations(userRoles, ({ one }) => ({
   role: one(roles, {
@@ -92,12 +95,15 @@ export const photosRelations = relations(photos, ({ one }) => ({
   }),
 }));
 
-export const supplierProductsRelations = relations(supplierProducts, ({ one }) => ({
-  supplier: one(suppliers, {
-    fields: [supplierProducts.supplier_id],
-    references: [suppliers.id],
+export const supplierProductsRelations = relations(
+  supplierProducts,
+  ({ one }) => ({
+    supplier: one(suppliers, {
+      fields: [supplierProducts.supplier_id],
+      references: [suppliers.id],
+    }),
   }),
-}));
+);
 
 export const clientsRelations = relations(clients, ({ many }) => ({
   orders: many(orders),

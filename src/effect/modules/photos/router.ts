@@ -7,17 +7,11 @@ import {
 } from '@effect/platform';
 import { Effect, Schema } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
-import {
-  PhotoIdSchema,
-  PhotoProductIdSchema,
-} from '@stocket/types/photos';
+import { PhotoIdSchema, PhotoProductIdSchema } from '@stocket/types/photos';
 import { requirePermission } from '../../platform/auth/authorization';
 import { respondCause } from '../../platform/http/errors';
 import { makeMessageResponse } from '../../platform/observability/messages';
-import {
-  pathParams,
-  tenantRoute,
-} from '../../platform/http/tenant-route';
+import { pathParams, tenantRoute } from '../../platform/http/tenant-route';
 import { PhotosInfrastructureError } from './photos.errors';
 import { PhotosService } from './service';
 

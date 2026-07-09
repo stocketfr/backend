@@ -10,10 +10,7 @@ import {
   requireRequestTenantId,
   type TenantNotResolved,
 } from '../../platform/tenancy/tenant-context';
-import {
-  DEFAULT_BRANDING,
-  POWERED_BY,
-} from './branding.constants';
+import { DEFAULT_BRANDING, POWERED_BY } from './branding.constants';
 import { toBrandingResponse } from './branding.utils';
 import { BrandingInfrastructureError } from './branding.errors';
 import { BrandingRepository } from './repository';
@@ -67,9 +64,7 @@ export class BrandingService extends Effect.Service<BrandingService>()(
           }
 
           return toBrandingResponse(settings);
-        }).pipe(
-          trace.span('update', { attributes: { userId } }),
-        );
+        }).pipe(trace.span('update', { attributes: { userId } }));
 
       return { get, update };
     }),

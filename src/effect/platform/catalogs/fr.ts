@@ -19,8 +19,7 @@ export const frCatalog: Record<MessageKey, string> = {
   'e2e.seedDisabled': 'Le seed E2E est desactive.',
   'e2e.seedFailed': 'Le seed E2E a echoue.',
   'email.sendFailed': "L'envoi de l'e-mail a echoue.",
-  'email.welcomeRequestFailed':
-    "La demande d'e-mail de bienvenue a echoue.",
+  'email.welcomeRequestFailed': "La demande d'e-mail de bienvenue a echoue.",
   'tenant.membershipRejected':
     "Le tenant actif n'est pas disponible pour cet utilisateur.",
   'tenant.notResolved':
@@ -52,8 +51,7 @@ export const frCatalog: Record<MessageKey, string> = {
   'errors.internalServerError': 'Erreur interne du serveur.',
   'features.notEnabled':
     "Cette fonctionnalite n'est pas activee pour le tenant actif.",
-  'features.repositoryFailed':
-    "L'operation sur les fonctionnalites a echoue.",
+  'features.repositoryFailed': "L'operation sur les fonctionnalites a echoue.",
   'features.tenantNotFound': 'Tenant introuvable.',
   'fulfillment.infrastructureFailed': "L'operation de preparation a echoue.",
   'fulfillment.insufficientInventory':
@@ -166,8 +164,7 @@ export const frCatalog: Record<MessageKey, string> = {
   'superadmin.reservedTenantSlug': 'Le slug tenant est reserve.',
   'superadmin.tenantHostnameAlreadyExists':
     'Un tenant avec cet hote existe deja.',
-  'superadmin.tenantImportInvalid':
-    "L'import du tenant a echoue : {details}",
+  'superadmin.tenantImportInvalid': "L'import du tenant a echoue : {details}",
   'superadmin.tenantNotFound': 'Tenant introuvable.',
   'superadmin.tenantSlugAlreadyExists': 'Un tenant avec ce slug existe deja.',
   'stockMovements.destinationLocationNotFound':

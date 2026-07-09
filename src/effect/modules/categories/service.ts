@@ -28,7 +28,9 @@ import { CategoriesRepository } from './repository';
 
 type Category = typeof categories.$inferSelect;
 
-const buildTree = (categories: Category[]): CategoryWithChildrenResponseDto[] => {
+const buildTree = (
+  categories: Category[],
+): CategoryWithChildrenResponseDto[] => {
   const categoryMap = new Map<string, CategoryWithChildrenResponseDto>();
   const roots: CategoryWithChildrenResponseDto[] = [];
 
@@ -101,9 +103,8 @@ export class CategoriesService extends Effect.Service<CategoriesService>()(
         });
 
       const findAll = () =>
-        Effect.map(
-          repository.findAll(),
-          (categories) => buildTree(categories),
+        Effect.map(repository.findAll(), (categories) =>
+          buildTree(categories),
         ).pipe(trace.span('findAll'));
 
       const create = (
@@ -234,7 +235,8 @@ export class CategoriesService extends Effect.Service<CategoriesService>()(
 
           return yield* fromNullOr(
             repository.update(id, updateData),
-            () => new CategoryNotFound({ id, messageKey: 'categories.notFound' }),
+            () =>
+              new CategoryNotFound({ id, messageKey: 'categories.notFound' }),
           );
         }).pipe(trace.span('update', { attributes: { id } }));
 
@@ -250,9 +252,9 @@ export class CategoriesService extends Effect.Service<CategoriesService>()(
         }).pipe(trace.span('delete', { attributes: { id } }));
 
       const existsById = (id: string) =>
-        repository.existsById(id).pipe(
-          trace.span('existsById', { attributes: { id } }),
-        );
+        repository
+          .existsById(id)
+          .pipe(trace.span('existsById', { attributes: { id } }));
 
       const ensureExistsById = (id: string) =>
         makeEnsureExistsById(
@@ -267,9 +269,11 @@ export class CategoriesService extends Effect.Service<CategoriesService>()(
         )(ids).pipe(trace.span('ensureExistByIds'));
 
       const findAllDescendantIds = (parentId: string) =>
-        repository.findAllDescendantIds(parentId).pipe(
-          trace.span('findAllDescendantIds', { attributes: { parentId } }),
-        );
+        repository
+          .findAllDescendantIds(parentId)
+          .pipe(
+            trace.span('findAllDescendantIds', { attributes: { parentId } }),
+          );
 
       return {
         findAll,

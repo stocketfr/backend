@@ -398,7 +398,10 @@ const fitDerivedSku = (
   const sourceSegment = sanitizeSkuSegment(sourceSku) || 'SKU';
   const nameSegment = sanitizeSkuSegment(name) || 'ITEM';
   const readable = `${sourceSegment}-${nameSegment}`;
-  if (readable.length <= MAX_DERIVED_SKU_LENGTH && !existingSkus.has(readable)) {
+  if (
+    readable.length <= MAX_DERIVED_SKU_LENGTH &&
+    !existingSkus.has(readable)
+  ) {
     return readable;
   }
 

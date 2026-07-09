@@ -25,7 +25,9 @@ export interface Recipient {
 }
 
 // Each event maps to exactly one preference category (D5).
-export const EVENT_CATEGORY: Record<NotificationEventKind, NotificationCategory> =
-  {
-    'low-stock': NotificationCategory.INVENTORY_ALERTS,
-  };
+export const EVENT_CATEGORY: Record<
+  NotificationEventKind,
+  NotificationCategory
+> = {
+  'low-stock': NotificationCategory.INVENTORY_ALERTS,
+};

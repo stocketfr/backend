@@ -101,7 +101,9 @@ const toErrorDetails = (
       statusCode: error.statusCode,
       error: getStatusName(error.statusCode),
       messageKey: isMasked ? 'errors.internalServerError' : error.messageKey,
-      ...(isMasked || !error.messageArgs ? {} : { messageArgs: error.messageArgs }),
+      ...(isMasked || !error.messageArgs
+        ? {}
+        : { messageArgs: error.messageArgs }),
     };
   }
 
@@ -208,8 +210,14 @@ export const respondJson = <A, E, R>(
   Effect.gen(function* () {
     const body = yield* effect;
     const { locale } = yield* getRequestContext;
-    return yield* HttpServerResponse.json(localizeMessageTree(body, locale), options);
-  }).pipe(Effect.catchAllCause(respondCause), Effect.flatMap(withRequestIdHeader));
+    return yield* HttpServerResponse.json(
+      localizeMessageTree(body, locale),
+      options,
+    );
+  }).pipe(
+    Effect.catchAllCause(respondCause),
+    Effect.flatMap(withRequestIdHeader),
+  );
 
 export const respondJsonOk = <A>(
   body: A,

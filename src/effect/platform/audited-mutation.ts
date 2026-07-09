@@ -1,9 +1,6 @@
 import { type HttpServerResponse } from '@effect/platform';
 import { Effect } from 'effect';
-import type {
-  AuditAction,
-  AuditEntityType,
-} from '@stocket/types/audit-logs';
+import type { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
 import { AuditLogWriter } from './audit/index';
 import { respondEmpty, respondJson } from './http/errors';
 
@@ -18,8 +15,10 @@ interface BaseAuditedMutationOptions<A> {
   readonly entityId: EntityIdResolver<A>;
 }
 
-interface JsonAuditedMutationOptions<A, B = A>
-  extends BaseAuditedMutationOptions<A> {
+interface JsonAuditedMutationOptions<
+  A,
+  B = A,
+> extends BaseAuditedMutationOptions<A> {
   readonly response?: 'json';
   readonly mapResponse?: (result: A) => B;
   readonly responseOptions?: HttpServerResponse.Options.WithContentType;

@@ -1,7 +1,10 @@
 import { HttpRouter, HttpServerRequest } from '@effect/platform';
 import { Effect, Schema } from 'effect';
 import { AppConfig } from '../../platform/config/app-config';
-import { ForbiddenError, InternalError } from '../../platform/effect/domain-errors';
+import {
+  ForbiddenError,
+  InternalError,
+} from '../../platform/effect/domain-errors';
 import { respondJson } from '../../platform/http/errors';
 import { seedE2eTenant } from '../../../scripts/seed-e2e';
 

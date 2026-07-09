@@ -42,9 +42,10 @@ import { PhotosService, type UploadedFile } from './service';
 const mockMultipart = vi.fn();
 
 vi.mock('@effect/platform', async () => {
-  const actual = await vi.importActual<typeof import('@effect/platform')>(
-    '@effect/platform',
-  );
+  const actual =
+    await vi.importActual<typeof import('@effect/platform')>(
+      '@effect/platform',
+    );
   const { Effect } = await vi.importActual<typeof import('effect')>('effect');
 
   return {
@@ -65,9 +66,10 @@ const mockReadFile = vi.fn();
 const mockStat = vi.fn();
 
 vi.mock('node:fs/promises', async () => {
-  const actual = await vi.importActual<typeof import('node:fs/promises')>(
-    'node:fs/promises',
-  );
+  const actual =
+    await vi.importActual<typeof import('node:fs/promises')>(
+      'node:fs/promises',
+    );
   return {
     ...actual,
     readFile: (...args: unknown[]) => mockReadFile(...args),
@@ -449,7 +451,9 @@ describe('photos routers', () => {
       const { handler } = makePhotosRouterHarness({
         service: {
           getFile: (id: string) =>
-            Effect.fail(new PhotoNotFound({ id, messageKey: 'photos.notFound' })),
+            Effect.fail(
+              new PhotoNotFound({ id, messageKey: 'photos.notFound' }),
+            ),
         },
         permissions: readOnly,
       });
@@ -537,7 +541,9 @@ describe('photos routers', () => {
       const { handler } = makePhotosRouterHarness({
         service: {
           deletePhoto: (id: string) =>
-            Effect.fail(new PhotoNotFound({ id, messageKey: 'photos.notFound' })),
+            Effect.fail(
+              new PhotoNotFound({ id, messageKey: 'photos.notFound' }),
+            ),
         },
         permissions: writeAll,
       });

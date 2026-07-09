@@ -64,7 +64,7 @@ export class InventoryService extends Effect.Service<InventoryService>()(
             productId,
             messageKey: 'inventory.productNotFound',
           }),
-        );
+      );
 
       const ensureLocationExists = makeEnsureExistsById(
         locationsService.existsById,
@@ -73,7 +73,7 @@ export class InventoryService extends Effect.Service<InventoryService>()(
             locationId,
             messageKey: 'inventory.locationNotFound',
           }),
-        );
+      );
 
       const ensureProductForLookup = makeEnsureExistsById(
         productsService.existsById,
@@ -280,9 +280,7 @@ export class InventoryService extends Effect.Service<InventoryService>()(
 
           const updatedInventory = yield* getInventoryOrFail(id);
           return toInventoryResponseDto(updatedInventory);
-        }).pipe(
-          trace.span('update', { attributes: { id } }),
-        );
+        }).pipe(trace.span('update', { attributes: { id } }));
 
       const adjustQuantity = (id: string, dto: AdjustInventoryDto) =>
         Effect.gen(function* () {
@@ -311,9 +309,7 @@ export class InventoryService extends Effect.Service<InventoryService>()(
         Effect.gen(function* () {
           yield* getInventoryOrFail(id);
           yield* repository.delete(id);
-        }).pipe(
-          trace.span('delete', { attributes: { id } }),
-        );
+        }).pipe(trace.span('delete', { attributes: { id } }));
 
       return {
         findAllPaginated,

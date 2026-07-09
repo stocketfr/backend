@@ -101,9 +101,7 @@ export class OrdersService extends Effect.Service<OrdersService>()(
         Effect.map(
           ordersRepository.findAllPaginatedWithRelations(query),
           (result) =>
-            toPaginatedResponse(result, (order) =>
-              toOrderResponseDto(order),
-            ),
+            toPaginatedResponse(result, (order) => toOrderResponseDto(order)),
         ).pipe(trace.span('findAllPaginated'));
 
       const findOne = (id: string) =>
@@ -250,9 +248,9 @@ export class OrdersService extends Effect.Service<OrdersService>()(
         }).pipe(trace.span('delete', { attributes: { orderId: id } }));
 
       const existsById = (id: string) =>
-        ordersRepository.existsById(id).pipe(
-          trace.span('existsById', { attributes: { orderId: id } }),
-        );
+        ordersRepository
+          .existsById(id)
+          .pipe(trace.span('existsById', { attributes: { orderId: id } }));
 
       const ensureExistsById = (id: string) =>
         makeEnsureExistsById(

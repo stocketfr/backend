@@ -8,7 +8,10 @@ import {
 import type { EmailTemplate } from '@stocket/emails';
 import { defaultMailer } from '../../../email/default-mailer';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
-import { DEFAULT_LOCALE, type SupportedLocale } from '../../platform/observability/messages';
+import {
+  DEFAULT_LOCALE,
+  type SupportedLocale,
+} from '../../platform/observability/messages';
 import {
   CurrentRequestContext,
   type RequestContext,
@@ -82,8 +85,7 @@ const makeScanContext = (tenantId: string): RequestContext => ({
 const shouldSendEmail = (
   category: NotificationCategory,
   candidate: AudienceCandidate,
-): boolean =>
-  effectivePref(category, candidate.emailEnabled ?? undefined);
+): boolean => effectivePref(category, candidate.emailEnabled ?? undefined);
 
 export class NotificationsService extends Effect.Service<NotificationsService>()(
   '@stocket/effect/notifications/NotificationsService',

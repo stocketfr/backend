@@ -39,13 +39,11 @@ export const runBulkByIds = <
   act,
   entityName,
   notFoundError,
-}: RunBulkByIdsOptions<
-  Entity,
-  EFind,
-  EAct,
-  RFind,
-  RAct
->): Effect.Effect<BulkOperationResult<string>, EFind | EAct, RFind | RAct> =>
+}: RunBulkByIdsOptions<Entity, EFind, EAct, RFind, RAct>): Effect.Effect<
+  BulkOperationResult<string>,
+  EFind | EAct,
+  RFind | RAct
+> =>
   Effect.gen(function* () {
     const result = createBulkResultBuilder<string>();
     const requestedIds = [...ids];

@@ -240,7 +240,9 @@ export class NotificationsRepository extends Effect.Service<NotificationsReposit
         category: NotificationCategory,
       ): RepoEffect<AudienceCandidate[]> =>
         Effect.gen(function* () {
-          const tenantScope = tenantQuery.forTenant(yield* tenantQuery.tenantId);
+          const tenantScope = tenantQuery.forTenant(
+            yield* tenantQuery.tenantId,
+          );
           return yield* tryAsync('resolve notification audience', async () => {
             const emailPref = alias(notificationPreferences, 'email_pref');
             return db

@@ -1,7 +1,10 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { enCatalog } from '../catalogs';
-import { messageCatalogs, localizeMessageTree } from '../observability/messages';
+import {
+  messageCatalogs,
+  localizeMessageTree,
+} from '../observability/messages';
 
 const collectSourceFiles = (directory: string): string[] =>
   readdirSync(directory).flatMap((entry) => {

@@ -73,9 +73,8 @@ export class ProductsService extends Effect.Service<ProductsService>()(
         });
 
       const getProductOrFail = (id: string, includeDeleted = false) =>
-        fromNullOr(
-          repository.findById(id, includeDeleted),
-          () => makeProductNotFound(id),
+        fromNullOr(repository.findById(id, includeDeleted), () =>
+          makeProductNotFound(id),
         );
 
       const checkCategoryExists = makeEnsureExistsById(
@@ -85,7 +84,7 @@ export class ProductsService extends Effect.Service<ProductsService>()(
             categoryId,
             messageKey: 'products.categoryNotFound',
           }),
-        );
+      );
 
       const checkSupplierExists = makeEnsureExistsById(
         suppliersService.existsById,
@@ -94,7 +93,7 @@ export class ProductsService extends Effect.Service<ProductsService>()(
             id: supplierId,
             messageKey: 'suppliers.notFound',
           }),
-        );
+      );
 
       const validateProductTenantReferences = (
         dto: Pick<
@@ -236,8 +235,9 @@ export class ProductsService extends Effect.Service<ProductsService>()(
           const categoryIds = [
             ...new Set(bulkDto.products.map((p) => p.category_id)),
           ];
-          const missingCategoryId =
-            yield* categoriesService.ensureExistByIds(categoryIds).pipe(
+          const missingCategoryId = yield* categoriesService
+            .ensureExistByIds(categoryIds)
+            .pipe(
               Effect.matchEffect({
                 onFailure: (error) =>
                   error._tag === 'CategoryNotFound'
@@ -264,8 +264,9 @@ export class ProductsService extends Effect.Service<ProductsService>()(
                 .filter((id): id is string => Boolean(id)),
             ),
           ];
-          const missingSupplierId =
-            yield* suppliersService.ensureExistByIds(supplierIds).pipe(
+          const missingSupplierId = yield* suppliersService
+            .ensureExistByIds(supplierIds)
+            .pipe(
               Effect.matchEffect({
                 onFailure: (error) =>
                   error._tag === 'SupplierNotFound'

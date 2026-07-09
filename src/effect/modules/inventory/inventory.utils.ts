@@ -54,4 +54,3 @@ export function toInventoryResponseDto(
     updated_at: inventory.updated_at,
   };
 }
-

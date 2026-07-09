@@ -1,4 +1,7 @@
-import type { CreateProductDto, ProductResponseDto } from '@stocket/types/products';
+import type {
+  CreateProductDto,
+  ProductResponseDto,
+} from '@stocket/types/products';
 import type { products } from '../../platform/db/schema';
 
 export type ProductRow = typeof products.$inferSelect;
@@ -55,7 +58,6 @@ export function toProductResponseDto(product: Product): ProductResponseDto {
   return dto;
 }
 
-
 export function toCreateProductEntity(
   dto: CreateProductDto,
   userId?: string,
@@ -81,4 +83,3 @@ export function toCreateProductEntity(
     updated_by: userId ?? null,
   };
 }
-

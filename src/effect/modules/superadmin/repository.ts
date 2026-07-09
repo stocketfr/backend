@@ -216,7 +216,9 @@ export class SuperAdminRepository extends Effect.Service<SuperAdminRepository>()
             const adminRoleRows = await tx
               .select({ id: roles.id })
               .from(roles)
-              .where(and(eq(roles.tenant_id, tenantId), eq(roles.name, 'Admin')))
+              .where(
+                and(eq(roles.tenant_id, tenantId), eq(roles.name, 'Admin')),
+              )
               .limit(1);
 
             const adminRoleId = adminRoleRows[0]?.id;

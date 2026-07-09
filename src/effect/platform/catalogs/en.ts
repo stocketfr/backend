@@ -121,8 +121,7 @@ export const enCatalog = {
     'Could not parse the uploaded product import plan.',
   'products.importReadUploadFailed':
     'Failed to read the uploaded product import file.',
-  'products.importUnsupportedFormat':
-    'Unsupported product import CSV headers.',
+  'products.importUnsupportedFormat': 'Unsupported product import CSV headers.',
   'products.infrastructureFailed': 'Product operation failed.',
   'products.notDeleted': 'Product is not deleted.',
   'products.notFound': 'Product not found.',

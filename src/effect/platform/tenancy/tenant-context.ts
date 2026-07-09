@@ -2,7 +2,11 @@ import { Effect, Option } from 'effect';
 import type { UserSession } from '../auth/user-session';
 import { AppConfig } from '../config/app-config';
 import { DrizzleDatabase, type DrizzleDb } from '../db/drizzle';
-import { getTenantSlugFromHost, isTenantSubdomain, normalizeHost } from './host';
+import {
+  getTenantSlugFromHost,
+  isTenantSubdomain,
+  normalizeHost,
+} from './host';
 import {
   DEFAULT_TENANT_ID,
   DEFAULT_TENANT_NAME,
@@ -117,7 +121,8 @@ export const resolveTenantForSession = (session: UserSession) =>
         // Unit tests often exercise services without a database layer. Production
         // requests always provide DrizzleDatabase via platformLayer.
         const tenant =
-          requestTenant ?? fallbackTenantContext(activeOrganizationId ?? undefined);
+          requestTenant ??
+          fallbackTenantContext(activeOrganizationId ?? undefined);
         yield* setRequestTenant(tenant);
         return tenant;
       }

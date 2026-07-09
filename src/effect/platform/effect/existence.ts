@@ -17,7 +17,9 @@ export const makeEnsureExistsById =
 
 export const makeEnsureExistByIds =
   <Entity extends EntityWithId, E, R, NotFound>(
-    findByIds: (ids: readonly string[]) => Effect.Effect<readonly Entity[], E, R>,
+    findByIds: (
+      ids: readonly string[],
+    ) => Effect.Effect<readonly Entity[], E, R>,
     makeNotFound: (id: string) => NotFound,
   ) =>
   (ids: readonly string[]): Effect.Effect<void, E | NotFound, R> =>

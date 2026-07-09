@@ -15,7 +15,9 @@ class TestServerError extends Data.TaggedError('TestServerError')<{
   readonly statusCode: 500;
 }> {}
 
-class UserNotFound extends Data.TaggedError('UserNotFound')<Record<string, never>> {}
+class UserNotFound extends Data.TaggedError('UserNotFound')<
+  Record<string, never>
+> {}
 
 describe('makeServiceTracer', () => {
   const runWithRecorder = <A, E>(effect: Effect.Effect<A, E, never>) => {
@@ -50,9 +52,7 @@ describe('makeServiceTracer', () => {
       layer: 'service',
     });
 
-    const findOne = trace.traced('findOne', (id: string) =>
-      Effect.succeed(id),
-    );
+    const findOne = trace.traced('findOne', (id: string) => Effect.succeed(id));
 
     const { recorder } = await runWithRecorder(findOne('order-1'));
 
@@ -133,9 +133,9 @@ describe('makeServiceTracer', () => {
 
   const runMaybeFailing = <A, E>(effect: Effect.Effect<A, E, never>) => {
     const { tracer, recorder } = makeInMemoryTracer();
-    return Effect.runPromiseExit(
-      effect.pipe(Effect.withTracer(tracer)),
-    ).then((exit) => ({ exit, recorder }));
+    return Effect.runPromiseExit(effect.pipe(Effect.withTracer(tracer))).then(
+      (exit) => ({ exit, recorder }),
+    );
   };
 
   it('sets outcome:success on a successful span', async () => {
@@ -149,7 +149,9 @@ describe('makeServiceTracer', () => {
       Effect.succeed(1).pipe(trace.span('findOne')),
     );
 
-    expect(recorder.findSpan('OrdersService.findOne')!.attributes.get('outcome')).toBe('success');
+    expect(
+      recorder.findSpan('OrdersService.findOne')!.attributes.get('outcome'),
+    ).toBe('success');
   });
 
   it('maps statusCode 404 to outcome:not_found with errorType from _tag', async () => {
@@ -276,7 +278,9 @@ describe('makeServiceTracer', () => {
       ),
     );
 
-    expect(recorder.findSpan('OrdersService.findOne')!.attributes.get('requestId')).toBe('req-42');
+    expect(
+      recorder.findSpan('OrdersService.findOne')!.attributes.get('requestId'),
+    ).toBe('req-42');
   });
 
   it('is a no-op for requestId when CurrentRequestContext is absent', async () => {
@@ -290,7 +294,9 @@ describe('makeServiceTracer', () => {
       Effect.succeed(1).pipe(trace.span('findOne')),
     );
 
-    expect(recorder.findSpan('OrdersService.findOne')!.attributes.has('requestId')).toBe(false);
+    expect(
+      recorder.findSpan('OrdersService.findOne')!.attributes.has('requestId'),
+    ).toBe(false);
   });
 
   it('passes `traced` method arguments through to the attribute resolver', async () => {

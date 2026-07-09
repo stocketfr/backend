@@ -88,7 +88,9 @@ const permissionProviderLayer = Layer.effect(
   })),
 ).pipe(Layer.provide(rolesApplicationLayer));
 const authApplicationLayer = AuthService.Default.pipe(
-  Layer.provide(Layer.mergeAll(rolesApplicationLayer, featuresApplicationLayer)),
+  Layer.provide(
+    Layer.mergeAll(rolesApplicationLayer, featuresApplicationLayer),
+  ),
 );
 const usersApplicationLayer = UsersService.Default.pipe(
   Layer.provide(Layer.mergeAll(platformLayer, rolesApplicationLayer)),

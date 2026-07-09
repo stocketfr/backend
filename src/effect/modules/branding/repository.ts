@@ -5,10 +5,7 @@ import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { brandingSettings } from '../../platform/db/schema';
 import { makeTryAsync } from '../../platform/effect/try-async';
 import { TenantQuery } from '../../platform/tenancy/tenant-query';
-import {
-  BRANDING_SETTINGS_ID,
-  DEFAULT_BRANDING,
-} from './branding.constants';
+import { BRANDING_SETTINGS_ID, DEFAULT_BRANDING } from './branding.constants';
 import { BrandingInfrastructureError } from './branding.errors';
 
 export type BrandingSettingsRow = typeof brandingSettings.$inferSelect;

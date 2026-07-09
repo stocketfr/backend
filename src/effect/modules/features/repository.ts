@@ -75,12 +75,14 @@ export class FeaturesRepository extends Effect.Service<FeaturesRepository>()(
           const tenantScope = tenantQuery.forTenant(tenantId);
           await db
             .insert(tenantEntitlementProfiles)
-            .values(tenantScope.insertValues({
-              plan_key: planKey,
-              source: EntitlementSource.MANUAL,
-              updated_by: actorUserId,
-              updated_at: new Date(),
-            }))
+            .values(
+              tenantScope.insertValues({
+                plan_key: planKey,
+                source: EntitlementSource.MANUAL,
+                updated_by: actorUserId,
+                updated_at: new Date(),
+              }),
+            )
             .onConflictDoUpdate({
               target: tenantEntitlementProfiles.tenant_id,
               set: {
@@ -106,14 +108,16 @@ export class FeaturesRepository extends Effect.Service<FeaturesRepository>()(
           const tenantScope = tenantQuery.forTenant(tenantId);
           await db
             .insert(tenantFeatureOverrides)
-            .values(tenantScope.insertValues({
-              feature_key: featureKey,
-              enabled: input.enabled,
-              reason: input.reason ?? null,
-              expires_at: input.expires_at ?? null,
-              updated_by: actorUserId,
-              updated_at: new Date(),
-            }))
+            .values(
+              tenantScope.insertValues({
+                feature_key: featureKey,
+                enabled: input.enabled,
+                reason: input.reason ?? null,
+                expires_at: input.expires_at ?? null,
+                updated_by: actorUserId,
+                updated_at: new Date(),
+              }),
+            )
             .onConflictDoUpdate({
               target: [
                 tenantFeatureOverrides.tenant_id,

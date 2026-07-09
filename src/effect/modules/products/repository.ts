@@ -136,13 +136,18 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
         const findAll = (includeDeleted = false) =>
           Effect.gen(function* () {
-            const where = yield* scopedWhere(...activeConditions(includeDeleted));
-            return yield* tryAsync('list all products with relations', async () => {
-              const rows = await selectProductWithJoins(db)
-                .where(where)
-                .orderBy(sql`products."name" ASC`);
-              return rows.map(mapProductRow);
-            });
+            const where = yield* scopedWhere(
+              ...activeConditions(includeDeleted),
+            );
+            return yield* tryAsync(
+              'list all products with relations',
+              async () => {
+                const rows = await selectProductWithJoins(db)
+                  .where(where)
+                  .orderBy(sql`products."name" ASC`);
+                return rows.map(mapProductRow);
+              },
+            );
           });
 
         const findAllPaginated = (query: ProductQueryDto) =>
@@ -183,12 +188,15 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
               id,
               ...activeConditions(includeDeleted),
             );
-            return yield* tryAsync('find product with relations by id', async () => {
-              const rows = await selectProductWithJoins(db)
-                .where(where)
-                .limit(1);
-              return rows[0] ? mapProductRow(rows[0]) : null;
-            });
+            return yield* tryAsync(
+              'find product with relations by id',
+              async () => {
+                const rows = await selectProductWithJoins(db)
+                  .where(where)
+                  .limit(1);
+                return rows[0] ? mapProductRow(rows[0]) : null;
+              },
+            );
           });
 
         const findByIds = (ids: readonly string[], includeDeleted = false) =>
@@ -201,10 +209,13 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
               inArray(products.id, [...ids]),
               ...activeConditions(includeDeleted),
             );
-            return yield* tryAsync('find products by ids with relations', async () => {
-              const rows = await selectProductWithJoins(db).where(where);
-              return rows.map(mapProductRow);
-            });
+            return yield* tryAsync(
+              'find products by ids with relations',
+              async () => {
+                const rows = await selectProductWithJoins(db).where(where);
+                return rows.map(mapProductRow);
+              },
+            );
           });
 
         const existsById = (id: string, includeDeleted = false) =>

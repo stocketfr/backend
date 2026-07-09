@@ -217,40 +217,46 @@ export class OrdersRepository extends Effect.Service<OrdersRepository>()(
           Effect.gen(function* () {
             const values = yield* insertValues(data);
             const scope = yield* tenantScope;
-            return yield* withTransaction('create order with items', async (tx) => {
-              const [order] = await tx.insert(orders).values(values).returning();
+            return yield* withTransaction(
+              'create order with items',
+              async (tx) => {
+                const [order] = await tx
+                  .insert(orders)
+                  .values(values)
+                  .returning();
 
-              if (!order) {
-                throw new Error('Order insert returned no row');
-              }
+                if (!order) {
+                  throw new Error('Order insert returned no row');
+                }
 
-              if (items.length === 0) {
-                return order;
-              }
+                if (items.length === 0) {
+                  return order;
+                }
 
-              const productIds = [
-                ...new Set(items.map((item) => item.product_id)),
-              ];
-              const tenantProducts = await tx
-                .select({ id: products.id })
-                .from(products)
-                .where(scope.whereTenantIds(products, productIds));
+                const productIds = [
+                  ...new Set(items.map((item) => item.product_id)),
+                ];
+                const tenantProducts = await tx
+                  .select({ id: products.id })
+                  .from(products)
+                  .where(scope.whereTenantIds(products, productIds));
 
-              if (tenantProducts.length !== productIds.length) {
-                throw new Error(
-                  'Order item references a product outside tenant',
+                if (tenantProducts.length !== productIds.length) {
+                  throw new Error(
+                    'Order item references a product outside tenant',
+                  );
+                }
+
+                await tx.insert(orderItems).values(
+                  items.map((item) => ({
+                    ...item,
+                    order_id: order.id,
+                  })),
                 );
-              }
 
-              await tx.insert(orderItems).values(
-                items.map((item) => ({
-                  ...item,
-                  order_id: order.id,
-                })),
-              );
-
-              return order;
-            });
+                return order;
+              },
+            );
           });
 
         const deleteDraftWithItems = (id: string) =>

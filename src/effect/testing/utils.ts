@@ -14,7 +14,10 @@ import { vi, type Mock } from 'vitest';
  *   });
  *   // Provide via Effect.provide(repoLayer) inside it.effect(...)
  */
-const makeUnimplementedProxy = <S extends object>(key: string, service: Partial<S>): S =>
+const makeUnimplementedProxy = <S extends object>(
+  key: string,
+  service: Partial<S>,
+): S =>
   new Proxy(service as S, {
     get(target, prop) {
       if (prop in target) return (target as any)[prop];

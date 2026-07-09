@@ -298,17 +298,15 @@ describe('Effect InventoryService', () => {
 
     it('creates inventory after validating related entities', async () => {
       const repository = makeMockRepository({
-        findByIdWithRelations: vi
-          .fn()
-          .mockReturnValueOnce(
-            Effect.succeed(
-              makeInventoryEntity({
-                id: 'inventory-created',
-                area_id: 'area-1',
-                area: makeAreaDto(),
-              }),
-            ),
+        findByIdWithRelations: vi.fn().mockReturnValueOnce(
+          Effect.succeed(
+            makeInventoryEntity({
+              id: 'inventory-created',
+              area_id: 'area-1',
+              area: makeAreaDto(),
+            }),
           ),
+        ),
       });
       const service = await buildService(repository);
 

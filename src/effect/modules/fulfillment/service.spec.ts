@@ -60,10 +60,9 @@ const makeOrderEntity = (overrides: Record<string, any> = {}) => ({
   ...overrides,
 });
 
-const makeMockOrdersRepository = (
-  overrides: Record<string, Mock> = {},
-) => {
-  const findByIdWithRelations = vi.fn()
+const makeMockOrdersRepository = (overrides: Record<string, Mock> = {}) => {
+  const findByIdWithRelations = vi
+    .fn()
     .mockReturnValueOnce(Effect.succeed(makeOrderEntity()))
     .mockReturnValueOnce(
       Effect.succeed(
@@ -217,7 +216,9 @@ describe('Effect FulfillmentService', () => {
         service.pick({
           orderId: 'order-1',
           actorId: 'user-2',
-          picks: [{ orderItemId: 'item-1', inventoryId: 'inventory-1', quantity: 2 }],
+          picks: [
+            { orderItemId: 'item-1', inventoryId: 'inventory-1', quantity: 2 },
+          ],
         }),
       );
 

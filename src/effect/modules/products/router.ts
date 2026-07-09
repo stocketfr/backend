@@ -324,7 +324,10 @@ export const productsRouter = HttpRouter.empty.pipe(
     '/:id',
     tenantRouteContext({
       permissions: [[Resource.PRODUCTS, Permission.WRITE]],
-      decode: pathParamsAndJsonBody(ProductPathParams, UpdateProductRequestSchema),
+      decode: pathParamsAndJsonBody(
+        ProductPathParams,
+        UpdateProductRequestSchema,
+      ),
       session: 'optional',
     }).pipe(
       Effect.flatMap(({ input: { path, body }, userId }) =>

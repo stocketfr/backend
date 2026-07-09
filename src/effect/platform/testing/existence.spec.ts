@@ -14,9 +14,7 @@ const fail = <A, E>(effect: Effect.Effect<A, E>) =>
 
 describe('existence helpers', () => {
   it('ensures a single id exists', async () => {
-    const existsById = vi.fn((id: string) =>
-      Effect.succeed(id === 'existing'),
-    );
+    const existsById = vi.fn((id: string) => Effect.succeed(id === 'existing'));
     const ensureExistsById = makeEnsureExistsById(
       existsById,
       (id) => new MissingEntity(id),
@@ -32,7 +30,9 @@ describe('existence helpers', () => {
 
   it('ensures ids exist with one batched lookup and fails on the first missing id', async () => {
     const findByIds = vi.fn((ids: readonly string[]) =>
-      Effect.succeed(ids.filter((id) => id !== 'missing').map((id) => ({ id }))),
+      Effect.succeed(
+        ids.filter((id) => id !== 'missing').map((id) => ({ id })),
+      ),
     );
     const ensureExistByIds = makeEnsureExistByIds(
       findByIds,

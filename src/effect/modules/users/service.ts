@@ -206,22 +206,22 @@ export class UsersService extends Effect.Service<UsersService>()(
         );
 
       const createUser = trace.traced('createUser', (dto: CreateUserDto) =>
-          Effect.gen(function* () {
-            const tenantId = yield* requireRequestTenantId;
+        Effect.gen(function* () {
+          const tenantId = yield* requireRequestTenantId;
 
-            yield* usersRepository.validateRoleIds(dto.roles, tenantId);
-            const result = yield* tryAsync(
-              'create user in auth provider',
-              () =>
-                betterAuth.api.createUser({
-                  body: {
-                    email: dto.email,
-                    name: dto.name,
-                    password: dto.password,
-                    data: { emailVerified: true },
-                  } satisfies BetterAuthCreateUserBody,
-                }) as Promise<BetterAuthCreateUserResponse>,
-            );
+          yield* usersRepository.validateRoleIds(dto.roles, tenantId);
+          const result = yield* tryAsync(
+            'create user in auth provider',
+            () =>
+              betterAuth.api.createUser({
+                body: {
+                  email: dto.email,
+                  name: dto.name,
+                  password: dto.password,
+                  data: { emailVerified: true },
+                } satisfies BetterAuthCreateUserBody,
+              }) as Promise<BetterAuthCreateUserResponse>,
+          );
           const userId = result.user.id;
 
           yield* Effect.gen(function* () {

@@ -42,15 +42,14 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
       });
 
       const findAllPaginated = (query: SupplierQueryDto) =>
-        Effect.map(
-          repository.findAllPaginated(query),
-          (result) => toPaginatedResponse(result, toSupplierResponseDto),
+        Effect.map(repository.findAllPaginated(query), (result) =>
+          toPaginatedResponse(result, toSupplierResponseDto),
         ).pipe(trace.span('findAllPaginated'));
 
       const findOne = (id: string) =>
-        referenceEntity.findOne(id).pipe(
-          trace.span('findOne', { attributes: { id } }),
-        );
+        referenceEntity
+          .findOne(id)
+          .pipe(trace.span('findOne', { attributes: { id } }));
 
       const create = (dto: CreateSupplierDto) =>
         Effect.map(
@@ -87,7 +86,8 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
 
           const updated = yield* fromNullOr(
             repository.update(id, updateData),
-            () => new SupplierNotFound({ id, messageKey: 'suppliers.notFound' }),
+            () =>
+              new SupplierNotFound({ id, messageKey: 'suppliers.notFound' }),
           );
           return toSupplierResponseDto(updated);
         }).pipe(trace.span('update', { attributes: { id } }));
@@ -98,19 +98,19 @@ export class SuppliersService extends Effect.Service<SuppliersService>()(
           .pipe(trace.span('delete', { attributes: { id } }));
 
       const existsById = (id: string) =>
-        referenceEntity.existsById(id).pipe(
-          trace.span('existsById', { attributes: { id } }),
-        );
+        referenceEntity
+          .existsById(id)
+          .pipe(trace.span('existsById', { attributes: { id } }));
 
       const ensureExistsById = (id: string) =>
-        referenceEntity.ensureExistsById(id).pipe(
-          trace.span('ensureExistsById', { attributes: { id } }),
-        );
+        referenceEntity
+          .ensureExistsById(id)
+          .pipe(trace.span('ensureExistsById', { attributes: { id } }));
 
       const ensureExistByIds = (ids: readonly string[]) =>
-        referenceEntity.ensureExistByIds(ids).pipe(
-          trace.span('ensureExistByIds'),
-        );
+        referenceEntity
+          .ensureExistByIds(ids)
+          .pipe(trace.span('ensureExistByIds'));
 
       return {
         findAllPaginated,

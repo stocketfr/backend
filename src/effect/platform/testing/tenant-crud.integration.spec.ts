@@ -3,12 +3,12 @@ import { eq, ilike, sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { categories, products, roles, suppliers } from '../db/schema';
 import { DrizzleDatabase } from '../db/drizzle';
-import { CurrentRequestContext, type RequestContext } from '../http/request-context';
-import { TenantQuery } from '../tenancy/tenant-query';
 import {
-  makeTenantCrud,
-  type TenantCrudUpdatePatch,
-} from '../db/tenant-crud';
+  CurrentRequestContext,
+  type RequestContext,
+} from '../http/request-context';
+import { TenantQuery } from '../tenancy/tenant-query';
+import { makeTenantCrud, type TenantCrudUpdatePatch } from '../db/tenant-crud';
 import { SuppliersInfrastructureError } from '../../modules/suppliers/suppliers.errors';
 import {
   getTestDb,
@@ -140,10 +140,7 @@ const runFail = <A, E>(
 ) =>
   Effect.runPromise(
     Effect.flip(
-      makeProbe().pipe(
-        Effect.flatMap(use),
-        Effect.provide(asTenant(tenantId)),
-      ),
+      makeProbe().pipe(Effect.flatMap(use), Effect.provide(asTenant(tenantId))),
     ),
   );
 
@@ -260,9 +257,7 @@ describe('makeTenantCrud', () => {
     });
 
     it('findAllPaginated only lists the request tenant’s rows', async () => {
-      const result = await run(TENANT_A, (crud) =>
-        crud.findAllPaginated({}),
-      );
+      const result = await run(TENANT_A, (crud) => crud.findAllPaginated({}));
       expect(result.total).toBe(1);
       expect(result.data.map((row) => row.name)).toEqual(['Alpha']);
     });

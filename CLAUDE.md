@@ -59,7 +59,7 @@
 
 When request/response shapes change:
 
-1. Update `packages/types`.
+1. Update `../packages/types`.
 2. Run `pnpm --filter @stocket/types barrels && pnpm --filter @stocket/types build`.
 3. Use the workspace-linked types directly from the backend.
 

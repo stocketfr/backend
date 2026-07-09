@@ -42,12 +42,12 @@ export interface TenantRouteOptions<
   GuardError = never,
   GuardContext = never,
 > extends TenantRouteContextOptions<
-    Input,
-    DecodeError,
-    DecodeContext,
-    GuardError,
-    GuardContext
-  > {
+  Input,
+  DecodeError,
+  DecodeContext,
+  GuardError,
+  GuardContext
+> {
   readonly handler: (
     context: TenantRouteContext<Input>,
   ) => Effect.Effect<A, E, R>;
@@ -164,5 +164,8 @@ export const tenantRoute = <
 ) =>
   Effect.gen(function* () {
     const context = yield* tenantRouteContext(options);
-    return yield* respondJson(options.handler(context), options.responseOptions);
+    return yield* respondJson(
+      options.handler(context),
+      options.responseOptions,
+    );
   });

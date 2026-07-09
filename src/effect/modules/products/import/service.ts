@@ -349,7 +349,9 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
 
           const locationName =
             mapping?.targetLocationName?.trim() ||
-            (mapping ? normalizeStorageLocationName(row.location) : row.location);
+            (mapping
+              ? normalizeStorageLocationName(row.location)
+              : row.location);
           const locationId = yield* getOrCreateLocation(
             locationName,
             caches,
@@ -552,7 +554,10 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
       const validateRootInventoryImport = (
         row: NormalizedProductImportRow,
         caches: ImportCaches,
-        target: { readonly locationId: string | null; readonly areaId: string | null },
+        target: {
+          readonly locationId: string | null;
+          readonly areaId: string | null;
+        },
       ) =>
         Effect.gen(function* () {
           if (!target.locationId || target.areaId) return;

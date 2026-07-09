@@ -23,7 +23,12 @@ import {
 import { buildOrderBy } from '../../platform/db/drizzle-sort.utils';
 import { type DrizzleDb } from '../../platform/db/drizzle';
 import { makeTenantCrud } from '../../platform/db/tenant-crud';
-import { areas, inventory, locations, products } from '../../platform/db/schema';
+import {
+  areas,
+  inventory,
+  locations,
+  products,
+} from '../../platform/db/schema';
 import { TenantQuery } from '../../platform/tenancy/tenant-query';
 import { InventoryInfrastructureError } from './inventory.errors';
 
@@ -217,7 +222,9 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
 
         const findByProductIdWithRelations = (productId: string) =>
           Effect.gen(function* () {
-            const where = yield* scopedWhere(eq(inventory.product_id, productId));
+            const where = yield* scopedWhere(
+              eq(inventory.product_id, productId),
+            );
             return yield* tryAsync('find inventory by product', async () => {
               const rows = await selectInventoryWithJoins(db)
                 .where(where)

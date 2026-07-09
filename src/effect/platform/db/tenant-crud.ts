@@ -68,9 +68,7 @@ export interface TenantCrudPaginatedQuery {
   readonly limit?: number;
 }
 
-export interface TenantCrudListSpec<
-  TQuery extends TenantCrudPaginatedQuery,
-> {
+export interface TenantCrudListSpec<TQuery extends TenantCrudPaginatedQuery> {
   /** Per-module WHERE fragments, ANDed onto the tenant predicate. */
   readonly filters: (query: TQuery) => SQL[];
   /**
@@ -150,11 +148,7 @@ type TenantCrudReadKey =
   | 'findByIds'
   | 'existsById';
 
-type TenantCrudWriteKey =
-  | 'create'
-  | 'update'
-  | 'updateMany'
-  | 'delete';
+type TenantCrudWriteKey = 'create' | 'update' | 'updateMany' | 'delete';
 
 type TenantCrudSoftDeleteKey =
   | 'softDelete'
@@ -174,9 +168,7 @@ export type TenantCrudExtensionGuard<
   Extras,
   ForbiddenKey extends PropertyKey = TenantCrudCoreKey,
 > = {
-  readonly [K in keyof Extras]: K extends ForbiddenKey
-    ? never
-    : Extras[K];
+  readonly [K in keyof Extras]: K extends ForbiddenKey ? never : Extras[K];
 };
 
 export interface TenantCrudConfig<
@@ -249,13 +241,9 @@ export interface TenantCrudWrites<TTable extends TenantCrudTable, E> {
 }
 
 export interface TenantCrud<TTable extends TenantCrudTable, E>
-  extends TenantCrudReads<TTable, E>,
-    TenantCrudWrites<TTable, E> {}
+  extends TenantCrudReads<TTable, E>, TenantCrudWrites<TTable, E> {}
 
-export interface TenantCrudWithSoftDelete<
-  TTable extends TenantCrudTable,
-  E,
-> {
+export interface TenantCrudWithSoftDelete<TTable extends TenantCrudTable, E> {
   readonly findDeletedByIds: (
     ids: readonly string[],
   ) => Effect.Effect<TenantCrudRow<TTable>[], E | TenantNotResolved>;
@@ -303,7 +291,12 @@ export interface TenantCrudWithList<
   >;
 }
 
-const IMMUTABLE_COLUMNS = new Set(['id', 'tenant_id', 'created_at', 'updated_at']);
+const IMMUTABLE_COLUMNS = new Set([
+  'id',
+  'tenant_id',
+  'created_at',
+  'updated_at',
+]);
 
 const resolveEntity = (entity: TenantCrudEntity) =>
   typeof entity === 'string'
@@ -486,8 +479,7 @@ export function makeTenantCrud<
     // factory's cast-free public interface.
     const fromTable = table as PgTable;
     const asRows = (rows: unknown) => rows as Array<TenantCrudRow<TTable>>;
-    const asInsertValues = (values: object) =>
-      values as TTable['$inferInsert'];
+    const asInsertValues = (values: object) => values as TTable['$inferInsert'];
     const asUpdateSet = (values: Record<string, unknown>) =>
       values as PgUpdateSetSource<TTable>;
     const softDelete = config.softDelete;
@@ -507,7 +499,10 @@ export function makeTenantCrud<
         });
       });
 
-    const findByIds = (ids: readonly string[], options?: TenantCrudReadOptions) =>
+    const findByIds = (
+      ids: readonly string[],
+      options?: TenantCrudReadOptions,
+    ) =>
       Effect.gen(function* () {
         if (ids.length === 0) return [];
         const where = yield* scopedWhereIds(ids, ...activeConditions(options));

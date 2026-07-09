@@ -94,11 +94,7 @@ export const corsMiddleware =
       Effect.gen(function* () {
         const { origin } = request.headers;
         const originAllowed = origin
-          ? yield* isAllowedOrigin(
-              appConfig,
-              isConfiguredOriginAllowed,
-              origin,
-            )
+          ? yield* isAllowedOrigin(appConfig, isConfiguredOriginAllowed, origin)
           : false;
 
         if (request.method === 'OPTIONS' && origin && originAllowed) {

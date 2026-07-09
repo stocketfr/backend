@@ -25,10 +25,7 @@ import { makeTryAsync } from '../../platform/effect/try-async';
 import { BetterAuth, BetterAuthHeaders } from '../../platform/auth/better-auth';
 import { type LogPayload } from '../../platform/observability/messages';
 import { UsersRepository } from '../users/repository';
-import {
-  tenantWelcomeOrigin,
-  welcomeRedirectUrl,
-} from '../users/users.utils';
+import { tenantWelcomeOrigin, welcomeRedirectUrl } from '../users/users.utils';
 import {
   InvalidTenantSlug,
   ReservedTenantSlug,
@@ -199,7 +196,9 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
           ),
         );
 
-      const validateProductImport = (productImport: CreateTenantProductImport) =>
+      const validateProductImport = (
+        productImport: CreateTenantProductImport,
+      ) =>
         productImportService
           .previewCsvContent({ content: productImport.content })
           .pipe(
@@ -450,7 +449,8 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
                               productImportResult.categoriesCreated,
                             locationsCreated:
                               productImportResult.locationsCreated,
-                            productsCreated: productImportResult.productsCreated,
+                            productsCreated:
+                              productImportResult.productsCreated,
                             inventoryRecordsCreated:
                               productImportResult.inventoryRecordsCreated,
                             rowsSkipped: productImportResult.rowsSkipped,
@@ -466,7 +466,9 @@ export class SuperAdminService extends Effect.Service<SuperAdminService>()(
 
             return {
               ...baseResponse,
-              ...(productImportResult ? { productImport: productImportResult } : {}),
+              ...(productImportResult
+                ? { productImport: productImportResult }
+                : {}),
             } satisfies SuperAdminCreateTenantResponse;
           }),
         (input) => ({ attributes: { entityId: input.slug } }),

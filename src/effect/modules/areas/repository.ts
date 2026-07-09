@@ -49,10 +49,7 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
 
       const loadChildrenRecursively = (
         area: AreaWithChildren,
-      ): Effect.Effect<
-        void,
-        AreasInfrastructureError | TenantNotResolved
-      > =>
+      ): Effect.Effect<void, AreasInfrastructureError | TenantNotResolved> =>
         Effect.gen(function* () {
           const where = yield* tenantQuery.whereTenant(
             areas,
@@ -150,10 +147,7 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
             is_active: dto.is_active ?? true,
           });
           return yield* tryAsync('create area', async () => {
-            const rows = await db
-              .insert(areas)
-              .values(values)
-              .returning();
+            const rows = await db.insert(areas).values(values).returning();
             return rows[0]!;
           });
         });
@@ -196,10 +190,7 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
                 location: locations,
               })
               .from(areas)
-              .leftJoin(
-                locations,
-                tenantLocationJoin(tenantScope),
-              )
+              .leftJoin(locations, tenantLocationJoin(tenantScope))
               .where(where)
               .limit(1);
 
@@ -219,10 +210,7 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
                 location: locations,
               })
               .from(areas)
-              .leftJoin(
-                locations,
-                tenantLocationJoin(tenantScope),
-              )
+              .leftJoin(locations, tenantLocationJoin(tenantScope))
               .where(where)
               .limit(1),
           );
@@ -251,11 +239,7 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
           const rootAreas: AreaWithChildren[] = yield* tryAsync(
             'load area hierarchy',
             async () =>
-              db
-                .select()
-                .from(areas)
-                .where(where)
-                .orderBy(asc(areas.name)),
+              db.select().from(areas).where(where).orderBy(asc(areas.name)),
           );
 
           yield* Effect.forEach(rootAreas, loadChildrenRecursively, {
@@ -278,20 +262,14 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
                   location: locations,
                 })
                 .from(areas)
-                .leftJoin(
-                  locations,
-                  tenantLocationJoin(tenantScope),
-                )
+                .leftJoin(locations, tenantLocationJoin(tenantScope))
                 .where(where)
                 .limit(1),
           );
 
           if (!existing[0]) return null;
 
-          yield* validateAreaReferences(
-            dto,
-            existing[0].area.location_id,
-          );
+          yield* validateAreaReferences(dto, existing[0].area.location_id);
 
           return yield* tryAsync('update area', async () => {
             await db
@@ -305,10 +283,7 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
                 location: locations,
               })
               .from(areas)
-              .leftJoin(
-                locations,
-                tenantLocationJoin(tenantScope),
-              )
+              .leftJoin(locations, tenantLocationJoin(tenantScope))
               .where(where)
               .limit(1);
 

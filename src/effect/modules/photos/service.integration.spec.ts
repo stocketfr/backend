@@ -392,9 +392,7 @@ describe('PhotosService Integration', () => {
       const { product } = await seedPhotoPrereqs();
 
       const found = await run(
-        Effect.flatMap(PhotosService, (svc) =>
-          svc.findByProductId(product.id),
-        ),
+        Effect.flatMap(PhotosService, (svc) => svc.findByProductId(product.id)),
       );
 
       expect(found).toEqual([]);

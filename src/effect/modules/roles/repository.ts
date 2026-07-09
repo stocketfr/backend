@@ -61,7 +61,9 @@ export class RolesRepository extends Effect.Service<RolesRepository>()(
               rolePermissions,
               eq(rolePermissions.role_id, userRoles.role_id),
             )
-            .where(tenantScope.whereTenant(userRoles, eq(userRoles.user_id, userId)));
+            .where(
+              tenantScope.whereTenant(userRoles, eq(userRoles.user_id, userId)),
+            );
 
           const roleNames = [...new Set(rows.map((row) => row.role_name))];
           const permissionMap: Record<string, Set<string>> = {};
@@ -179,9 +181,7 @@ export class RolesRepository extends Effect.Service<RolesRepository>()(
       const remove = (id: string, tenantId: string) =>
         tryAsync('delete role', async () => {
           const tenantScope = tenantQuery.forTenant(tenantId);
-          await db
-            .delete(roles)
-            .where(tenantScope.whereTenantId(roles, id));
+          await db.delete(roles).where(tenantScope.whereTenantId(roles, id));
         });
 
       const replacePermissions = (

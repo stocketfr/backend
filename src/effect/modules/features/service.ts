@@ -12,9 +12,7 @@ import {
   FeatureTenantNotFound,
   type FeaturesInfrastructureError,
 } from './features.errors';
-import {
-  FeaturesRepository,
-} from './repository';
+import { FeaturesRepository } from './repository';
 import { buildTenantFeaturesResponse } from './utils';
 
 export class FeaturesService extends Effect.Service<FeaturesService>()(
@@ -72,9 +70,11 @@ export class FeaturesService extends Effect.Service<FeaturesService>()(
         });
 
       const getFeaturesForTenant = (tenantId: string) =>
-        featureCache.get(tenantId).pipe(
-          trace.span('getFeaturesForTenant', { attributes: { tenantId } }),
-        );
+        featureCache
+          .get(tenantId)
+          .pipe(
+            trace.span('getFeaturesForTenant', { attributes: { tenantId } }),
+          );
 
       const setTenantPlan = (
         tenantId: string,
@@ -86,9 +86,7 @@ export class FeaturesService extends Effect.Service<FeaturesService>()(
           yield* repository.upsertPlan(tenantId, dto.planKey, actorUserId);
           yield* invalidateTenant(tenantId);
           return yield* loadFeaturesForTenant(tenantId);
-        }).pipe(
-          trace.span('setTenantPlan', { attributes: { tenantId } }),
-        );
+        }).pipe(trace.span('setTenantPlan', { attributes: { tenantId } }));
 
       const setFeatureOverride = (
         tenantId: string,
@@ -110,9 +108,7 @@ export class FeaturesService extends Effect.Service<FeaturesService>()(
           );
           yield* invalidateTenant(tenantId);
           return yield* loadFeaturesForTenant(tenantId);
-        }).pipe(
-          trace.span('setFeatureOverride', { attributes: { tenantId } }),
-        );
+        }).pipe(trace.span('setFeatureOverride', { attributes: { tenantId } }));
 
       const clearFeatureOverride = (tenantId: string, featureKey: FeatureKey) =>
         Effect.gen(function* () {

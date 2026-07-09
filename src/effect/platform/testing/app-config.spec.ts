@@ -6,7 +6,9 @@ const runWithEnv = (values: Record<string, string>) =>
   Effect.runPromise(
     AppConfig.pipe(
       Effect.provide(AppConfig.Default),
-      Effect.withConfigProvider(ConfigProvider.fromMap(new Map(Object.entries(values)))),
+      Effect.withConfigProvider(
+        ConfigProvider.fromMap(new Map(Object.entries(values))),
+      ),
     ),
   );
 

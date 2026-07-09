@@ -260,9 +260,9 @@ IMP-001,Imported Whisky,Spirits,4,9,Main Warehouse,bottle
     });
 
     await waitForMockCall(result.betterAuthOverrides.requestPasswordReset);
-    expect(result.betterAuthOverrides.requestPasswordReset).toHaveBeenCalledTimes(
-      1,
-    );
+    expect(
+      result.betterAuthOverrides.requestPasswordReset,
+    ).toHaveBeenCalledTimes(1);
     expect(
       result.betterAuthOverrides.requestPasswordReset.mock.calls[0]?.[0]?.body,
     ).toMatchObject({

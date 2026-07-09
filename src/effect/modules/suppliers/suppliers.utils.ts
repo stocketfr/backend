@@ -3,9 +3,7 @@ import type { suppliers } from '../../platform/db/schema';
 
 type Supplier = typeof suppliers.$inferSelect;
 
-export function toSupplierResponseDto(
-  supplier: Supplier,
-): SupplierResponseDto {
+export function toSupplierResponseDto(supplier: Supplier): SupplierResponseDto {
   return {
     id: supplier.id,
     name: supplier.name,

@@ -159,7 +159,7 @@ export class RolesService extends Effect.Service<RolesService>()(
                 'description',
                 dto.description === undefined
                   ? undefined
-                  : dto.description ?? null,
+                  : (dto.description ?? null),
               ],
             ]);
 
@@ -196,22 +196,21 @@ export class RolesService extends Effect.Service<RolesService>()(
           Effect.gen(function* () {
             const effectiveTenantId = tenantId ?? (yield* currentTenantId);
             return yield* getPermissionsForUser(userId, effectiveTenantId);
-          }).pipe(trace.span('getPermissionsForUser', {
-            attributes: { userId, tenantId },
-          })),
+          }).pipe(
+            trace.span('getPermissionsForUser', {
+              attributes: { userId, tenantId },
+            }),
+          ),
         clearCacheForUser: (userId: string) =>
           clearCacheForUser(userId).pipe(
             trace.span('clearCacheForUser', {
               attributes: { userId },
             }),
           ),
-        clearAllCache: () =>
-          clearAllCache().pipe(trace.span('clearAllCache')),
+        clearAllCache: () => clearAllCache().pipe(trace.span('clearAllCache')),
         seedDefaultRolesForTenant,
         seed: () =>
-          seedDefaultRolesForTenant(DEFAULT_TENANT_ID).pipe(
-            trace.span('seed'),
-          ),
+          seedDefaultRolesForTenant(DEFAULT_TENANT_ID).pipe(trace.span('seed')),
       };
     }),
     dependencies: [RolesRepository.Default],

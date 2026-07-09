@@ -133,9 +133,7 @@ describe('Effect PhotosService', () => {
       if (!objectKey) {
         throw new Error('expected uploaded object key');
       }
-      expect(objectKey).toMatch(
-        /^products\/prod-1\/photos\/[0-9a-f-]+\.jpg$/,
-      );
+      expect(objectKey).toMatch(/^products\/prod-1\/photos\/[0-9a-f-]+\.jpg$/);
       expect(storage.store.get(objectKey)?.equals(JPEG_HEADER)).toBe(true);
       expect(repository.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -171,9 +169,7 @@ describe('Effect PhotosService', () => {
       if (!objectKey) {
         throw new Error('expected uploaded object key');
       }
-      expect(objectKey).toMatch(
-        /^products\/prod-1\/photos\/[0-9a-f-]+\.png$/,
-      );
+      expect(objectKey).toMatch(/^products\/prod-1\/photos\/[0-9a-f-]+\.png$/);
     });
 
     it('rejects invalid mimetype before writing storage', async () => {

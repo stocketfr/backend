@@ -3,7 +3,10 @@ import { sql } from 'drizzle-orm';
 import { BetterAuth } from '../../platform/auth/better-auth';
 import { AppConfig } from '../../platform/config/app-config';
 import { DrizzleDatabase } from '../../platform/db/drizzle';
-import { type AnyMessageKey, type MessageArgs } from '../../platform/observability/messages';
+import {
+  type AnyMessageKey,
+  type MessageArgs,
+} from '../../platform/observability/messages';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 
 interface HealthDetails {
@@ -81,7 +84,9 @@ export class HealthService extends Effect.Service<HealthService>()(
       // Verify the auth reference is used (satisfies yield dependency)
       void auth;
 
-      const live = Effect.succeed(makeHealthResponse({})).pipe(trace.span('live'));
+      const live = Effect.succeed(makeHealthResponse({})).pipe(
+        trace.span('live'),
+      );
 
       const ready = Effect.merge(checkDatabase).pipe(
         Effect.map((database) => makeHealthResponse({ database })),
@@ -91,10 +96,7 @@ export class HealthService extends Effect.Service<HealthService>()(
       const healthCheck = Effect.all({
         database: Effect.merge(checkDatabase),
         'better-auth': Effect.merge(checkBetterAuth),
-      }).pipe(
-        Effect.map(makeHealthResponse),
-        trace.span('healthCheck'),
-      );
+      }).pipe(Effect.map(makeHealthResponse), trace.span('healthCheck'));
 
       return { live, ready, healthCheck };
     }),

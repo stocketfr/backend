@@ -29,8 +29,9 @@ const EMAIL_DEFAULTS: Record<NotificationCategory, boolean> = {
 
 // Account delivery is mandatory and ignores stored prefs, so a user can never
 // disable the email that lets them back into their account.
-const PREFERENCE_BYPASS_CATEGORIES: ReadonlySet<NotificationCategory> =
-  new Set([NotificationCategory.ACCOUNT]);
+const PREFERENCE_BYPASS_CATEGORIES: ReadonlySet<NotificationCategory> = new Set(
+  [NotificationCategory.ACCOUNT],
+);
 
 // Resolve whether email is enabled for a user, given their stored preference
 // (`undefined` when they've never set one for this category).
