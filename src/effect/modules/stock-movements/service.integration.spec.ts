@@ -130,7 +130,9 @@ describe('StockMovementsService Integration', () => {
       });
 
       const result = await run(
-        Effect.flatMap(StockMovementsService, (svc) => svc.findOne(movement.id)),
+        Effect.flatMap(StockMovementsService, (svc) =>
+          svc.findOne(movement.id),
+        ),
       );
 
       expect(result.quantity).toBe(15);
@@ -151,8 +153,14 @@ describe('StockMovementsService Integration', () => {
     it('returns movements for a product', async () => {
       const category = await seedCategory(db);
       const product = await seedProduct(db, { category_id: category.id });
-      await seedStockMovement(db, { product_id: product.id, user_id: TEST_USER_ID });
-      await seedStockMovement(db, { product_id: product.id, user_id: TEST_USER_ID });
+      await seedStockMovement(db, {
+        product_id: product.id,
+        user_id: TEST_USER_ID,
+      });
+      await seedStockMovement(db, {
+        product_id: product.id,
+        user_id: TEST_USER_ID,
+      });
 
       const result = await run(
         Effect.flatMap(StockMovementsService, (svc) =>
@@ -209,9 +217,18 @@ describe('StockMovementsService Integration', () => {
     it('paginates stock movements', async () => {
       const category = await seedCategory(db);
       const product = await seedProduct(db, { category_id: category.id });
-      await seedStockMovement(db, { product_id: product.id, user_id: TEST_USER_ID });
-      await seedStockMovement(db, { product_id: product.id, user_id: TEST_USER_ID });
-      await seedStockMovement(db, { product_id: product.id, user_id: TEST_USER_ID });
+      await seedStockMovement(db, {
+        product_id: product.id,
+        user_id: TEST_USER_ID,
+      });
+      await seedStockMovement(db, {
+        product_id: product.id,
+        user_id: TEST_USER_ID,
+      });
+      await seedStockMovement(db, {
+        product_id: product.id,
+        user_id: TEST_USER_ID,
+      });
 
       const result = await run(
         Effect.flatMap(StockMovementsService, (svc) =>

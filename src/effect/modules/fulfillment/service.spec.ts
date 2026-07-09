@@ -3,7 +3,8 @@ import { Effect, Layer } from 'effect';
 import { OrderStatus } from '@stocket/types/orders';
 import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { InventoryRepository } from '../inventory/repository';
-import { OrderItemsRepository, OrdersRepository } from '../orders/repository';
+import { OrderItemsRepository } from '../orders/order-items.repository';
+import { OrdersRepository } from '../orders/repository';
 import { StockMovementsRepository } from '../stock-movements/repository';
 import { FulfillmentService } from './service';
 
@@ -60,11 +61,9 @@ const makeOrderEntity = (overrides: Record<string, any> = {}) => ({
   ...overrides,
 });
 
-const makeMockOrdersRepository = (
-  overrides: Record<string, Mock> = {},
-) => ({
-  findAllPaginated: vi.fn(),
-  findById: vi.fn()
+const makeMockOrdersRepository = (overrides: Record<string, Mock> = {}) => {
+  const findByIdWithRelations = vi
+    .fn()
     .mockReturnValueOnce(Effect.succeed(makeOrderEntity()))
     .mockReturnValueOnce(
       Effect.succeed(
@@ -74,14 +73,20 @@ const makeMockOrdersRepository = (
           confirmed_at: new Date('2026-03-10T10:00:00.000Z'),
         }),
       ),
-    ),
-  create: vi.fn(),
-  update: vi.fn().mockReturnValue(Effect.succeed(1)),
-  delete: vi.fn(),
-  getNextOrderNumberSequence: vi.fn(),
-  existsById: vi.fn(),
-  ...overrides,
-});
+    );
+
+  return {
+    findAllPaginated: vi.fn(),
+    findById: findByIdWithRelations,
+    findByIdWithRelations,
+    create: vi.fn(),
+    update: vi.fn().mockReturnValue(Effect.succeed(1)),
+    delete: vi.fn(),
+    getNextOrderNumberSequence: vi.fn(),
+    existsById: vi.fn(),
+    ...overrides,
+  };
+};
 
 const buildService = (
   ordersRepository = makeMockOrdersRepository(),
@@ -155,7 +160,7 @@ describe('Effect FulfillmentService', () => {
 
     it('fails when confirming a non-draft order', async () => {
       const ordersRepository = makeMockOrdersRepository({
-        findById: vi.fn().mockReturnValue(
+        findByIdWithRelations: vi.fn().mockReturnValue(
           Effect.succeed(
             makeOrderEntity({
               status: OrderStatus.CONFIRMED,
@@ -178,7 +183,7 @@ describe('Effect FulfillmentService', () => {
 
     it('fails when the order does not exist', async () => {
       const ordersRepository = makeMockOrdersRepository({
-        findById: vi.fn().mockReturnValue(Effect.succeed(null)),
+        findByIdWithRelations: vi.fn().mockReturnValue(Effect.succeed(null)),
       });
       const service = await buildService(ordersRepository);
 
@@ -212,7 +217,9 @@ describe('Effect FulfillmentService', () => {
         service.pick({
           orderId: 'order-1',
           actorId: 'user-2',
-          picks: [{ orderItemId: 'item-1', inventoryId: 'inventory-1', quantity: 2 }],
+          picks: [
+            { orderItemId: 'item-1', inventoryId: 'inventory-1', quantity: 2 },
+          ],
         }),
       );
 

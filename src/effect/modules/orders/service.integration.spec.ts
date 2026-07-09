@@ -6,7 +6,12 @@ import {
   truncateAll,
   makeTestDrizzleLayer,
 } from '../../testing/integration-layer';
-import { seedCategory, seedProduct, seedClient, TEST_USER_ID } from '../../testing/seed';
+import {
+  seedCategory,
+  seedProduct,
+  seedClient,
+  TEST_USER_ID,
+} from '../../testing/seed';
 import type { DrizzleDb } from '../../platform/db/drizzle';
 import { OrdersService } from './service';
 
@@ -43,9 +48,7 @@ describe('OrdersService Integration', () => {
             {
               client_id: client.id,
               delivery_address: '42 Quai des Belges, Marseille',
-              items: [
-                { product_id: product.id, quantity: 3, unit_price: 25 },
-              ],
+              items: [{ product_id: product.id, quantity: 3, unit_price: 25 }],
             },
             TEST_USER_ID,
           ),
@@ -75,9 +78,12 @@ describe('OrdersService Integration', () => {
 
       const [first, second] = await run(
         Effect.flatMap(OrdersService, (svc) =>
-          Effect.all([svc.create(dto, TEST_USER_ID), svc.create(dto, TEST_USER_ID)], {
-            concurrency: 1,
-          }),
+          Effect.all(
+            [svc.create(dto, TEST_USER_ID), svc.create(dto, TEST_USER_ID)],
+            {
+              concurrency: 1,
+            },
+          ),
         ),
       );
 
@@ -251,7 +257,7 @@ describe('OrdersService Integration', () => {
             (order) =>
               Effect.flatMap(svc.delete(order.id), () =>
                 Effect.flip(svc.findOne(order.id)),
-            ),
+              ),
           ),
         ),
       );
@@ -305,7 +311,11 @@ describe('OrdersService Integration', () => {
         Effect.flatMap(OrdersService, (svc) =>
           Effect.flatMap(
             Effect.all(
-              [svc.create(dto, TEST_USER_ID), svc.create(dto, TEST_USER_ID), svc.create(dto, TEST_USER_ID)],
+              [
+                svc.create(dto, TEST_USER_ID),
+                svc.create(dto, TEST_USER_ID),
+                svc.create(dto, TEST_USER_ID),
+              ],
               { concurrency: 1 },
             ),
             () => svc.findAllPaginated({ page: 1, limit: 2 }),

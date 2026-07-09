@@ -1,4 +1,7 @@
-import { seedSuperAdmin } from '../../../scripts/seed-superadmin';
+import {
+  readSuperAdminSeedConfig,
+  seedSuperAdmin,
+} from '../../../scripts/seed-superadmin';
 import type { DrizzleDb } from './drizzle';
 import {
   prepareFreshDatabaseDataMigrations,
@@ -6,9 +9,17 @@ import {
 } from './fresh-database-data-migrations';
 
 vi.mock('../../../scripts/seed-superadmin', () => ({
+  readSuperAdminSeedConfig: vi.fn().mockResolvedValue({
+    email: 'admin@stocket.fr',
+    name: 'Admin',
+    passwordHash: 'hash',
+    rotatePassword: false,
+    allowTenantMember: false,
+  }),
   seedSuperAdmin: vi.fn().mockResolvedValue(undefined),
 }));
 
+const readSuperAdminSeedConfigMock = vi.mocked(readSuperAdminSeedConfig);
 const seedSuperAdminMock = vi.mocked(seedSuperAdmin);
 
 function makeDb(
@@ -94,6 +105,14 @@ describe('runFreshDatabaseDataMigrations', () => {
     await runFreshDatabaseDataMigrations(db, { freshSchemaCreated: false });
 
     expect(seedSuperAdminMock).toHaveBeenCalledOnce();
+    expect(readSuperAdminSeedConfigMock).toHaveBeenCalledOnce();
+    expect(seedSuperAdminMock).toHaveBeenCalledWith({
+      email: 'admin@stocket.fr',
+      name: 'Admin',
+      passwordHash: 'hash',
+      rotatePassword: true,
+      allowTenantMember: false,
+    });
   });
 
   it('skips the superadmin seed after all data migration markers exist', async () => {

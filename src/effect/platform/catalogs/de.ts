@@ -16,6 +16,8 @@ export const deCatalog: Record<MessageKey, string> = {
   'auditLogs.repositoryFailed': 'Der Audit-Log-Vorgang ist fehlgeschlagen.',
   'auth.permissionDenied': 'Unzureichende Berechtigungen.',
   'auth.unauthorized': 'Nicht autorisiert.',
+  'e2e.seedDisabled': 'E2E-Seeding ist deaktiviert.',
+  'e2e.seedFailed': 'E2E-Seeding ist fehlgeschlagen.',
   'email.sendFailed': 'Der E-Mail-Versand ist fehlgeschlagen.',
   'email.welcomeRequestFailed':
     'Die Anforderung der Willkommens-E-Mail ist fehlgeschlagen.',
@@ -24,6 +26,8 @@ export const deCatalog: Record<MessageKey, string> = {
   'tenant.notResolved':
     'Fuer diese Anfrage konnte kein aktiver Tenant ermittelt werden.',
   'tenant.hostNotFound': 'Tenant-Host nicht gefunden.',
+  'tenantFeatures.repositoryFailed':
+    'Der Tenant-Feature-Vorgang ist fehlgeschlagen.',
   'branding.repositoryFailed': 'Der Branding-Vorgang ist fehlgeschlagen.',
   'branding.sessionUserUnavailable':
     'Der Sitzungsbenutzer ist nicht verfuegbar.',
@@ -195,11 +199,21 @@ export const deCatalog: Record<MessageKey, string> = {
   'suppliers.deleted': 'Lieferant erfolgreich geloescht.',
   'suppliers.notFound': 'Lieferant nicht gefunden.',
   'suppliers.repositoryFailed': 'Der Lieferantenvorgang ist fehlgeschlagen.',
+  'tasks.cancelCheckFailed':
+    'Die Abbruchpruefung des Hintergrundtasks ist fehlgeschlagen.',
   'tasks.handlerNotFound': 'Task-Handler nicht gefunden.',
+  'tasks.heartbeatFailed':
+    'Der Heartbeat des Hintergrundtasks ist fehlgeschlagen.',
+  'tasks.leaseLost': 'Die Lease des Hintergrundtasks wurde verloren.',
   'tasks.notFound': 'Task nicht gefunden.',
   'tasks.payloadInvalid': 'Die Task-Nutzlast ist ungueltig.',
+  'tasks.progressFailed':
+    'Die Fortschrittsaktualisierung des Hintergrundtasks ist fehlgeschlagen.',
+  'tasks.recoveryFailed':
+    'Die Lease-Wiederherstellung des Hintergrundtasks ist fehlgeschlagen.',
   'tasks.repositoryFailed': 'Der Hintergrundtask-Vorgang ist fehlgeschlagen.',
   'tasks.terminalConflict': 'Der Task ist bereits abgeschlossen.',
+  'tasks.workerFailed': 'Der Hintergrundtask-Worker ist fehlgeschlagen.',
   'users.infrastructureFailed': 'Der Benutzervorgang ist fehlgeschlagen.',
   'users.notFound': 'Benutzer nicht gefunden.',
   'users.repositoryFailed': 'Der Benutzervorgang ist fehlgeschlagen.',

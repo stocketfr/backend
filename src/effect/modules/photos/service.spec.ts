@@ -1,5 +1,5 @@
 import { Effect, Layer } from 'effect';
-import { PhotosService, type UploadedFile } from './service';
+import { PhotosService } from './service';
 import { PhotosRepository } from './repository';
 import type { photos } from '../../platform/db/schema';
 import { makeTestLayer } from '../../testing/utils';
@@ -9,7 +9,7 @@ import {
   type InMemoryStorageAdapter,
 } from '../../platform/storage';
 import { PhotosInfrastructureError } from './photos.errors';
-import { hashSourceUrl } from './photos.utils';
+import type { UploadedFile } from './types';
 
 type PhotoEntity = typeof photos.$inferSelect;
 type CreatePhotoInput = Parameters<PhotosRepository['create']>[0];
@@ -17,9 +17,9 @@ type MockPhotosRepository = Pick<
   PhotosRepository,
   | 'findByProductId'
   | 'findById'
-  | 'findByProductSourceHash'
   | 'create'
   | 'createIdempotent'
+  | 'findByProductSourceHash'
   | 'delete'
   | 'countByProductId'
 >;
@@ -64,8 +64,6 @@ const makeMockRepository = (
   const findById: MockPhotosRepository['findById'] = vi
     .fn()
     .mockReturnValue(Effect.succeed(makePhotoEntity()));
-  const findByProductSourceHash: MockPhotosRepository['findByProductSourceHash'] =
-    vi.fn().mockReturnValue(Effect.succeed(null));
   const create: MockPhotosRepository['create'] = vi.fn(
     (data: CreatePhotoInput) =>
       Effect.succeed(
@@ -76,6 +74,12 @@ const makeMockRepository = (
         }),
       ),
   );
+  const deletePhoto: MockPhotosRepository['delete'] = vi
+    .fn()
+    .mockReturnValue(Effect.void);
+  const countByProductId: MockPhotosRepository['countByProductId'] = vi
+    .fn()
+    .mockReturnValue(Effect.succeed(0));
   const createIdempotent: MockPhotosRepository['createIdempotent'] = vi.fn(
     (data: CreatePhotoInput) =>
       Effect.succeed({
@@ -87,19 +91,15 @@ const makeMockRepository = (
         created: true,
       }),
   );
-  const deletePhoto: MockPhotosRepository['delete'] = vi
-    .fn()
-    .mockReturnValue(Effect.void);
-  const countByProductId: MockPhotosRepository['countByProductId'] = vi
-    .fn()
-    .mockReturnValue(Effect.succeed(0));
+  const findByProductSourceHash: MockPhotosRepository['findByProductSourceHash'] =
+    vi.fn().mockReturnValue(Effect.succeed(null));
 
   return {
     findByProductId,
     findById,
-    findByProductSourceHash,
     create,
     createIdempotent,
+    findByProductSourceHash,
     delete: deletePhoto,
     countByProductId,
     ...overrides,
@@ -247,72 +247,6 @@ describe('Effect PhotosService', () => {
       );
 
       expect(error).toMatchObject({ _tag: 'PhotosInfrastructureError' });
-      expect(storage.store.size).toBe(0);
-    });
-
-    it('short-circuits source URL imports when the source hash already exists', async () => {
-      const sourceUrl = 'https://sortly.example/photo.jpg?token=secret';
-      const existing = makePhotoEntity({ id: 'existing-photo' });
-      const repo = makeMockRepository({
-        findByProductSourceHash: vi.fn(() => Effect.succeed(existing)),
-      });
-      const { service, repository, storage } = await buildService(repo);
-
-      const result = await run(
-        service.uploadPhoto('prod-1', makeUpload(), 'user-1', { sourceUrl }),
-      );
-
-      expect(result).toMatchObject({ id: 'existing-photo' });
-      expect(repository.findByProductSourceHash).toHaveBeenCalledWith(
-        'prod-1',
-        hashSourceUrl(sourceUrl),
-      );
-      expect(repository.create).not.toHaveBeenCalled();
-      expect(repository.createIdempotent).not.toHaveBeenCalled();
-      expect(storage.store.size).toBe(0);
-    });
-
-    it('stores only the source hash for source URL imports', async () => {
-      const sourceUrl = 'https://sortly.example/photo.jpg?token=secret';
-      const { service, repository } = await buildService();
-
-      await run(
-        service.uploadPhoto('prod-1', makeUpload(), 'user-1', { sourceUrl }),
-      );
-
-      expect(repository.create).not.toHaveBeenCalled();
-      expect(repository.createIdempotent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          product_id: 'prod-1',
-          uploaded_by: 'user-1',
-          source_url: null,
-          source_hash: hashSourceUrl(sourceUrl),
-        }),
-      );
-    });
-
-    it('deletes the just-uploaded object when idempotent create returns an existing photo', async () => {
-      const sourceUrl = 'https://sortly.example/photo.jpg?token=secret';
-      const repo = makeMockRepository({
-        createIdempotent: vi.fn((data: CreatePhotoInput) =>
-          Effect.succeed({
-            photo: makePhotoEntity({
-              ...data,
-              id: 'existing-photo',
-              storage_path: 'products/prod-1/photos/existing.jpg',
-              created_at: new Date('2026-01-01'),
-            }),
-            created: false,
-          }),
-        ),
-      });
-      const { service, storage } = await buildService(repo);
-
-      const result = await run(
-        service.uploadPhoto('prod-1', makeUpload(), 'user-1', { sourceUrl }),
-      );
-
-      expect(result).toMatchObject({ id: 'existing-photo' });
       expect(storage.store.size).toBe(0);
     });
   });

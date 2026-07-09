@@ -1,10 +1,7 @@
 import { HttpApp, HttpRouter } from '@effect/platform';
 import type { Permission, Resource } from '@stocket/types/auth';
 import { type Context, Effect, Layer } from 'effect';
-import {
-  AuditLogWriter,
-  type AuditWriteParams,
-} from '../platform/audit/index';
+import { AuditLogWriter, type AuditWriteParams } from '../platform/audit/index';
 import {
   BetterAuth,
   type BetterAuthService,

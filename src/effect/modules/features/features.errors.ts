@@ -21,4 +21,3 @@ export class FeaturesInfrastructureError extends InternalError(
   readonly action: string;
   readonly cause?: unknown;
 }> {}
-

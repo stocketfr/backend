@@ -53,9 +53,7 @@ describe('requirePermission', () => {
     await expect(
       run(
         requirePermission(Resource.ROLES, Permission.READ).pipe(
-          Effect.provide(
-            Layer.succeed(PermissionProvider, permissionProvider),
-          ),
+          Effect.provide(Layer.succeed(PermissionProvider, permissionProvider)),
         ),
       ),
     ).resolves.toBeUndefined();
@@ -79,9 +77,7 @@ describe('requirePermission', () => {
     await expect(
       fail(
         requirePermission(Resource.ROLES, Permission.WRITE).pipe(
-          Effect.provide(
-            Layer.succeed(PermissionProvider, permissionProvider),
-          ),
+          Effect.provide(Layer.succeed(PermissionProvider, permissionProvider)),
         ),
       ),
     ).resolves.toBeInstanceOf(PermissionDenied);
@@ -100,9 +96,7 @@ describe('requirePermission', () => {
     await expect(
       fail(
         requirePermission(Resource.ROLES, Permission.READ).pipe(
-          Effect.provide(
-            Layer.succeed(PermissionProvider, permissionProvider),
-          ),
+          Effect.provide(Layer.succeed(PermissionProvider, permissionProvider)),
         ),
       ),
     ).resolves.toMatchObject({
@@ -129,9 +123,7 @@ describe('requirePermission', () => {
     await expect(
       fail(
         requirePermission(Resource.ROLES, Permission.READ).pipe(
-          Effect.provide(
-            Layer.succeed(PermissionProvider, permissionProvider),
-          ),
+          Effect.provide(Layer.succeed(PermissionProvider, permissionProvider)),
         ),
       ),
     ).resolves.toMatchObject({
@@ -202,9 +194,7 @@ describe('requireSuperAdmin', () => {
     await expect(
       fail(
         requireSuperAdmin.pipe(
-          Effect.provide(
-            makeRequestLayer('app.stocket.fr'),
-          ),
+          Effect.provide(makeRequestLayer('app.stocket.fr')),
           Effect.provide(makeDbLayer([])),
         ),
       ),
@@ -219,9 +209,7 @@ describe('requireSuperAdmin', () => {
     await expect(
       fail(
         requireSuperAdmin.pipe(
-          Effect.provide(
-            makeRequestLayer('app.stocket.fr'),
-          ),
+          Effect.provide(makeRequestLayer('app.stocket.fr')),
           Effect.provide(makeFailingDbLayer()),
         ),
       ),
@@ -236,9 +224,7 @@ describe('requireSuperAdmin', () => {
     await expect(
       run(
         requireSuperAdmin.pipe(
-          Effect.provide(
-            makeRequestLayer('app.stocket.fr'),
-          ),
+          Effect.provide(makeRequestLayer('app.stocket.fr')),
           Effect.provide(makeDbLayer([{ user_id: 'user-1' }])),
         ),
       ),

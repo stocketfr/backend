@@ -3,7 +3,10 @@ import { Effect, Layer } from 'effect';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
 import { makeBetterAuthTestLayer } from '../../testing/better-auth-test';
 import { DrizzleDatabase } from '../db/drizzle';
-import { CurrentRequestContext, type RequestContext } from '../http/request-context';
+import {
+  CurrentRequestContext,
+  type RequestContext,
+} from '../http/request-context';
 import { DEFAULT_TENANT_ID } from '../tenancy/tenant-constants';
 import { makeAuditLogWriter } from '../audit/index';
 

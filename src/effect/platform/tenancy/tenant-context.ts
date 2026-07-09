@@ -1,7 +1,12 @@
 import { Effect, Option } from 'effect';
 import type { UserSession } from '../auth/user-session';
+import { AppConfig } from '../config/app-config';
 import { DrizzleDatabase, type DrizzleDb } from '../db/drizzle';
-import { getTenantSlugFromHost, isTenantSubdomain, normalizeHost } from './host';
+import {
+  getTenantSlugFromHost,
+  isTenantSubdomain,
+  normalizeHost,
+} from './host';
 import {
   DEFAULT_TENANT_ID,
   DEFAULT_TENANT_NAME,
@@ -87,16 +92,20 @@ export const getRequestTenantId = Effect.map(
   }),
 );
 
-const useDefaultTenantForDirectTests =
-  process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
+const useDefaultTenantForDirectTests = AppConfig.pipe(
+  Effect.map((config) => config.isTestLike),
+  Effect.provide(AppConfig.Default),
+);
 
 export const requireRequestTenantId: Effect.Effect<string, TenantNotResolved> =
   Effect.flatMap(getRequestTenantId, (tenantId) => {
     if (tenantId) return Effect.succeed(tenantId);
-    if (useDefaultTenantForDirectTests)
-      return Effect.succeed(DEFAULT_TENANT_ID);
-    return Effect.fail(
-      new TenantNotResolved({ messageKey: 'tenant.notResolved' }),
+    return Effect.flatMap(useDefaultTenantForDirectTests, (useDefaultTenant) =>
+      useDefaultTenant
+        ? Effect.succeed(DEFAULT_TENANT_ID)
+        : Effect.fail(
+            new TenantNotResolved({ messageKey: 'tenant.notResolved' }),
+          ),
     );
   });
 
@@ -105,13 +114,15 @@ export const resolveTenantForSession = (session: UserSession) =>
     const requestTenant = yield* getRequestTenant;
     const activeOrganizationId = session.session?.activeOrganizationId ?? null;
     const dbOption = yield* Effect.serviceOption(DrizzleDatabase);
+    const useDefaultTenant = yield* useDefaultTenantForDirectTests;
 
     if (Option.isNone(dbOption)) {
-      if (useDefaultTenantForDirectTests) {
+      if (useDefaultTenant) {
         // Unit tests often exercise services without a database layer. Production
         // requests always provide DrizzleDatabase via platformLayer.
         const tenant =
-          requestTenant ?? fallbackTenantContext(activeOrganizationId ?? undefined);
+          requestTenant ??
+          fallbackTenantContext(activeOrganizationId ?? undefined);
         yield* setRequestTenant(tenant);
         return tenant;
       }
@@ -215,14 +226,16 @@ const lookupTenantByHost = (host: string | null | undefined) =>
 
     const dbOption = yield* Effect.serviceOption(DrizzleDatabase);
     if (Option.isNone(dbOption)) {
-      if (useDefaultTenantForDirectTests && isTenantSubdomain(normalizedHost)) {
+      const useDefaultTenant = yield* useDefaultTenantForDirectTests;
+      if (useDefaultTenant && isTenantSubdomain(normalizedHost)) {
         return fallbackTenantContext();
       }
       return yield* failTenantHostNotFound(normalizedHost);
     }
 
+    const appConfig = yield* AppConfig;
     const rows = yield* runTenantResolutionQuery(() =>
-      findTenantByHostname(dbOption.value, normalizedHost),
+      findTenantByHostname(dbOption.value, normalizedHost, appConfig),
     );
     if (rows[0]) {
       return toTenantContext(rows[0]);

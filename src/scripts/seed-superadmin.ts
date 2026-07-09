@@ -120,7 +120,7 @@ async function readPasswordHash(): Promise<string> {
   );
 }
 
-async function readSeedConfig(): Promise<SuperAdminSeedConfig> {
+export async function readSuperAdminSeedConfig(): Promise<SuperAdminSeedConfig> {
   return {
     email: normalizeEmail(readRequiredEnv('SUPERADMIN_EMAIL')),
     name: readRequiredEnv('SUPERADMIN_NAME'),
@@ -135,7 +135,7 @@ export async function seedSuperAdmin(
   poolConfig: pg.PoolConfig = buildPoolConfig(),
 ): Promise<void> {
   const { email, name, passwordHash, rotatePassword, allowTenantMember } =
-    config ?? (await readSeedConfig());
+    config ?? (await readSuperAdminSeedConfig());
 
   const pool = new pg.Pool(poolConfig);
   let client: pg.PoolClient | undefined;

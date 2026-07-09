@@ -1,10 +1,11 @@
 import { HttpServerResponse } from '@effect/platform';
 import type { HttpApp } from '@effect/platform';
 import { Effect } from 'effect';
+import type { AppConfigShape } from '../platform/config/app-config';
 
-const isProduction = process.env.NODE_ENV === 'production';
-
-const SECURITY_HEADERS: Record<string, string> = {
+const makeSecurityHeaders = (
+  appConfig: AppConfigShape,
+): Record<string, string> => ({
   'x-content-type-options': 'nosniff',
   'x-frame-options': 'SAMEORIGIN',
   'x-xss-protection': '0',
@@ -12,14 +13,18 @@ const SECURITY_HEADERS: Record<string, string> = {
   'x-download-options': 'noopen',
   'x-permitted-cross-domain-policies': 'none',
   'referrer-policy': 'no-referrer',
-  ...(isProduction
+  ...(appConfig.isProduction
     ? {
         'strict-transport-security': 'max-age=15552000; includeSubDomains',
       }
     : {}),
-};
+});
 
-export const securityHeadersMiddleware = <E, R>(httpApp: HttpApp.Default<E, R>): HttpApp.Default<E, R> =>
-  Effect.map(httpApp, (response) =>
-    HttpServerResponse.setHeaders(response, SECURITY_HEADERS),
-  );
+export const securityHeadersMiddleware =
+  (appConfig: AppConfigShape) =>
+  <E, R>(httpApp: HttpApp.Default<E, R>): HttpApp.Default<E, R> => {
+    const headers = makeSecurityHeaders(appConfig);
+    return Effect.map(httpApp, (response) =>
+      HttpServerResponse.setHeaders(response, headers),
+    );
+  };

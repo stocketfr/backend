@@ -34,6 +34,8 @@ import { SuppliersService } from './modules/suppliers/service';
 import { UsersService } from './modules/users/service';
 import { auditLayer } from './platform/audit/index';
 import { BetterAuth, betterAuthLayer } from './platform/auth/better-auth';
+import { AppConfig } from './platform/config/app-config';
+import { shouldRunBetterAuthMigrations } from './platform/config/startup-config';
 import { runtimeLoggingLayer } from './platform/observability/console-logging';
 import {
   DrizzleDatabase,
@@ -71,6 +73,7 @@ if (!Number.isInteger(port) || port <= 0) {
 }
 
 const platformLayer = Layer.mergeAll(
+  AppConfig.Default,
   drizzleLayer,
   betterAuthLayer,
   storageLayer,
@@ -99,7 +102,7 @@ const superAdminApplicationLayer = SuperAdminService.Default.pipe(
 );
 
 const shouldRunStartupMigrations = () =>
-  !isProduction || process.env.RUN_BETTER_AUTH_MIGRATIONS === 'true';
+  shouldRunBetterAuthMigrations(isProduction);
 
 const runCommittedSqlMigrations = Effect.gen(function* () {
   const db = yield* DrizzleDatabase;

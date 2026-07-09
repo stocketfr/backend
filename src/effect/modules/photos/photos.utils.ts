@@ -1,36 +1,47 @@
 import * as crypto from 'node:crypto';
-import type { PhotoResponseDto } from '@stocket/types/photos';
-import type { photos } from '../../platform/db/schema';
+import type { PhotoCreateValues, PhotoCreateValuesOptions } from './types';
+import { PHOTO_MAGIC_SIGNATURES, PHOTO_MIME_EXTENSIONS } from './types';
 
-type Photo = typeof photos.$inferSelect;
-
-const PHOTO_MIME_EXTENSIONS: Record<string, string> = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-  'image/gif': '.gif',
-};
-
-export const photoExtensionFromMime = (mimetype: string): string =>
+export const getPhotoExtension = (mimetype: string): string =>
   PHOTO_MIME_EXTENSIONS[mimetype] ?? '.bin';
 
-export const hashSourceUrl = (sourceUrl: string): string =>
-  crypto.createHash('sha256').update(sourceUrl.trim()).digest('hex');
+export function matchesMagicBytes(
+  buffer: Buffer,
+  declaredMime: string,
+): boolean {
+  const signatures = PHOTO_MAGIC_SIGNATURES[declaredMime];
+  if (!signatures) return false;
 
-export const makeSortlyPhotoFilename = (
-  photoIndex: number,
-  mimetype: string,
-): string => `sortly-photo-${photoIndex + 1}${photoExtensionFromMime(mimetype)}`;
-
-export function toPhotoResponseDto(photo: Photo): PhotoResponseDto {
-  return {
-    id: photo.id,
-    product_id: photo.product_id,
-    filename: photo.filename,
-    mimetype: photo.mimetype,
-    size: photo.size,
-    uploaded_by: photo.uploaded_by,
-    display_order: photo.display_order,
-    created_at: photo.created_at,
-  };
+  return signatures.every(({ bytes, offset }) =>
+    bytes.every((byte, index) => buffer[offset + index] === byte),
+  );
 }
+
+export const makePhotoObjectKey = (
+  productId: string,
+  objectId: string,
+  mimetype: string,
+): string =>
+  `products/${productId}/photos/${objectId}${getPhotoExtension(mimetype)}`;
+
+export const hashPhotoSourceKey = (sourceKey: string): string =>
+  crypto.createHash('sha256').update(sourceKey.trim()).digest('hex');
+
+export const toPhotoCreateValues = ({
+  productId,
+  file,
+  objectKey,
+  displayOrder,
+  userId,
+  sourceHash,
+}: PhotoCreateValuesOptions): PhotoCreateValues => ({
+  product_id: productId,
+  filename: file.originalname,
+  mimetype: file.mimetype,
+  size: file.size,
+  storage_path: objectKey,
+  display_order: displayOrder,
+  uploaded_by: userId ?? null,
+  source_url: null,
+  source_hash: sourceHash ?? null,
+});

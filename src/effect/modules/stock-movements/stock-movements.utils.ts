@@ -1,37 +1,20 @@
-import type { StockMovementResponseDto } from '@stocket/types/stock-movements';
-import type { stockMovements } from '../../platform/db/schema';
+import type {
+  CreateStockMovementDto,
+  StockMovementCreateValues,
+} from './types';
 
-type StockMovementRow = typeof stockMovements.$inferSelect;
-export type StockMovementWithRelations = StockMovementRow & {
-  product: { id: string; name: string; sku: string } | null;
-  fromLocation: { id: string; name: string } | null;
-  toLocation: { id: string; name: string } | null;
-};
-
-export function toStockMovementResponseDto(
-  sm: StockMovementWithRelations,
-): StockMovementResponseDto {
-  return {
-    id: sm.id,
-    product_id: sm.product_id,
-    product: sm.product
-      ? { id: sm.product.id, name: sm.product.name, sku: sm.product.sku }
-      : null,
-    from_location_id: sm.from_location_id,
-    from_location: sm.fromLocation
-      ? { id: sm.fromLocation.id, name: sm.fromLocation.name }
-      : null,
-    to_location_id: sm.to_location_id,
-    to_location: sm.toLocation
-      ? { id: sm.toLocation.id, name: sm.toLocation.name }
-      : null,
-    quantity: sm.quantity,
-    reason: sm.reason,
-    order_id: sm.order_id,
-    reference_number: sm.reference_number,
-    cost_per_unit: sm.cost_per_unit,
-    user_id: sm.user_id,
-    notes: sm.notes,
-    created_at: sm.created_at,
-  };
-}
+export const toStockMovementCreateValues = (
+  dto: CreateStockMovementDto,
+  userId: string,
+): StockMovementCreateValues => ({
+  product_id: dto.product_id,
+  from_location_id: dto.from_location_id ?? null,
+  to_location_id: dto.to_location_id ?? null,
+  quantity: dto.quantity,
+  reason: dto.reason,
+  order_id: dto.order_id ?? null,
+  reference_number: dto.reference_number ?? null,
+  cost_per_unit: dto.cost_per_unit ?? null,
+  notes: dto.notes ?? null,
+  user_id: userId,
+});

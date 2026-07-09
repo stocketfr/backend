@@ -1,6 +1,7 @@
 import { HttpServerError, HttpServerResponse } from '@effect/platform';
 import { Effect, Cause, ParseResult } from 'effect';
 import { TreeFormatter } from 'effect/ParseResult';
+import { AppConfig, type AppConfigShape } from '../config/app-config';
 import { isAppError } from '../effect/domain-errors';
 import { getRequestContext } from './request-context';
 import {
@@ -28,8 +29,24 @@ const STATUS_NAMES: Record<number, string> = {
 const getStatusName = (statusCode: number) =>
   STATUS_NAMES[statusCode] ?? 'Internal Server Error';
 
-const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
-  value !== null && typeof value === 'object';
+const isUnknownRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const messageFromUnknown = (value: unknown, fallback: string): string => {
+  if (value instanceof Error && value.message.trim() !== '') {
+    return value.message;
+  }
+
+  if (
+    isUnknownRecord(value) &&
+    typeof value.message === 'string' &&
+    value.message.trim() !== ''
+  ) {
+    return value.message;
+  }
+
+  return fallback;
+};
 
 const withRequestIdHeader = (response: HttpServerResponse.HttpServerResponse) =>
   Effect.map(getRequestContext, ({ requestId }) =>
@@ -70,6 +87,7 @@ const getFirstError = <E>(cause: Cause.Cause<E>): unknown => {
 const toErrorDetails = (
   error: unknown,
   path: string,
+  appConfig: AppConfigShape,
 ): {
   statusCode: number;
   error: string;
@@ -77,14 +95,15 @@ const toErrorDetails = (
   messageArgs?: MessageArgs;
 } => {
   if (isAppError(error)) {
-    const isMasked =
-      process.env.NODE_ENV === 'production' && error.statusCode >= 500;
+    const isMasked = appConfig.isProduction && error.statusCode >= 500;
 
     return {
       statusCode: error.statusCode,
       error: getStatusName(error.statusCode),
       messageKey: isMasked ? 'errors.internalServerError' : error.messageKey,
-      ...(isMasked || !error.messageArgs ? {} : { messageArgs: error.messageArgs }),
+      ...(isMasked || !error.messageArgs
+        ? {}
+        : { messageArgs: error.messageArgs }),
     };
   }
 
@@ -106,14 +125,13 @@ const toErrorDetails = (
     };
   }
 
-  if (isRecord(error) && error._tag === 'MultipartError') {
+  if (isUnknownRecord(error) && error._tag === 'MultipartError') {
     return {
       statusCode: 400,
       error: getStatusName(400),
       messageKey: 'http.requestError',
       messageArgs: {
-        details:
-          error instanceof Error ? error.message : 'Invalid multipart body',
+        details: messageFromUnknown(error, 'Invalid multipart body'),
       },
     };
   }
@@ -129,8 +147,9 @@ const toErrorDetails = (
     };
   }
 
-  if (error instanceof Error) {
-    if (process.env.NODE_ENV === 'production') {
+  const unexpectedMessage = messageFromUnknown(error, '');
+  if (unexpectedMessage) {
+    if (appConfig.isProduction) {
       return {
         statusCode: 500,
         error: getStatusName(500),
@@ -142,7 +161,7 @@ const toErrorDetails = (
       statusCode: 500,
       error: getStatusName(500),
       messageKey: 'http.unexpectedError',
-      messageArgs: { details: error.message },
+      messageArgs: { details: unexpectedMessage },
     };
   }
 
@@ -155,9 +174,10 @@ const toErrorDetails = (
 
 export const respondCause = <E>(cause: Cause.Cause<E>) =>
   Effect.gen(function* () {
+    const appConfig = yield* AppConfig;
     const { path, locale } = yield* getRequestContext;
     const firstError = getFirstError(cause);
-    const details = toErrorDetails(firstError, path);
+    const details = toErrorDetails(firstError, path, appConfig);
 
     if (details.statusCode >= 500) {
       yield* Effect.logError({
@@ -181,7 +201,7 @@ export const respondCause = <E>(cause: Cause.Cause<E>) =>
     );
 
     return yield* withRequestIdHeader(response);
-  });
+  }).pipe(Effect.provide(AppConfig.Default));
 
 export const respondJson = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
@@ -190,8 +210,14 @@ export const respondJson = <A, E, R>(
   Effect.gen(function* () {
     const body = yield* effect;
     const { locale } = yield* getRequestContext;
-    return yield* HttpServerResponse.json(localizeMessageTree(body, locale), options);
-  }).pipe(Effect.catchAllCause(respondCause), Effect.flatMap(withRequestIdHeader));
+    return yield* HttpServerResponse.json(
+      localizeMessageTree(body, locale),
+      options,
+    );
+  }).pipe(
+    Effect.catchAllCause(respondCause),
+    Effect.flatMap(withRequestIdHeader),
+  );
 
 export const respondJsonOk = <A>(
   body: A,

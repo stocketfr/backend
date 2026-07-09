@@ -16,6 +16,8 @@ export const frCatalog: Record<MessageKey, string> = {
   'auditLogs.repositoryFailed': "L'operation sur le journal d'audit a echoue.",
   'auth.permissionDenied': 'Permissions insuffisantes.',
   'auth.unauthorized': 'Non autorise.',
+  'e2e.seedDisabled': 'Le seed E2E est desactive.',
+  'e2e.seedFailed': 'Le seed E2E a echoue.',
   'email.sendFailed': "L'envoi de l'e-mail a echoue.",
   'email.welcomeRequestFailed': "La demande d'e-mail de bienvenue a echoue.",
   'tenant.membershipRejected':
@@ -23,6 +25,8 @@ export const frCatalog: Record<MessageKey, string> = {
   'tenant.notResolved':
     'Aucun tenant actif na pu etre resolu pour cette requete.',
   'tenant.hostNotFound': 'Hote tenant introuvable.',
+  'tenantFeatures.repositoryFailed':
+    "L'operation sur les fonctionnalites du tenant a echoue.",
   'branding.repositoryFailed': "L'operation de branding a echoue.",
   'branding.sessionUserUnavailable':
     "L'utilisateur de session n'est pas disponible.",
@@ -137,7 +141,7 @@ export const frCatalog: Record<MessageKey, string> = {
   'products.importProgressCompleted': "L'import produits est termine.",
   'products.importProgressQueued': "L'import produits est en file d'attente.",
   'products.importProgressRowsProcessed':
-    '{processedRows} lignes produit traitees sur {totalRows}.',
+    '{processedRows} lignes de produits traitees sur {totalRows}.',
   'products.importProgressStarting': "L'import produits demarre.",
   'products.importReadUploadFailed':
     "La lecture du fichier d'import produits televerse a echoue.",
@@ -166,8 +170,7 @@ export const frCatalog: Record<MessageKey, string> = {
   'superadmin.reservedTenantSlug': 'Le slug tenant est reserve.',
   'superadmin.tenantHostnameAlreadyExists':
     'Un tenant avec cet hote existe deja.',
-  'superadmin.tenantImportInvalid':
-    "L'import du tenant a echoue : {details}",
+  'superadmin.tenantImportInvalid': "L'import du tenant a echoue : {details}",
   'superadmin.tenantNotFound': 'Tenant introuvable.',
   'superadmin.tenantSlugAlreadyExists': 'Un tenant avec ce slug existe deja.',
   'stockMovements.destinationLocationNotFound':
@@ -184,11 +187,21 @@ export const frCatalog: Record<MessageKey, string> = {
   'suppliers.deleted': 'Fournisseur supprime avec succes.',
   'suppliers.notFound': 'Fournisseur introuvable.',
   'suppliers.repositoryFailed': "L'operation sur le fournisseur a echoue.",
+  'tasks.cancelCheckFailed':
+    "La verification d'annulation de la tache en arriere-plan a echoue.",
   'tasks.handlerNotFound': 'Gestionnaire de tache introuvable.',
+  'tasks.heartbeatFailed':
+    'Le signal de vie de la tache en arriere-plan a echoue.',
+  'tasks.leaseLost': 'Le bail de la tache en arriere-plan a ete perdu.',
   'tasks.notFound': 'Tache introuvable.',
   'tasks.payloadInvalid': 'La charge utile de la tache est invalide.',
+  'tasks.progressFailed':
+    "La mise a jour de progression de la tache en arriere-plan a echoue.",
+  'tasks.recoveryFailed':
+    'La recuperation du bail de tache en arriere-plan a echoue.',
   'tasks.repositoryFailed': "L'operation de tache en arriere-plan a echoue.",
   'tasks.terminalConflict': 'La tache est deja terminee.',
+  'tasks.workerFailed': 'Le worker de tache en arriere-plan a echoue.',
   'users.infrastructureFailed': "L'operation sur l'utilisateur a echoue.",
   'users.notFound': 'Utilisateur introuvable.',
   'users.repositoryFailed': "L'operation sur l'utilisateur a echoue.",

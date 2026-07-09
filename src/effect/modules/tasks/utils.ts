@@ -2,7 +2,7 @@ import type { TaskResponseDto, TaskRow } from './types';
 import {
   isProductImportProgressMessageKey,
   productImportProgressMessageArgs,
-} from '../products/import/progress';
+} from '../products/import/types';
 
 export const rowsOf = <A>(result: unknown): A[] =>
   ((result as { rows?: A[] }).rows ?? (result as A[])) as A[];

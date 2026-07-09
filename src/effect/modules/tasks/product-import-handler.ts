@@ -1,9 +1,9 @@
 import { Effect } from 'effect';
-import type {
-  ProductImportApprovedPlanDto,
-  ProductImportTypeDto,
-} from '@stocket/types/products';
 import { ProductImportService } from '../products/import/service';
+import type {
+  ProductImportPlan,
+  ProductImportType,
+} from '../products/import/types';
 import {
   ProductImportCancelled,
   ProductImportCsvParseFailed,
@@ -20,8 +20,8 @@ import { describeTaskError } from './utils';
 
 interface ProductImportTaskPayload {
   readonly content: string;
-  readonly importType?: ProductImportTypeDto;
-  readonly approvedPlan?: ProductImportApprovedPlanDto;
+  readonly importType?: ProductImportType;
+  readonly approvedPlan?: ProductImportPlan;
   readonly userId: string;
 }
 
@@ -45,10 +45,10 @@ const parsePayload = (task: TaskRow) =>
       content: payload.content,
       importType:
         typeof payload.importType === 'string'
-          ? (payload.importType as ProductImportTypeDto)
+          ? (payload.importType as ProductImportType)
           : undefined,
       approvedPlan: isRecord(payload.approvedPlan)
-        ? (payload.approvedPlan as ProductImportApprovedPlanDto)
+        ? (payload.approvedPlan as ProductImportPlan)
         : undefined,
       userId:
         typeof payload.userId === 'string'

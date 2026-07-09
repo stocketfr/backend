@@ -26,6 +26,7 @@ import { UsersService } from '../modules/users/service';
 import { auditLayer } from '../platform/audit/index';
 import { BetterAuthHeaders } from '../platform/auth/better-auth';
 import { PermissionProvider } from '../platform/auth/permission-provider';
+import { AppConfig } from '../platform/config/app-config';
 import { makeTestDrizzleLayer } from './integration-layer';
 import {
   makeBetterAuthTestLayer,
@@ -42,6 +43,7 @@ interface TestHttpAppOptions {
 export const makeTestApplicationLayer = (options: TestHttpAppOptions = {}) => {
   const storage = makeInMemoryStorageAdapterLayer();
   const platformLayer = Layer.mergeAll(
+    AppConfig.Default,
     makeTestDrizzleLayer(),
     makeBetterAuthTestLayer({
       overrides: {

@@ -1,5 +1,4 @@
-import { readFile } from 'node:fs/promises';
-import { HttpRouter, HttpServerRequest, Multipart } from '@effect/platform';
+import { HttpRouter } from '@effect/platform';
 import { Effect, Schema } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
@@ -13,87 +12,24 @@ import {
   BulkUpdateStatusSchema,
   BulkDeleteSchema,
   BulkRestoreSchema,
-  type ProductImportApprovedPlanDto,
 } from '@stocket/types/products';
-import { requirePermission } from '../../platform/auth/authorization';
-import { respondJson, respondJsonOk } from '../../platform/http/errors';
-import { AuditLogWriter } from '../../platform/audit/index';
+import { respondAuditedMutation } from '../../platform/audited-mutation';
 import {
-  getOptionalSession,
-  requireSession,
-} from '../../platform/http/session';
+  emptyInput,
+  jsonBody,
+  pathParams,
+  pathParamsAndJsonBody,
+  pathParamsAndQueryParams,
+  queryParams,
+  tenantRoute,
+  tenantRouteContext,
+} from '../../platform/http/tenant-route';
 import { makeMessageResponse } from '../../platform/observability/messages';
-import { TasksService } from '../tasks/service';
-import { requireProductImportAccess } from './import/access';
-import { PRODUCT_IMPORT_PROGRESS_MESSAGES } from './import/progress';
-import { ProductImportService } from './import/service';
-import { ProductImportTypes } from './import/types';
-import {
-  ProductImportPlanParseFailed,
-  ProductsInfrastructureError,
-} from './products.errors';
+import { productImportRouter } from './import/router';
 import { ProductsService } from './service';
-
-/**
- * `HttpServerRequest.schemaSearchParams` requires `Encoded extends Record<string, string | ...>`
- * with an index signature. Locally-defined `Schema.Struct` types don't carry one, so TS rejects
- * them even though every field encodes to a string at runtime. This helper hides the cast.
- */
-const searchParams = <A, I, R>(schema: Schema.Schema<A, I, R>) =>
-  HttpServerRequest.schemaSearchParams(
-    schema as unknown as Schema.Schema<
-      A,
-      Record<string, string | ReadonlyArray<string> | undefined>,
-      R
-    >,
-  );
 
 const ProductPathParams = Schema.Struct({ id: ProductIdSchema });
 const CategoryPathParams = Schema.Struct({ categoryId: Schema.UUID });
-const ProductImportTypeSchema = Schema.Literal(...ProductImportTypes);
-const ProductImportUploadSchema = Schema.Struct({
-  file: Multipart.SingleFileSchema,
-  import_type: Schema.optionalWith(ProductImportTypeSchema, {
-    default: () => 'auto' as const,
-  }),
-  plan: Schema.optional(Schema.String),
-});
-
-const parseProductImportPlan = (plan: string | undefined) =>
-  Effect.try({
-    try: (): ProductImportApprovedPlanDto | undefined => {
-      const trimmed = plan?.trim();
-      return trimmed
-        ? (JSON.parse(trimmed) as ProductImportApprovedPlanDto)
-        : undefined;
-    },
-    catch: (cause) =>
-      new ProductImportPlanParseFailed({
-        cause,
-        messageKey: 'products.importPlanParseFailed',
-      }),
-  });
-
-const readProductImportUpload = Effect.gen(function* () {
-  const upload = yield* HttpServerRequest.schemaBodyMultipart(
-    ProductImportUploadSchema,
-  );
-  const buffer = yield* Effect.tryPromise({
-    try: () => readFile(upload.file.path),
-    catch: (cause) =>
-      new ProductsInfrastructureError({
-        action: 'read uploaded product import file',
-        cause,
-        messageKey: 'products.importReadUploadFailed',
-      }),
-  });
-
-  return {
-    content: buffer.toString('utf8'),
-    importType: upload.import_type,
-    approvedPlan: yield* parseProductImportPlan(upload.plan),
-  };
-});
 
 const IncludeDeletedQuery = Schema.Struct({
   include_deleted: Schema.optionalWith(ProductBooleanQuerySchema, {
@@ -110,270 +46,236 @@ const PermanentQuery = Schema.Struct({
 export const productsRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
     '/all',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.PRODUCTS, Permission.READ);
-      const productsService = yield* ProductsService;
-      return yield* respondJson(productsService.findAll());
+    tenantRoute({
+      permissions: [[Resource.PRODUCTS, Permission.READ]],
+      decode: emptyInput,
+      handler: () =>
+        Effect.flatMap(ProductsService, (productsService) =>
+          productsService.findAll(),
+        ),
     }),
   ),
   HttpRouter.get(
     '/',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.PRODUCTS, Permission.READ);
-      const query = yield* searchParams(ProductQuerySchema);
-      const productsService = yield* ProductsService;
-      return yield* respondJson(productsService.findAllPaginated(query));
+    tenantRoute({
+      permissions: [[Resource.PRODUCTS, Permission.READ]],
+      decode: queryParams(ProductQuerySchema),
+      handler: ({ input: query }) =>
+        Effect.flatMap(ProductsService, (productsService) =>
+          productsService.findAllPaginated(query),
+        ),
     }),
   ),
   HttpRouter.post(
     '/bulk',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
-      const dto = yield* HttpServerRequest.schemaBodyJson(
-        BulkCreateProductsSchema,
-      );
-      const session = yield* getOptionalSession;
-      const userId = session?.user.id;
-      const productsService = yield* ProductsService;
-      const result = yield* productsService.bulkCreate(dto, userId);
-      const auditLogWriter = yield* AuditLogWriter;
-      if (result.succeeded.length > 0) {
-        yield* auditLogWriter.log({
-          action: AuditAction.CREATE,
-          entityType: AuditEntityType.PRODUCT,
-          entityId: result.succeeded[0]!,
-        });
-      }
-      return yield* respondJsonOk(result, { status: 201 });
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.PRODUCTS, Permission.WRITE]],
+      decode: jsonBody(BulkCreateProductsSchema),
+      session: 'optional',
+    }).pipe(
+      Effect.flatMap(({ input: dto, userId }) =>
+        respondAuditedMutation(
+          Effect.flatMap(ProductsService, (productsService) =>
+            productsService.bulkCreate(dto, userId),
+          ),
+          {
+            action: AuditAction.CREATE,
+            entityType: AuditEntityType.PRODUCT,
+            entityId: (result) => result.succeeded,
+            responseOptions: { status: 201 },
+          },
+        ),
+      ),
+    ),
   ),
-  HttpRouter.post(
-    '/import',
-    Effect.gen(function* () {
-      yield* requireProductImportAccess;
-      const { content, importType, approvedPlan } =
-        yield* readProductImportUpload;
-      const session = yield* requireSession;
-      const userId = session.user.id;
-
-      const tasksService = yield* TasksService;
-      const task = yield* tasksService.enqueue({
-        type: 'product-import',
-        payload: {
-          content,
-          importType,
-          ...(approvedPlan ? { approvedPlan } : {}),
-          userId,
-        },
-        createdBy: userId,
-        maxAttempts: 3,
-        progressMessage: PRODUCT_IMPORT_PROGRESS_MESSAGES.queued,
-      });
-      return yield* respondJsonOk(task, {
-        status: 202,
-        headers: { Location: `/api/v1/tasks/${task.id}` },
-      });
-    }),
-  ),
-  HttpRouter.post(
-    '/import/preview',
-    Effect.gen(function* () {
-      yield* requireProductImportAccess;
-      const { content, importType } = yield* readProductImportUpload;
-      const productImportService = yield* ProductImportService;
-      const result = yield* productImportService.previewCsvContent({
-        content,
-        importType,
-      });
-      return yield* respondJsonOk(result);
-    }),
-  ),
-  HttpRouter.post(
-    '/import/propose',
-    Effect.gen(function* () {
-      yield* requireProductImportAccess;
-      const { content, importType } = yield* readProductImportUpload;
-      const productImportService = yield* ProductImportService;
-      const result = yield* productImportService.proposeImportPlan({
-        content,
-        importType,
-      });
-      return yield* respondJsonOk(result);
-    }),
-  ),
+  HttpRouter.concat(productImportRouter),
   HttpRouter.get(
     '/category/:categoryId/tree',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.PRODUCTS, Permission.READ);
-      const { categoryId } =
-        yield* HttpRouter.schemaPathParams(CategoryPathParams);
-      const productsService = yield* ProductsService;
-      return yield* respondJson(productsService.findByCategoryTree(categoryId));
+    tenantRoute({
+      permissions: [[Resource.PRODUCTS, Permission.READ]],
+      decode: pathParams(CategoryPathParams),
+      handler: ({ input: { categoryId } }) =>
+        Effect.flatMap(ProductsService, (productsService) =>
+          productsService.findByCategoryTree(categoryId),
+        ),
     }),
   ),
   HttpRouter.get(
     '/category/:categoryId',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.PRODUCTS, Permission.READ);
-      const { categoryId } =
-        yield* HttpRouter.schemaPathParams(CategoryPathParams);
-      const productsService = yield* ProductsService;
-      return yield* respondJson(productsService.findByCategory(categoryId));
+    tenantRoute({
+      permissions: [[Resource.PRODUCTS, Permission.READ]],
+      decode: pathParams(CategoryPathParams),
+      handler: ({ input: { categoryId } }) =>
+        Effect.flatMap(ProductsService, (productsService) =>
+          productsService.findByCategory(categoryId),
+        ),
     }),
   ),
   HttpRouter.post(
     '/',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
-      const dto = yield* HttpServerRequest.schemaBodyJson(
-        CreateProductRequestSchema,
-      );
-      const session = yield* getOptionalSession;
-      const userId = session?.user.id;
-      const productsService = yield* ProductsService;
-      const result = yield* productsService.create(dto, userId);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
-        action: AuditAction.CREATE,
-        entityType: AuditEntityType.PRODUCT,
-        entityId: result.id,
-      });
-      return yield* respondJsonOk(result, { status: 201 });
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.PRODUCTS, Permission.WRITE]],
+      decode: jsonBody(CreateProductRequestSchema),
+      session: 'optional',
+    }).pipe(
+      Effect.flatMap(({ input: dto, userId }) =>
+        respondAuditedMutation(
+          Effect.flatMap(ProductsService, (productsService) =>
+            productsService.create(dto, userId),
+          ),
+          {
+            action: AuditAction.CREATE,
+            entityType: AuditEntityType.PRODUCT,
+            entityId: (result) => result.id,
+            responseOptions: { status: 201 },
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.patch(
     '/bulk/status',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
-      const dto = yield* HttpServerRequest.schemaBodyJson(
-        BulkUpdateStatusSchema,
-      );
-      const session = yield* getOptionalSession;
-      const userId = session?.user.id;
-      const productsService = yield* ProductsService;
-      const result = yield* productsService.bulkUpdateStatus(dto, userId);
-      const auditLogWriter = yield* AuditLogWriter;
-      if (result.succeeded.length > 0) {
-        yield* auditLogWriter.log({
-          action: AuditAction.STATUS_CHANGE,
-          entityType: AuditEntityType.PRODUCT,
-          entityId: result.succeeded[0]!,
-        });
-      }
-      return yield* respondJsonOk(result);
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.PRODUCTS, Permission.WRITE]],
+      decode: jsonBody(BulkUpdateStatusSchema),
+      session: 'optional',
+    }).pipe(
+      Effect.flatMap(({ input: dto, userId }) =>
+        respondAuditedMutation(
+          Effect.flatMap(ProductsService, (productsService) =>
+            productsService.bulkUpdateStatus(dto, userId),
+          ),
+          {
+            action: AuditAction.STATUS_CHANGE,
+            entityType: AuditEntityType.PRODUCT,
+            entityId: (result) => result.succeeded,
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.patch(
     '/bulk/restore',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
-      const dto = yield* HttpServerRequest.schemaBodyJson(BulkRestoreSchema);
-      const productsService = yield* ProductsService;
-      const result = yield* productsService.bulkRestore(dto);
-      const auditLogWriter = yield* AuditLogWriter;
-      if (result.succeeded.length > 0) {
-        yield* auditLogWriter.log({
-          action: AuditAction.RESTORE,
-          entityType: AuditEntityType.PRODUCT,
-          entityId: result.succeeded[0]!,
-        });
-      }
-      return yield* respondJsonOk(result);
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.PRODUCTS, Permission.WRITE]],
+      decode: jsonBody(BulkRestoreSchema),
+    }).pipe(
+      Effect.flatMap(({ input: dto }) =>
+        respondAuditedMutation(
+          Effect.flatMap(ProductsService, (productsService) =>
+            productsService.bulkRestore(dto),
+          ),
+          {
+            action: AuditAction.RESTORE,
+            entityType: AuditEntityType.PRODUCT,
+            entityId: (result) => result.succeeded,
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.del(
     '/bulk',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
-      const dto = yield* HttpServerRequest.schemaBodyJson(BulkDeleteSchema);
-      const session = yield* getOptionalSession;
-      const userId = session?.user.id;
-      const productsService = yield* ProductsService;
-      const result = yield* productsService.bulkDelete(dto, userId);
-      const auditLogWriter = yield* AuditLogWriter;
-      if (result.succeeded.length > 0) {
-        yield* auditLogWriter.log({
-          action: AuditAction.DELETE,
-          entityType: AuditEntityType.PRODUCT,
-          entityId: result.succeeded[0]!,
-        });
-      }
-      return yield* respondJsonOk(result);
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.PRODUCTS, Permission.WRITE]],
+      decode: jsonBody(BulkDeleteSchema),
+      session: 'optional',
+    }).pipe(
+      Effect.flatMap(({ input: dto, userId }) =>
+        respondAuditedMutation(
+          Effect.flatMap(ProductsService, (productsService) =>
+            productsService.bulkDelete(dto, userId),
+          ),
+          {
+            action: AuditAction.DELETE,
+            entityType: AuditEntityType.PRODUCT,
+            entityId: (result) => result.succeeded,
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.get(
     '/:id',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.PRODUCTS, Permission.READ);
-      const { id } = yield* HttpRouter.schemaPathParams(ProductPathParams);
-      const query = yield* searchParams(IncludeDeletedQuery);
-      const productsService = yield* ProductsService;
-      return yield* respondJson(
-        productsService.findOne(id, query.include_deleted),
-      );
+    tenantRoute({
+      permissions: [[Resource.PRODUCTS, Permission.READ]],
+      decode: pathParamsAndQueryParams(ProductPathParams, IncludeDeletedQuery),
+      handler: ({ input: { path, query } }) =>
+        Effect.flatMap(ProductsService, (productsService) =>
+          productsService.findOne(path.id, query.include_deleted),
+        ),
     }),
   ),
   HttpRouter.put(
     '/:id',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
-      const { id } = yield* HttpRouter.schemaPathParams(ProductPathParams);
-      const dto = yield* HttpServerRequest.schemaBodyJson(
+    tenantRouteContext({
+      permissions: [[Resource.PRODUCTS, Permission.WRITE]],
+      decode: pathParamsAndJsonBody(
+        ProductPathParams,
         UpdateProductRequestSchema,
-      );
-      const session = yield* getOptionalSession;
-      const userId = session?.user.id;
-      const productsService = yield* ProductsService;
-      const result = yield* productsService.update(id, dto, userId);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
-        action: AuditAction.UPDATE,
-        entityType: AuditEntityType.PRODUCT,
-        entityId: id,
-      });
-      return yield* respondJsonOk(result);
-    }),
+      ),
+      session: 'optional',
+    }).pipe(
+      Effect.flatMap(({ input: { path, body }, userId }) =>
+        respondAuditedMutation(
+          Effect.flatMap(ProductsService, (productsService) =>
+            productsService.update(path.id, body, userId),
+          ),
+          {
+            action: AuditAction.UPDATE,
+            entityType: AuditEntityType.PRODUCT,
+            entityId: path.id,
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.patch(
     '/:id/restore',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
-      const { id } = yield* HttpRouter.schemaPathParams(ProductPathParams);
-      const productsService = yield* ProductsService;
-      const result = yield* productsService.restore(id);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
-        action: AuditAction.RESTORE,
-        entityType: AuditEntityType.PRODUCT,
-        entityId: id,
-      });
-      return yield* respondJsonOk(result);
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.PRODUCTS, Permission.WRITE]],
+      decode: pathParams(ProductPathParams),
+    }).pipe(
+      Effect.flatMap(({ input: { id } }) =>
+        respondAuditedMutation(
+          Effect.flatMap(ProductsService, (productsService) =>
+            productsService.restore(id),
+          ),
+          {
+            action: AuditAction.RESTORE,
+            entityType: AuditEntityType.PRODUCT,
+            entityId: id,
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.del(
     '/:id',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.PRODUCTS, Permission.WRITE);
-      const { id } = yield* HttpRouter.schemaPathParams(ProductPathParams);
-      const query = yield* searchParams(PermanentQuery);
-      const session = yield* getOptionalSession;
-      const userId = session?.user.id;
-      const productsService = yield* ProductsService;
-      yield* productsService.delete(id, userId, query.permanent);
-      const auditLogWriter = yield* AuditLogWriter;
-      yield* auditLogWriter.log({
-        action: AuditAction.DELETE,
-        entityType: AuditEntityType.PRODUCT,
-        entityId: id,
-      });
-      return yield* respondJson(
-        Effect.succeed(
-          makeMessageResponse(
-            query.permanent ? 'products.deletedPermanent' : 'products.deleted',
+    tenantRouteContext({
+      permissions: [[Resource.PRODUCTS, Permission.WRITE]],
+      decode: pathParamsAndQueryParams(ProductPathParams, PermanentQuery),
+      session: 'optional',
+    }).pipe(
+      Effect.flatMap(({ input: { path, query }, userId }) =>
+        respondAuditedMutation(
+          Effect.flatMap(ProductsService, (productsService) =>
+            productsService.delete(path.id, userId, query.permanent),
           ),
+          {
+            action: AuditAction.DELETE,
+            entityType: AuditEntityType.PRODUCT,
+            entityId: path.id,
+            mapResponse: () =>
+              makeMessageResponse(
+                query.permanent
+                  ? 'products.deletedPermanent'
+                  : 'products.deleted',
+              ),
+          },
         ),
-      );
-    }),
+      ),
+    ),
   ),
   HttpRouter.prefixAll('/products'),
 );

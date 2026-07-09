@@ -9,6 +9,7 @@ import { FeaturesService } from '../features/service';
 import { ProductImportService } from '../products/import/service';
 import { UsersRepository } from '../users/repository';
 import { SuperAdminRepository } from './repository';
+import { TenantNotFound } from './superadmin.errors';
 import { SuperAdminService } from './service';
 
 vi.mock('../../platform/auth/better-auth', async () => {
@@ -52,9 +53,9 @@ describe('Effect SuperAdminService', () => {
   const makeRepository = () => ({
     tenantSlugExists: vi.fn().mockReturnValue(Effect.succeed(false)),
     tenantHostnameExists: vi.fn().mockReturnValue(Effect.succeed(false)),
-    findBetterAuthUserByLoweredEmail: vi.fn().mockReturnValue(
-      Effect.succeed(null),
-    ),
+    findBetterAuthUserByLoweredEmail: vi
+      .fn()
+      .mockReturnValue(Effect.succeed(null)),
     createTenantWithAdmin: vi
       .fn()
       .mockReturnValue(Effect.succeed(createdTenant)),
@@ -84,6 +85,7 @@ describe('Effect SuperAdminService', () => {
   });
 
   const makeFeaturesService = () => ({
+    invalidateTenant: vi.fn(() => Effect.void),
     getFeaturesForTenant: vi.fn(() =>
       Effect.succeed({
         tenantId: createdTenant.tenant.id,
@@ -163,14 +165,8 @@ describe('Effect SuperAdminService', () => {
       Effect.succeed({
         categoriesCreated: 0,
         locationsCreated: 0,
-        areasCreated: 0,
-        suppliersCreated: 0,
         productsCreated: 0,
-        productsUpdated: 0,
         inventoryRecordsCreated: 0,
-        inventoryRecordsUpdated: 0,
-        photosCreated: 0,
-        photosSkipped: 0,
         rowsSkipped: 0,
         errors: [],
       }),
@@ -210,7 +206,8 @@ describe('Effect SuperAdminService', () => {
           Layer.succeed(BetterAuth, betterAuth as typeof BetterAuth.Service),
           Layer.succeed(
             FeaturesService,
-            (featuresService ?? makeFeaturesService()) as typeof FeaturesService.Service,
+            (featuresService ??
+              makeFeaturesService()) as typeof FeaturesService.Service,
           ),
           Layer.succeed(
             SuperAdminRepository,
@@ -291,7 +288,8 @@ describe('Effect SuperAdminService', () => {
     });
 
     await waitForCall(betterAuth.api.requestPasswordReset);
-    const welcomeRequest = betterAuth.api.requestPasswordReset.mock.calls[0]![0];
+    const welcomeRequest =
+      betterAuth.api.requestPasswordReset.mock.calls[0]![0];
     expect(welcomeRequest.body).toEqual({
       email: 'admin@example.com',
       redirectTo: 'https://acme.localhost:3000/reset-password?flow=welcome',
@@ -403,5 +401,77 @@ describe('Effect SuperAdminService', () => {
       tenantId,
       FeatureKey.SMART_IMPORT,
     );
+  });
+
+  it('deletes a tenant, invalidates feature cache, and records platform audit', async () => {
+    const betterAuth = makeBetterAuth();
+    const repository = makeRepository();
+    const usersRepository = makeUsersRepository();
+    const featuresService = makeFeaturesService();
+    const layer = makeServiceLayer({
+      betterAuth,
+      featuresService,
+      repository,
+      usersRepository,
+    });
+
+    const tenantId = createdTenant.tenant.id;
+
+    await run(
+      Effect.flatMap(SuperAdminService, (service) =>
+        service.deleteTenant(tenantId, actor),
+      ),
+      layer,
+    );
+
+    expect(repository.deleteTenant).toHaveBeenCalledWith(tenantId);
+    expect(featuresService.invalidateTenant).toHaveBeenCalledWith(tenantId);
+
+    await waitForCall(repository.recordPlatformAuditEvent);
+    expect(repository.recordPlatformAuditEvent).toHaveBeenCalledWith({
+      actorUserId: actor.userId,
+      action: 'tenant.delete',
+      entityType: 'tenant',
+      entityId: tenantId,
+      metadata: {
+        name: createdTenant.tenant.name,
+        slug: createdTenant.tenant.slug,
+        primaryHostname: createdTenant.tenant.hostname,
+      },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent,
+    });
+  });
+
+  it('fails with TenantNotFound when deleting an unknown tenant', async () => {
+    const betterAuth = makeBetterAuth();
+    const repository = makeRepository();
+    repository.deleteTenant.mockReturnValue(Effect.succeed(null));
+    const usersRepository = makeUsersRepository();
+    const featuresService = makeFeaturesService();
+    const layer = makeServiceLayer({
+      betterAuth,
+      featuresService,
+      repository,
+      usersRepository,
+    });
+
+    const tenantId = createdTenant.tenant.id;
+    const result = await Effect.runPromise(
+      Effect.flatMap(SuperAdminService, (service) =>
+        service.deleteTenant(tenantId, actor),
+      ).pipe(
+        Effect.either,
+        Effect.provideService(BetterAuthHeaders, requestHeaders),
+        Effect.provide(layer),
+      ),
+    );
+
+    expect(result._tag).toBe('Left');
+    if (result._tag === 'Left') {
+      expect(result.left).toBeInstanceOf(TenantNotFound);
+    }
+    expect(featuresService.invalidateTenant).not.toHaveBeenCalled();
+    expect(repository.recordPlatformAuditEvent).not.toHaveBeenCalled();
   });
 });

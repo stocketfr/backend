@@ -2,7 +2,7 @@ import { Effect } from 'effect';
 import {
   requireProductImportAccess,
   requireSmartImportFeature,
-} from '../products/import/access';
+} from '../products/access';
 import { ProductImportTaskHandler } from './product-import-handler';
 import { TaskHandlerNotFound } from './tasks.errors';
 import type { TaskHandler, TaskTypeDto } from './types';

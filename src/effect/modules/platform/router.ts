@@ -2,6 +2,7 @@ import { HttpRouter, HttpServerRequest } from '@effect/platform';
 import { Effect } from 'effect';
 import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { findTenantByHostname } from '../../platform/db/tenant-queries';
+import { AppConfig } from '../../platform/config/app-config';
 import { respondEmpty } from '../../platform/http/errors';
 import { isPlatformHost, normalizeHost } from '../../platform/tenancy/host';
 import {
@@ -35,8 +36,9 @@ const allowTlsDomain = (domain: string | null | undefined) =>
     }
 
     const db = yield* DrizzleDatabase;
+    const appConfig = yield* AppConfig;
     const rows = yield* Effect.tryPromise({
-      try: () => findTenantByHostname(db, verifiedHostname),
+      try: () => findTenantByHostname(db, verifiedHostname, appConfig),
       catch: (cause) =>
         new TenantNotResolved({
           cause,

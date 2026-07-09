@@ -1,10 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { Effect } from 'effect';
+import { Effect, Schema } from 'effect';
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import { makeTryAsync } from '../../platform/effect/try-async';
 import { DrizzleDatabase } from '../../platform/db/drizzle';
+import { executeRows } from '../../platform/db/execute-rows';
+import { TenantQuery } from '../../platform/tenancy/tenant-query';
 import { userRoles, roles, members } from '../../platform/db/schema';
 import { UsersInfrastructureError } from './users.errors';
+import { TenantUserRowSchema } from './types';
 
 const tryAsync = makeTryAsync(
   (action, cause) =>
@@ -15,16 +18,9 @@ const tryAsync = makeTryAsync(
     }),
 );
 
-export interface TenantUserRow {
-  readonly id: string;
-  readonly name: string | null;
-  readonly email: string | null;
-  readonly image: string | null;
-  readonly banned: boolean | null;
-  readonly banReason: string | null;
-  readonly banExpires: Date | null;
-  readonly createdAt: Date;
-}
+const TenantUserCountRowSchema = Schema.Struct({
+  total: Schema.Number,
+});
 
 interface ListTenantUsersOptions {
   readonly tenantId: string;
@@ -39,10 +35,12 @@ export class UsersRepository extends Effect.Service<UsersRepository>()(
   {
     effect: Effect.gen(function* () {
       const db = yield* DrizzleDatabase;
+      const tenantQuery = yield* TenantQuery;
 
       const findRoleAssignments = (userIds: string[], tenantId: string) =>
         tryAsync('find role assignments', async () => {
           if (userIds.length === 0) return [];
+          const tenantScope = tenantQuery.forTenant(tenantId);
 
           const rows = await db
             .select({
@@ -52,12 +50,17 @@ export class UsersRepository extends Effect.Service<UsersRepository>()(
               role: roles,
             })
             .from(userRoles)
-            .innerJoin(roles, eq(userRoles.role_id, roles.id))
-            .where(
+            .innerJoin(
+              roles,
               and(
+                eq(userRoles.role_id, roles.id),
+                tenantScope.tenantPredicate(roles),
+              ),
+            )
+            .where(
+              tenantScope.whereTenant(
+                userRoles,
                 inArray(userRoles.user_id, userIds),
-                eq(userRoles.tenant_id, tenantId),
-                eq(roles.tenant_id, tenantId),
               ),
             );
 
@@ -66,6 +69,7 @@ export class UsersRepository extends Effect.Service<UsersRepository>()(
 
       const findUserRoles = (userId: string, tenantId: string) =>
         tryAsync('find user roles', async () => {
+          const tenantScope = tenantQuery.forTenant(tenantId);
           const rows = await db
             .select({
               id: userRoles.id,
@@ -74,13 +78,15 @@ export class UsersRepository extends Effect.Service<UsersRepository>()(
               role: roles,
             })
             .from(userRoles)
-            .innerJoin(roles, eq(userRoles.role_id, roles.id))
-            .where(
+            .innerJoin(
+              roles,
               and(
-                eq(userRoles.user_id, userId),
-                eq(userRoles.tenant_id, tenantId),
-                eq(roles.tenant_id, tenantId),
+                eq(userRoles.role_id, roles.id),
+                tenantScope.tenantPredicate(roles),
               ),
+            )
+            .where(
+              tenantScope.whereTenant(userRoles, eq(userRoles.user_id, userId)),
             );
 
           return rows;
@@ -90,16 +96,12 @@ export class UsersRepository extends Effect.Service<UsersRepository>()(
         tryAsync('validate user roles', async () => {
           const uniqueRoleIds = [...new Set(roleIds)];
           if (uniqueRoleIds.length === 0) return;
+          const tenantScope = tenantQuery.forTenant(tenantId);
 
           const tenantRoles = await db
             .select({ id: roles.id })
             .from(roles)
-            .where(
-              and(
-                inArray(roles.id, uniqueRoleIds),
-                eq(roles.tenant_id, tenantId),
-              ),
-            );
+            .where(tenantScope.whereTenantIds(roles, uniqueRoleIds));
 
           if (tenantRoles.length !== uniqueRoleIds.length) {
             throw new Error('One or more roles do not belong to tenant');
@@ -113,18 +115,14 @@ export class UsersRepository extends Effect.Service<UsersRepository>()(
       ) =>
         tryAsync('replace user roles', async () => {
           const uniqueRoleIds = [...new Set(roleIds)];
+          const tenantScope = tenantQuery.forTenant(tenantId);
 
           await db.transaction(async (tx) => {
             if (uniqueRoleIds.length > 0) {
               const tenantRoles = await tx
                 .select({ id: roles.id })
                 .from(roles)
-                .where(
-                  and(
-                    inArray(roles.id, uniqueRoleIds),
-                    eq(roles.tenant_id, tenantId),
-                  ),
-                );
+                .where(tenantScope.whereTenantIds(roles, uniqueRoleIds));
 
               if (tenantRoles.length !== uniqueRoleIds.length) {
                 throw new Error('One or more roles do not belong to tenant');
@@ -134,9 +132,9 @@ export class UsersRepository extends Effect.Service<UsersRepository>()(
             await tx
               .delete(userRoles)
               .where(
-                and(
+                tenantScope.whereTenant(
+                  userRoles,
                   eq(userRoles.user_id, userId),
-                  eq(userRoles.tenant_id, tenantId),
                 ),
               );
 
@@ -145,11 +143,12 @@ export class UsersRepository extends Effect.Service<UsersRepository>()(
             }
 
             await tx.insert(userRoles).values(
-              uniqueRoleIds.map((roleId) => ({
-                user_id: userId,
-                tenant_id: tenantId,
-                role_id: roleId,
-              })),
+              uniqueRoleIds.map((roleId) =>
+                tenantScope.insertValues({
+                  user_id: userId,
+                  role_id: roleId,
+                }),
+              ),
             );
           });
         });
@@ -178,55 +177,59 @@ export class UsersRepository extends Effect.Service<UsersRepository>()(
               AND (${roleName}::text IS NULL OR LOWER(r.name) = LOWER(${roleName}))
           `;
 
-          const countResult = await db.execute(sql`
-            SELECT COUNT(DISTINCT u.id)::int AS total
-            ${fromAndWhere}
-          `);
-          const total =
-            ((countResult as unknown as { rows?: { total: number }[] }).rows ??
-              (countResult as unknown as { total: number }[]))[0]?.total ?? 0;
+          const countRows = await executeRows(
+            db,
+            sql`
+              SELECT COUNT(DISTINCT u.id)::int AS total
+              ${fromAndWhere}
+            `,
+            TenantUserCountRowSchema,
+          );
+          const total = countRows[0]?.total ?? 0;
 
-          const result = await db.execute(sql`
-            SELECT DISTINCT
-              u.id,
-              u.name,
-              u.email,
-              u.image,
-              u.banned,
-              u.ban_reason AS "banReason",
-              u.ban_expires AS "banExpires",
-              u.created_at AS "createdAt"
-            ${fromAndWhere}
-            ORDER BY "createdAt" ASC, id ASC
-            LIMIT ${limit}
-            OFFSET ${offset}
-          `);
-          const users =
-            (result as unknown as { rows?: TenantUserRow[] }).rows ??
-            (result as unknown as TenantUserRow[]);
+          const users = await executeRows(
+            db,
+            sql`
+              SELECT DISTINCT
+                u.id,
+                u.name,
+                u.email,
+                u.image,
+                u.banned,
+                u.ban_reason AS "banReason",
+                u.ban_expires AS "banExpires",
+                u.created_at AS "createdAt"
+              ${fromAndWhere}
+              ORDER BY "createdAt" ASC, id ASC
+              LIMIT ${limit}
+              OFFSET ${offset}
+            `,
+            TenantUserRowSchema,
+          );
 
           return { users, total };
         });
 
       const findBetterAuthUser = (userId: string) =>
         tryAsync('find better auth user', async () => {
-          const result = await db.execute(sql`
-            SELECT
-              id,
-              name,
-              email,
-              image,
-              banned,
-              ban_reason AS "banReason",
-              ban_expires AS "banExpires",
-              created_at AS "createdAt"
-            FROM "user"
-            WHERE id = ${userId}
-            LIMIT 1
-          `);
-          const rows =
-            (result as unknown as { rows?: TenantUserRow[] }).rows ??
-            (result as unknown as TenantUserRow[]);
+          const rows = await executeRows(
+            db,
+            sql`
+              SELECT
+                id,
+                name,
+                email,
+                image,
+                banned,
+                ban_reason AS "banReason",
+                ban_expires AS "banExpires",
+                created_at AS "createdAt"
+              FROM "user"
+              WHERE id = ${userId}
+              LIMIT 1
+            `,
+            TenantUserRowSchema,
+          );
           return rows[0] ?? null;
         });
 
@@ -282,16 +285,14 @@ export class UsersRepository extends Effect.Service<UsersRepository>()(
         });
 
       const deleteUserRoles = (userId: string, tenantId: string) =>
-        tryAsync('delete user roles', () =>
-          db
+        tryAsync('delete user roles', () => {
+          const tenantScope = tenantQuery.forTenant(tenantId);
+          return db
             .delete(userRoles)
             .where(
-              and(
-                eq(userRoles.user_id, userId),
-                eq(userRoles.tenant_id, tenantId),
-              ),
-            ),
-        );
+              tenantScope.whereTenant(userRoles, eq(userRoles.user_id, userId)),
+            );
+        });
 
       const deleteTenantMembership = (userId: string, tenantId: string) =>
         tryAsync('delete tenant membership', () =>
@@ -363,5 +364,6 @@ export class UsersRepository extends Effect.Service<UsersRepository>()(
         createTenantMembership,
       };
     }),
+    dependencies: [TenantQuery.Default],
   },
 ) {}

@@ -5,17 +5,15 @@ import {
   type UpdateTenantFeatureOverride,
   type UpdateTenantPlan,
 } from '@stocket/types/features';
-import { requireRequestTenantId } from '../../platform/tenancy/tenant-context';
 import { makeServiceTracer } from '../../platform/observability/service-tracer';
 import {
-  FeatureNotEnabled,
   FeatureTenantNotFound,
   type FeaturesInfrastructureError,
 } from './features.errors';
-import {
-  FeaturesRepository,
-} from './repository';
-import { buildTenantFeaturesResponse } from './utils';
+import { FeaturesRepository } from './repository';
+import { buildTenantFeaturesResponse } from './mappers';
+import { makeFeatureWriteWorkflows } from './write';
+import { makeFeatureAccess } from './access';
 
 export class FeaturesService extends Effect.Service<FeaturesService>()(
   '@stocket/effect/features/FeaturesService',
@@ -58,37 +56,28 @@ export class FeaturesService extends Effect.Service<FeaturesService>()(
       const invalidateTenant = (tenantId: string) =>
         featureCache.invalidate(tenantId);
 
-      const requireTenant = (tenantId: string) =>
-        Effect.gen(function* () {
-          if (yield* repository.tenantExists(tenantId)) {
-            return;
-          }
-          return yield* Effect.fail(
-            new FeatureTenantNotFound({
-              tenantId,
-              messageKey: 'features.tenantNotFound',
-            }),
-          );
-        });
-
       const getFeaturesForTenant = (tenantId: string) =>
-        featureCache.get(tenantId).pipe(
-          trace.span('getFeaturesForTenant', { attributes: { tenantId } }),
-        );
+        featureCache
+          .get(tenantId)
+          .pipe(
+            trace.span('getFeaturesForTenant', { attributes: { tenantId } }),
+          );
+
+      const featureWriteWorkflows = makeFeatureWriteWorkflows({
+        repository,
+        invalidateTenant,
+        loadFeaturesForTenant,
+      });
+      const featureAccess = makeFeatureAccess({ getFeaturesForTenant });
 
       const setTenantPlan = (
         tenantId: string,
         dto: UpdateTenantPlan,
         actorUserId: string,
       ) =>
-        Effect.gen(function* () {
-          yield* requireTenant(tenantId);
-          yield* repository.upsertPlan(tenantId, dto.planKey, actorUserId);
-          yield* invalidateTenant(tenantId);
-          return yield* loadFeaturesForTenant(tenantId);
-        }).pipe(
-          trace.span('setTenantPlan', { attributes: { tenantId } }),
-        );
+        featureWriteWorkflows
+          .setTenantPlan(tenantId, dto, actorUserId)
+          .pipe(trace.span('setTenantPlan', { attributes: { tenantId } }));
 
       const setFeatureOverride = (
         tenantId: string,
@@ -96,48 +85,19 @@ export class FeaturesService extends Effect.Service<FeaturesService>()(
         dto: UpdateTenantFeatureOverride,
         actorUserId: string,
       ) =>
-        Effect.gen(function* () {
-          yield* requireTenant(tenantId);
-          yield* repository.upsertOverride(
-            tenantId,
-            featureKey,
-            {
-              enabled: dto.enabled,
-              reason: dto.reason,
-              expires_at: dto.expires_at,
-            },
-            actorUserId,
-          );
-          yield* invalidateTenant(tenantId);
-          return yield* loadFeaturesForTenant(tenantId);
-        }).pipe(
-          trace.span('setFeatureOverride', { attributes: { tenantId } }),
-        );
+        featureWriteWorkflows
+          .setFeatureOverride(tenantId, featureKey, dto, actorUserId)
+          .pipe(trace.span('setFeatureOverride', { attributes: { tenantId } }));
 
       const clearFeatureOverride = (tenantId: string, featureKey: FeatureKey) =>
-        Effect.gen(function* () {
-          yield* requireTenant(tenantId);
-          yield* repository.deleteOverride(tenantId, featureKey);
-          yield* invalidateTenant(tenantId);
-          return yield* loadFeaturesForTenant(tenantId);
-        }).pipe(
-          trace.span('clearFeatureOverride', { attributes: { tenantId } }),
-        );
+        featureWriteWorkflows
+          .clearFeatureOverride(tenantId, featureKey)
+          .pipe(
+            trace.span('clearFeatureOverride', { attributes: { tenantId } }),
+          );
 
       const requireFeature = (featureKey: FeatureKey) =>
-        Effect.gen(function* () {
-          const tenantId = yield* requireRequestTenantId;
-          const { features } = yield* getFeaturesForTenant(tenantId);
-          if (features[featureKey]) {
-            return;
-          }
-          return yield* Effect.fail(
-            new FeatureNotEnabled({
-              featureKey,
-              messageKey: 'features.notEnabled',
-            }),
-          );
-        }).pipe(
+        featureAccess.requireFeature(featureKey).pipe(
           trace.span('requireFeature', {
             attributes: { entityId: featureKey },
           }),
@@ -145,6 +105,7 @@ export class FeaturesService extends Effect.Service<FeaturesService>()(
 
       return {
         getFeaturesForTenant,
+        invalidateTenant,
         setTenantPlan,
         setFeatureOverride,
         clearFeatureOverride,

@@ -1,3 +1,4 @@
+import { Schema } from 'effect';
 import type {
   ProductImportAiProposalDto,
   ProductImportApprovedPlanDto,
@@ -9,10 +10,15 @@ import type {
   ProductImportResultDto,
   ProductImportWarningDto,
 } from '@stocket/types/products';
-import type { Effect } from 'effect';
-import type { areas, categories, locations } from '../../../platform/db/schema';
-import type { ProductRow } from '../products.utils';
-import type { ProductImportProgressMessageKey } from './progress';
+import type {
+  areas,
+  categories,
+  inventory,
+  locations,
+} from '../../../platform/db/schema';
+import type { MessageKey } from '../../../platform/catalogs';
+import type { MessageArgs } from '../../../platform/observability/messages';
+import type { ProductRow } from '../types';
 
 export type {
   ProductImportAiProposalDto,
@@ -32,8 +38,138 @@ export const ProductImportTypes = [
   'sortly-items',
 ] as const;
 
+export const PRODUCT_IMPORT_PROGRESS_MESSAGES = {
+  queued: 'products.importProgressQueued',
+  starting: 'products.importProgressStarting',
+  rowsProcessed: 'products.importProgressRowsProcessed',
+  completed: 'products.importProgressCompleted',
+} as const satisfies Record<string, MessageKey>;
+
+export type ProductImportProgressMessageKey =
+  (typeof PRODUCT_IMPORT_PROGRESS_MESSAGES)[keyof typeof PRODUCT_IMPORT_PROGRESS_MESSAGES];
+
+const PRODUCT_IMPORT_PROGRESS_MESSAGE_KEYS = new Set<string>(
+  Object.values(PRODUCT_IMPORT_PROGRESS_MESSAGES),
+);
+
+export const isProductImportProgressMessageKey = (
+  value: string | null,
+): value is ProductImportProgressMessageKey =>
+  value !== null && PRODUCT_IMPORT_PROGRESS_MESSAGE_KEYS.has(value);
+
+export const productImportProgressMessageArgs = (
+  messageKey: ProductImportProgressMessageKey,
+  counts: { readonly processed: number; readonly total: number | null },
+): MessageArgs | undefined =>
+  messageKey === PRODUCT_IMPORT_PROGRESS_MESSAGES.rowsProcessed &&
+  counts.total !== null
+    ? {
+        processedRows: counts.processed,
+        totalRows: counts.total,
+      }
+    : undefined;
+
+const ProductImportFormatSchema = Schema.Literal(
+  'normalized-products',
+  'sortly-items',
+);
+
+const ProductImportSkuConflictPolicySchema = Schema.Literal(
+  'reject',
+  'derive-sku',
+);
+
+const ProductImportWarningSchema = Schema.Struct({
+  row: Schema.optional(Schema.Number),
+  field: Schema.optional(Schema.String),
+  severity: Schema.optionalWith(Schema.Literal('error', 'warning'), {
+    default: () => 'warning' as const,
+  }),
+  message: Schema.String,
+});
+
+const ProductImportCategoryMappingSchema = Schema.Struct({
+  sourcePath: Schema.String,
+  targetCategoryId: Schema.optional(Schema.String),
+  targetPath: Schema.String,
+  action: Schema.optionalWith(
+    Schema.Literal('use-existing', 'create', 'default'),
+    { default: () => 'create' as const },
+  ),
+  rowCount: Schema.optionalWith(Schema.Number, { default: () => 0 }),
+});
+
+const ProductImportSupplierMappingSchema = Schema.Struct({
+  sourcePattern: Schema.String,
+  supplierName: Schema.String,
+  targetSupplierId: Schema.optional(Schema.String),
+  action: Schema.optionalWith(
+    Schema.Literal('use-existing', 'create', 'ignore'),
+    { default: () => 'create' as const },
+  ),
+  confidence: Schema.optionalWith(Schema.Number, { default: () => 1 }),
+  rowCount: Schema.optionalWith(Schema.Number, { default: () => 0 }),
+});
+
+const ProductImportLocationMappingSchema = Schema.Struct({
+  sourceLocation: Schema.String,
+  targetLocationId: Schema.optional(Schema.String),
+  targetLocationName: Schema.optional(Schema.String),
+  areaPath: Schema.optional(Schema.String),
+  action: Schema.Literal(
+    'use-existing',
+    'create-location',
+    'create-area',
+    'ignore',
+  ),
+  confidence: Schema.optionalWith(Schema.Number, { default: () => 1 }),
+  rowCount: Schema.optionalWith(Schema.Number, { default: () => 0 }),
+}).pipe(
+  Schema.filter(
+    (mapping) =>
+      mapping.action !== 'create-area' ||
+      (mapping.areaPath !== undefined && mapping.areaPath.trim() !== ''),
+  ),
+);
+
+export const ProductImportApprovedPlanSchema = Schema.Struct({
+  skuConflictPolicy: Schema.optional(ProductImportSkuConflictPolicySchema),
+  allowCreateSuppliers: Schema.optional(Schema.Boolean),
+  defaultLocationName: Schema.optional(Schema.String),
+  categoryMappings: Schema.optional(
+    Schema.Array(ProductImportCategoryMappingSchema),
+  ),
+  supplierMappings: Schema.optional(
+    Schema.Array(ProductImportSupplierMappingSchema),
+  ),
+  locationMappings: Schema.optional(
+    Schema.Array(ProductImportLocationMappingSchema),
+  ),
+});
+
+export const ProductImportAiProposalSchema = Schema.Struct({
+  format: Schema.Union(ProductImportFormatSchema, Schema.Literal('unknown')),
+  confidence: Schema.Number,
+  productIdentity: Schema.Struct({
+    sourceColumn: Schema.String,
+    conflictPolicy: ProductImportSkuConflictPolicySchema,
+  }),
+  categoryMappings: Schema.Array(ProductImportCategoryMappingSchema),
+  supplierMappings: Schema.Array(ProductImportSupplierMappingSchema),
+  locationMappings: Schema.Array(ProductImportLocationMappingSchema),
+  warnings: Schema.Array(ProductImportWarningSchema),
+});
+
+export const ProductImportPlanSchema = Schema.Union(
+  ProductImportAiProposalSchema,
+  ProductImportApprovedPlanSchema,
+);
+
 export type ProductImportType = (typeof ProductImportTypes)[number];
 export type ProductImportFormat = Exclude<ProductImportType, 'auto'>;
+export type ProductImportPlan =
+  | ProductImportApprovedPlanDto
+  | ProductImportAiProposalDto;
 
 export interface CsvParseResult {
   readonly headers: readonly string[];
@@ -64,6 +200,7 @@ export interface NormalizedProductImportRow {
 export type ImportCategoryRow = typeof categories.$inferSelect;
 export type ImportLocationRow = typeof locations.$inferSelect;
 export type ImportAreaRow = typeof areas.$inferSelect;
+export type ImportInventoryRow = typeof inventory.$inferSelect;
 export type ImportProductRow = ProductRow;
 
 export interface ImportCaches {
@@ -74,15 +211,10 @@ export interface ImportCaches {
   readonly photoUrlsByProduct: Map<string, Set<string>>;
 }
 
-export interface ImportInventoryTarget {
-  readonly locationId: string | null;
-  readonly areaId: string | null;
-}
-
 export interface ImportProductsFromCsvOptions {
   readonly content: string;
   readonly importType?: ProductImportType;
-  readonly approvedPlan?: ProductImportApprovedPlanDto;
+  readonly approvedPlan?: ProductImportPlan;
   readonly userId: string;
   readonly hooks?: ProductImportExecutionHooks;
 }
@@ -115,6 +247,10 @@ export interface ProductImportProgress {
 export interface ProductImportExecutionHooks {
   readonly onProgress?: (
     progress: ProductImportProgress,
-  ) => Effect.Effect<void, never, never>;
-  readonly isCancelRequested?: Effect.Effect<boolean, never, never>;
+  ) => import('effect').Effect.Effect<void, never, never>;
+  readonly isCancelRequested?: import('effect').Effect.Effect<
+    boolean,
+    never,
+    never
+  >;
 }

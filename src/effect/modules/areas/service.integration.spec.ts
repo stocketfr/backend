@@ -44,7 +44,10 @@ describe('AreasService Integration', () => {
 
     it('creates a child area under a parent', async () => {
       const location = await seedLocation(db);
-      const parent = await seedArea(db, { location_id: location.id, name: 'Aisle A' });
+      const parent = await seedArea(db, {
+        location_id: location.id,
+        name: 'Aisle A',
+      });
 
       const result = await run(
         Effect.flatMap(AreasService, (svc) =>
@@ -62,7 +65,10 @@ describe('AreasService Integration', () => {
     it('rejects parent area from different location', async () => {
       const locA = await seedLocation(db, { name: 'Warehouse A' });
       const locB = await seedLocation(db, { name: 'Warehouse B' });
-      const parentInB = await seedArea(db, { location_id: locB.id, name: 'Aisle B' });
+      const parentInB = await seedArea(db, {
+        location_id: locB.id,
+        name: 'Aisle B',
+      });
 
       const error = await fail(
         Effect.flatMap(AreasService, (svc) =>
@@ -108,8 +114,16 @@ describe('AreasService Integration', () => {
     it('detects circular reference', async () => {
       const location = await seedLocation(db);
       const gp = await seedArea(db, { location_id: location.id, name: 'GP' });
-      const parent = await seedArea(db, { location_id: location.id, name: 'P', parent_id: gp.id });
-      const child = await seedArea(db, { location_id: location.id, name: 'C', parent_id: parent.id });
+      const parent = await seedArea(db, {
+        location_id: location.id,
+        name: 'P',
+        parent_id: gp.id,
+      });
+      const child = await seedArea(db, {
+        location_id: location.id,
+        name: 'C',
+        parent_id: parent.id,
+      });
 
       const error = await fail(
         Effect.flatMap(AreasService, (svc) =>
@@ -124,7 +138,10 @@ describe('AreasService Integration', () => {
   describe('findById / findByIdWithChildren', () => {
     it('findById returns area with location', async () => {
       const location = await seedLocation(db, { name: 'Main Warehouse' });
-      const area = await seedArea(db, { location_id: location.id, name: 'Dock' });
+      const area = await seedArea(db, {
+        location_id: location.id,
+        name: 'Dock',
+      });
 
       const result = await run(
         Effect.flatMap(AreasService, (svc) => svc.findById(area.id)),
@@ -136,12 +153,25 @@ describe('AreasService Integration', () => {
 
     it('findByIdWithChildren includes direct children', async () => {
       const location = await seedLocation(db);
-      const parent = await seedArea(db, { location_id: location.id, name: 'Aisle' });
-      await seedArea(db, { location_id: location.id, name: 'Shelf 1', parent_id: parent.id });
-      await seedArea(db, { location_id: location.id, name: 'Shelf 2', parent_id: parent.id });
+      const parent = await seedArea(db, {
+        location_id: location.id,
+        name: 'Aisle',
+      });
+      await seedArea(db, {
+        location_id: location.id,
+        name: 'Shelf 1',
+        parent_id: parent.id,
+      });
+      await seedArea(db, {
+        location_id: location.id,
+        name: 'Shelf 2',
+        parent_id: parent.id,
+      });
 
       const result = await run(
-        Effect.flatMap(AreasService, (svc) => svc.findByIdWithChildren(parent.id)),
+        Effect.flatMap(AreasService, (svc) =>
+          svc.findByIdWithChildren(parent.id),
+        ),
       );
 
       expect(result.name).toBe('Aisle');
@@ -154,9 +184,7 @@ describe('AreasService Integration', () => {
       const location = await seedLocation(db);
       const area = await seedArea(db, { location_id: location.id });
 
-      await run(
-        Effect.flatMap(AreasService, (svc) => svc.delete(area.id)),
-      );
+      await run(Effect.flatMap(AreasService, (svc) => svc.delete(area.id)));
 
       const error = await fail(
         Effect.flatMap(AreasService, (svc) => svc.findById(area.id)),
