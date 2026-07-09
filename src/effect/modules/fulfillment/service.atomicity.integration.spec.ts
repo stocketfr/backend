@@ -10,6 +10,7 @@ import {
 import type { DrizzleDb } from '../../platform/db/drizzle';
 import {
   getTestDb,
+  makeTestDrizzleLayer,
   runTest,
   runTestFailure,
   seedCategory,
@@ -21,7 +22,6 @@ import {
   seedProduct,
   TEST_USER_ID,
   TEST_USER_ID_2,
-  testPlatformLayer,
   withTestDb,
 } from '../../testing/test-harness';
 import { FulfillmentService } from './service';
@@ -32,7 +32,9 @@ let TestLayer: Layer.Layer<FulfillmentService>;
 withTestDb();
 beforeAll(() => {
   db = getTestDb();
-  TestLayer = FulfillmentService.Default.pipe(Layer.provide(testPlatformLayer));
+  TestLayer = FulfillmentService.Default.pipe(
+    Layer.provide(makeTestDrizzleLayer()),
+  );
 });
 
 async function seedConfirmedPickScenario(

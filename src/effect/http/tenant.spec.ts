@@ -2,6 +2,7 @@ import { HttpServerRequest, HttpServerResponse } from '@effect/platform';
 import { Effect, Layer } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 import type { BetterAuthService } from '../platform/auth/better-auth';
+import { AppConfig } from '../platform/config/app-config';
 import {
   CurrentRequestContext,
   type RequestContext,
@@ -73,6 +74,7 @@ const provideTestRequest = <A, E, R>(
   let provided = effect.pipe(
     Effect.provide(makeRequestLayer(url)),
     Effect.provide(makeBetterAuthLayer(getSession)),
+    Effect.provide(AppConfig.Default),
   );
 
   if (requestContext) {
@@ -88,21 +90,20 @@ const makeEffect = (
   url: string,
   getSession: ReturnType<typeof vi.fn>,
   requestContext?: RequestContext,
-) => provideTestRequest(
-  tenantContextMiddleware(okApp),
-  url,
-  getSession,
-  requestContext,
-);
+) =>
+  provideTestRequest(
+    tenantContextMiddleware(okApp),
+    url,
+    getSession,
+    requestContext,
+  );
 
-const makeCaughtEffect = (
-  url: string,
-  getSession: ReturnType<typeof vi.fn>,
-) => provideTestRequest(
-  tenantContextMiddleware(okApp).pipe(Effect.catchAllCause(respondCause)),
-  url,
-  getSession,
-);
+const makeCaughtEffect = (url: string, getSession: ReturnType<typeof vi.fn>) =>
+  provideTestRequest(
+    tenantContextMiddleware(okApp).pipe(Effect.catchAllCause(respondCause)),
+    url,
+    getSession,
+  );
 
 const run = (
   url: string,
@@ -114,10 +115,7 @@ describe('tenantContextMiddleware', () => {
   it('does not resolve tenant context for Better Auth routes', async () => {
     const getSession = vi.fn();
 
-    const response = await run(
-      platformUrl('/api/auth/sign-in'),
-      getSession,
-    );
+    const response = await run(platformUrl('/api/auth/sign-in'), getSession);
     expect(response.status).toBe(200);
     expect(getSession).not.toHaveBeenCalled();
   });
@@ -129,6 +127,7 @@ describe('tenantContextMiddleware', () => {
         makeRequestLayer(tenantUrl('/api/v1/products'), 'OPTIONS'),
       ),
       Effect.provide(makeBetterAuthLayer(getSession)),
+      Effect.provide(AppConfig.Default),
     );
 
     const response = await Effect.runPromise(effect);
@@ -139,10 +138,7 @@ describe('tenantContextMiddleware', () => {
   it('does not require a session for the public branding endpoint', async () => {
     const getSession = vi.fn(async () => null);
 
-    const response = await run(
-      tenantUrl('/api/v1/branding'),
-      getSession,
-    );
+    const response = await run(tenantUrl('/api/v1/branding'), getSession);
 
     expect(response.status).toBe(200);
     expect(getSession).not.toHaveBeenCalled();
@@ -152,9 +148,7 @@ describe('tenantContextMiddleware', () => {
     const getSession = vi.fn(async () => null);
 
     const error = await Effect.runPromise(
-        makeEffect(tenantUrl('/api/v1/products'), getSession).pipe(
-        Effect.flip,
-      ),
+      makeEffect(tenantUrl('/api/v1/products'), getSession).pipe(Effect.flip),
     );
 
     expect(error).toMatchObject({ _tag: 'SessionUnauthorized' });
@@ -189,7 +183,10 @@ describe('tenantContextMiddleware', () => {
     const getSession = vi.fn(async () => makeSession());
 
     const response = await Effect.runPromise(
-      makeCaughtEffect('http://unknown.example.com/api/v1/products', getSession),
+      makeCaughtEffect(
+        'http://unknown.example.com/api/v1/products',
+        getSession,
+      ),
     );
 
     expect(response.status).toBe(404);

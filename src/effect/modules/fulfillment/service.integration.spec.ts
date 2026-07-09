@@ -5,8 +5,8 @@ import {
   getTestDb,
   closeTestDb,
   truncateAll,
+  makeTestDrizzleLayer,
 } from '../../testing/integration-layer';
-import { testPlatformLayer } from '../../testing/test-harness';
 import {
   seedCategory,
   seedProduct,
@@ -27,7 +27,8 @@ let TestLayer: Layer.Layer<FulfillmentService>;
 
 beforeAll(() => {
   db = getTestDb();
-  TestLayer = FulfillmentService.Default.pipe(Layer.provide(testPlatformLayer));
+  const dbLayer = makeTestDrizzleLayer();
+  TestLayer = FulfillmentService.Default.pipe(Layer.provide(dbLayer));
 });
 
 afterAll(() => closeTestDb());
@@ -65,7 +66,15 @@ async function seedFulfillmentScenario() {
     quantity: 100,
   });
 
-  return { category, product, location, client, order, orderItem: orderItem!, inv };
+  return {
+    category,
+    product,
+    location,
+    client,
+    order,
+    orderItem: orderItem!,
+    inv,
+  };
 }
 
 describe('FulfillmentService Integration', () => {

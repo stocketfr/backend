@@ -1,8 +1,11 @@
-import { HttpRouter, HttpServerRequest } from '@effect/platform';
+import { HttpRouter } from '@effect/platform';
 import { Effect } from 'effect';
 import { UpdateNotificationPreferencesSchema } from '@stocket/types/notifications';
-import { requireSession } from '../../platform/http/session';
-import { respondJson } from '../../platform/http/errors';
+import {
+  emptyInput,
+  jsonBody,
+  tenantRoute,
+} from '../../platform/http/tenant-route';
 import { makeMessageResponse } from '../../platform/observability/messages';
 import { NotificationsService } from './service';
 
@@ -11,26 +14,40 @@ import { NotificationsService } from './service';
 export const notificationsRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
     '/preferences',
-    Effect.gen(function* () {
-      const session = yield* requireSession;
-      yield* Effect.annotateCurrentSpan({ userId: session.user.id });
-      const notifications = yield* NotificationsService;
-      return yield* respondJson(notifications.getPreferences(session.user.id));
+    tenantRoute({
+      decode: emptyInput,
+      session: 'required',
+      handler: ({ session }) =>
+        session
+          ? Effect.gen(function* () {
+              yield* Effect.annotateCurrentSpan({ userId: session.user.id });
+              const notifications = yield* NotificationsService;
+              return yield* notifications.getPreferences(session.user.id);
+            })
+          : Effect.dieMessage(
+              'Required session missing for notification preferences',
+            ),
     }),
   ),
   HttpRouter.put(
     '/preferences',
-    Effect.gen(function* () {
-      const session = yield* requireSession;
-      yield* Effect.annotateCurrentSpan({ userId: session.user.id });
-      const dto = yield* HttpServerRequest.schemaBodyJson(
-        UpdateNotificationPreferencesSchema,
-      );
-      const notifications = yield* NotificationsService;
-      yield* notifications.updatePreferences(session.user.id, dto.preferences);
-      return yield* respondJson(
-        Effect.succeed(makeMessageResponse('notifications.preferencesUpdated')),
-      );
+    tenantRoute({
+      decode: jsonBody(UpdateNotificationPreferencesSchema),
+      session: 'required',
+      handler: ({ input: dto, session }) =>
+        session
+          ? Effect.gen(function* () {
+              yield* Effect.annotateCurrentSpan({ userId: session.user.id });
+              const notifications = yield* NotificationsService;
+              yield* notifications.updatePreferences(
+                session.user.id,
+                dto.preferences,
+              );
+              return makeMessageResponse('notifications.preferencesUpdated');
+            })
+          : Effect.dieMessage(
+              'Required session missing for notification preferences',
+            ),
     }),
   ),
   HttpRouter.prefixAll('/notifications'),

@@ -54,11 +54,11 @@ export interface AppError<
   readonly statusCode: StatusCode;
 }
 
-const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
-  value !== null && typeof value === 'object';
+const isUnknownRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
 
 export const isAppError = (value: unknown): value is AppError =>
-  isRecord(value) &&
+  isUnknownRecord(value) &&
   typeof value._tag === 'string' &&
   typeof value.messageKey === 'string' &&
   typeof value.statusCode === 'number';

@@ -13,7 +13,9 @@ let TestLayer: Layer.Layer<BrandingService>;
 
 withTestDb();
 beforeAll(() => {
-  TestLayer = BrandingService.Default.pipe(Layer.provide(makeTestDrizzleLayer()));
+  TestLayer = BrandingService.Default.pipe(
+    Layer.provide(makeTestDrizzleLayer()),
+  );
 });
 
 // The integration DB is shared across Wave 2 agents running in parallel.

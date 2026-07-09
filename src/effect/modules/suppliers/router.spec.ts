@@ -9,7 +9,10 @@ import { Effect } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
 import type { SupplierResponseDto } from '@stocket/types/suppliers';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
-import { SupplierNotFound, SuppliersInfrastructureError } from './suppliers.errors';
+import {
+  SupplierNotFound,
+  SuppliersInfrastructureError,
+} from './suppliers.errors';
 import { makeSuppliersRouterHarness } from './__fixtures__/router-harness';
 import { SuppliersService } from './service';
 
@@ -78,8 +81,7 @@ describe('suppliersRouter', () => {
     it('rejects without suppliers:read', async () => {
       const { handler } = makeSuppliersRouterHarness({
         service: {
-          findAllPaginated: () =>
-            Effect.die('findAllPaginated should not run'),
+          findAllPaginated: () => Effect.die('findAllPaginated should not run'),
         },
         permissions: noAccess,
       });
@@ -91,8 +93,7 @@ describe('suppliersRouter', () => {
     it('returns 400 when the query fails to decode', async () => {
       const { handler } = makeSuppliersRouterHarness({
         service: {
-          findAllPaginated: () =>
-            Effect.die('findAllPaginated should not run'),
+          findAllPaginated: () => Effect.die('findAllPaginated should not run'),
         },
         permissions: readOnly,
       });

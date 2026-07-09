@@ -1,8 +1,9 @@
 import { Effect } from 'effect';
 import { makeGetOrFail } from './effect/from-null-or';
+import { makeEnsureExistByIds, makeEnsureExistsById } from './effect/existence';
 
 export interface ReferenceEntityOperationsOptions<
-  Entity,
+  Entity extends { readonly id: string },
   Response,
   NotFound,
   LookupError,
@@ -19,12 +20,15 @@ export interface ReferenceEntityOperationsOptions<
   readonly existsById: (
     id: string,
   ) => Effect.Effect<boolean, LookupError, LookupContext>;
+  readonly findByIds: (
+    ids: readonly string[],
+  ) => Effect.Effect<readonly Entity[], LookupError, LookupContext>;
   readonly makeNotFound: (id: string) => NotFound;
   readonly toResponse: (entity: NonNullable<Entity>) => Response;
 }
 
 export const makeReferenceEntityOperations = <
-  Entity,
+  Entity extends { readonly id: string },
   Response,
   NotFound,
   LookupError,
@@ -43,9 +47,16 @@ export const makeReferenceEntityOperations = <
   >,
 ) => {
   const getOrFail = makeGetOrFail(options.findById, options.makeNotFound);
+  const ensureExistsById = makeEnsureExistsById(
+    options.existsById,
+    options.makeNotFound,
+  );
+  const ensureExistByIds = makeEnsureExistByIds(
+    options.findByIds,
+    options.makeNotFound,
+  );
 
-  const findOne = (id: string) =>
-    Effect.map(getOrFail(id), options.toResponse);
+  const findOne = (id: string) => Effect.map(getOrFail(id), options.toResponse);
 
   const remove = (id: string) =>
     Effect.gen(function* () {
@@ -58,5 +69,7 @@ export const makeReferenceEntityOperations = <
     findOne,
     remove,
     existsById: options.existsById,
+    ensureExistsById,
+    ensureExistByIds,
   };
 };

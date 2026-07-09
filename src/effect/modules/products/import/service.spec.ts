@@ -10,11 +10,10 @@ import { ProductImportRepository } from './repository';
 import type { ProductImportPlan } from './types';
 import {
   detectProductImportFormat,
-  makeProductImportProposal,
   normalizeProductImportRecords,
-  parseDate,
-  parseProductImportNumber,
-} from './utils';
+} from './utils/csv';
+import { makeProductImportProposal } from './utils/proposal';
+import { parseDate, parseProductImportNumber } from './utils/value-parsers';
 import { ProductImportLlmProposer } from './llm-proposer';
 import { ProductImportPhotoImporter } from './photo-importer';
 import { ProductImportService } from './service';
@@ -630,12 +629,8 @@ Item,Service Gloves Black,SORT-1,Accessories,3,Bar,2
       'SORT-1-SERVICE-GLOVES-WHITE',
     ]);
 
-    const blackProduct = state.productsBySku.get(
-      'SORT-1-SERVICE-GLOVES-BLACK',
-    );
-    const whiteProduct = state.productsBySku.get(
-      'SORT-1-SERVICE-GLOVES-WHITE',
-    );
+    const blackProduct = state.productsBySku.get('SORT-1-SERVICE-GLOVES-BLACK');
+    const whiteProduct = state.productsBySku.get('SORT-1-SERVICE-GLOVES-WHITE');
     const warehouse = state.locations.find(
       (location) => location.name === 'Warehouse',
     );
@@ -705,7 +700,9 @@ SKU-1,Same Product,Food,Warehouse,8
     );
 
     expect(result.inventoryRecordsUpdated).toBe(1);
-    expect(state.inventoryByKey.get(state.inventoryKey('prod-1', 'loc-1'))).toMatchObject({
+    expect(
+      state.inventoryByKey.get(state.inventoryKey('prod-1', 'loc-1')),
+    ).toMatchObject({
       quantity: 8,
       expiry_date: null,
     });
@@ -761,7 +758,9 @@ SKU-1,Changed Product,Drinks,Warehouse,8
       name: 'Same Product',
       category_id: 'cat-1',
     });
-    expect(state.inventoryByKey.get(state.inventoryKey('prod-1', 'loc-1'))).toMatchObject({
+    expect(
+      state.inventoryByKey.get(state.inventoryKey('prod-1', 'loc-1')),
+    ).toMatchObject({
       quantity: 4,
     });
   });

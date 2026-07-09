@@ -76,9 +76,7 @@ const jsonHeaders = { 'content-type': 'application/json' };
 const validCreateBody = {
   client_id: CLIENT_ID,
   delivery_address: '1 Dock Rd',
-  items: [
-    { product_id: PRODUCT_ID, quantity: 2, unit_price: 50 },
-  ],
+  items: [{ product_id: PRODUCT_ID, quantity: 2, unit_price: 50 }],
 };
 
 describe('ordersRouter', () => {
@@ -218,7 +216,9 @@ describe('ordersRouter', () => {
       const { handler } = makeOrdersRouterHarness({
         service: {
           findOne: (id: string) =>
-            Effect.fail(new OrderNotFound({ id, messageKey: 'orders.notFound' })),
+            Effect.fail(
+              new OrderNotFound({ id, messageKey: 'orders.notFound' }),
+            ),
         },
         permissions: readOnly,
       });
@@ -399,7 +399,9 @@ describe('ordersRouter', () => {
       const { handler } = makeOrdersRouterHarness({
         service: {
           update: (id: string) =>
-            Effect.fail(new OrderNotFound({ id, messageKey: 'orders.notFound' })),
+            Effect.fail(
+              new OrderNotFound({ id, messageKey: 'orders.notFound' }),
+            ),
         },
         permissions: writeAll,
         auditLog,

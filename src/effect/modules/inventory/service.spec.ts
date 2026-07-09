@@ -62,15 +62,38 @@ const makeMockRepository = (
       total_pages: 1,
     }),
   ),
+  findAllPaginatedWithRelations: vi.fn().mockReturnValue(
+    Effect.succeed({
+      data: [makeInventoryEntity()],
+      total: 1,
+      page: 1,
+      limit: 20,
+      total_pages: 1,
+    }),
+  ),
   findAll: vi.fn().mockReturnValue(Effect.succeed([makeInventoryEntity()])),
+  findAllWithRelations: vi
+    .fn()
+    .mockReturnValue(Effect.succeed([makeInventoryEntity()])),
   findById: vi.fn().mockReturnValue(Effect.succeed(makeInventoryEntity())),
+  findByIdWithRelations: vi
+    .fn()
+    .mockReturnValue(Effect.succeed(makeInventoryEntity())),
   findByProductId: vi
+    .fn()
+    .mockReturnValue(Effect.succeed([makeInventoryEntity()])),
+  findByProductIdWithRelations: vi
     .fn()
     .mockReturnValue(Effect.succeed([makeInventoryEntity()])),
   findByLocationId: vi
     .fn()
     .mockReturnValue(Effect.succeed([makeInventoryEntity()])),
-  findByProductAndLocation: vi.fn().mockReturnValue(Effect.succeed(null)),
+  findByLocationIdWithRelations: vi
+    .fn()
+    .mockReturnValue(Effect.succeed([makeInventoryEntity()])),
+  findByProductAndLocationWithRelations: vi
+    .fn()
+    .mockReturnValue(Effect.succeed(null)),
   create: vi
     .fn()
     .mockReturnValue(
@@ -200,7 +223,7 @@ describe('Effect InventoryService', () => {
 
     it('fails with InventoryNotFound', async () => {
       const repository = makeMockRepository({
-        findById: vi.fn().mockReturnValue(Effect.succeed(null)),
+        findByIdWithRelations: vi.fn().mockReturnValue(Effect.succeed(null)),
       });
       const service = await buildService(repository);
 
@@ -217,7 +240,9 @@ describe('Effect InventoryService', () => {
       const result = await run(service.findByProduct('product-1'));
 
       expect(result).toHaveLength(1);
-      expect(repository.findByProductId).toHaveBeenCalledWith('product-1');
+      expect(repository.findByProductIdWithRelations).toHaveBeenCalledWith(
+        'product-1',
+      );
     });
 
     it('fails when product does not exist', async () => {
@@ -239,7 +264,9 @@ describe('Effect InventoryService', () => {
       const result = await run(service.findByLocation('location-1'));
 
       expect(result).toHaveLength(1);
-      expect(repository.findByLocationId).toHaveBeenCalledWith('location-1');
+      expect(repository.findByLocationIdWithRelations).toHaveBeenCalledWith(
+        'location-1',
+      );
     });
 
     it('fails when location does not exist', async () => {
@@ -271,27 +298,23 @@ describe('Effect InventoryService', () => {
 
     it('creates inventory after validating related entities', async () => {
       const repository = makeMockRepository({
-        findById: vi
-          .fn()
-          .mockReturnValueOnce(
-            Effect.succeed(
-              makeInventoryEntity({
-                id: 'inventory-created',
-                area_id: 'area-1',
-                area: makeAreaDto(),
-              }),
-            ),
+        findByIdWithRelations: vi.fn().mockReturnValueOnce(
+          Effect.succeed(
+            makeInventoryEntity({
+              id: 'inventory-created',
+              area_id: 'area-1',
+              area: makeAreaDto(),
+            }),
           ),
+        ),
       });
       const service = await buildService(repository);
 
       const result = await run(service.create(createDto));
 
-      expect(repository.findByProductAndLocation).toHaveBeenCalledWith(
-        'product-1',
-        'location-1',
-        'area-1',
-      );
+      expect(
+        repository.findByProductAndLocationWithRelations,
+      ).toHaveBeenCalledWith('product-1', 'location-1', 'area-1');
       expect(repository.create).toHaveBeenCalledWith({
         product_id: 'product-1',
         location_id: 'location-1',
@@ -372,7 +395,7 @@ describe('Effect InventoryService', () => {
 
     it('fails when matching inventory already exists', async () => {
       const repository = makeMockRepository({
-        findByProductAndLocation: vi
+        findByProductAndLocationWithRelations: vi
           .fn()
           .mockReturnValue(Effect.succeed(makeInventoryEntity())),
       });
@@ -396,7 +419,7 @@ describe('Effect InventoryService', () => {
 
     it('updates location and area after revalidating uniqueness', async () => {
       const repository = makeMockRepository({
-        findById: vi
+        findByIdWithRelations: vi
           .fn()
           .mockReturnValueOnce(Effect.succeed(makeInventoryEntity()))
           .mockReturnValueOnce(
@@ -440,11 +463,9 @@ describe('Effect InventoryService', () => {
         } as any),
       );
 
-      expect(repository.findByProductAndLocation).toHaveBeenCalledWith(
-        'product-1',
-        'location-2',
-        'area-2',
-      );
+      expect(
+        repository.findByProductAndLocationWithRelations,
+      ).toHaveBeenCalledWith('product-1', 'location-2', 'area-2');
       expect(repository.update).toHaveBeenCalledWith('inventory-1', {
         location_id: 'location-2',
         area_id: 'area-2',
@@ -457,7 +478,7 @@ describe('Effect InventoryService', () => {
 
     it('fails when the updated combination already exists', async () => {
       const repository = makeMockRepository({
-        findByProductAndLocation: vi
+        findByProductAndLocationWithRelations: vi
           .fn()
           .mockReturnValue(
             Effect.succeed(makeInventoryEntity({ id: 'inventory-2' })),
@@ -482,7 +503,7 @@ describe('Effect InventoryService', () => {
   describe('adjustQuantity', () => {
     it('adjusts quantity and reloads the item', async () => {
       const repository = makeMockRepository({
-        findById: vi
+        findByIdWithRelations: vi
           .fn()
           .mockReturnValueOnce(
             Effect.succeed(makeInventoryEntity({ quantity: 10 })),
@@ -528,7 +549,7 @@ describe('Effect InventoryService', () => {
 
     it('fails with InventoryNotFound when deleting nonexistent inventory', async () => {
       const repository = makeMockRepository({
-        findById: vi.fn().mockReturnValue(Effect.succeed(null)),
+        findByIdWithRelations: vi.fn().mockReturnValue(Effect.succeed(null)),
       });
       const service = await buildService(repository);
 

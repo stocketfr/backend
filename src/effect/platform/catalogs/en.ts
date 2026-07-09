@@ -14,12 +14,15 @@ export const enCatalog = {
   'auditLogs.repositoryFailed': 'Audit log operation failed.',
   'auth.permissionDenied': 'Insufficient permissions.',
   'auth.unauthorized': 'Unauthorized.',
+  'e2e.seedDisabled': 'E2E seeding is disabled.',
+  'e2e.seedFailed': 'E2E seed failed.',
   'email.sendFailed': 'Email delivery failed.',
   'email.welcomeRequestFailed': 'Failed to request the welcome email.',
   'tenant.membershipRejected':
     'The active tenant is not available for this user.',
   'tenant.notResolved': 'No active tenant could be resolved for this request.',
   'tenant.hostNotFound': 'Tenant host not found.',
+  'tenantFeatures.repositoryFailed': 'Tenant feature operation failed.',
   'branding.repositoryFailed': 'Branding operation failed.',
   'branding.sessionUserUnavailable': 'Session user is not available.',
   'categories.circularReference':
@@ -118,8 +121,7 @@ export const enCatalog = {
     'Could not parse the uploaded product import plan.',
   'products.importReadUploadFailed':
     'Failed to read the uploaded product import file.',
-  'products.importUnsupportedFormat':
-    'Unsupported product import CSV headers.',
+  'products.importUnsupportedFormat': 'Unsupported product import CSV headers.',
   'products.infrastructureFailed': 'Product operation failed.',
   'products.notDeleted': 'Product is not deleted.',
   'products.notFound': 'Product not found.',

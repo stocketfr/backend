@@ -18,7 +18,10 @@
  * or to assert on method calls (spy with `vi.fn()`).
  */
 import { Layer } from 'effect';
-import { BetterAuth, type BetterAuthService } from '../platform/auth/better-auth';
+import {
+  BetterAuth,
+  type BetterAuthService,
+} from '../platform/auth/better-auth';
 
 /** A minimal Better Auth user shape compatible with what the admin plugin returns. */
 export interface FakeBetterAuthUser {
@@ -153,7 +156,10 @@ export function makeBetterAuthStub(
     // The three fields below are typed `typeof auth` / `typeof auth.handler`
     // in production. Cast through unknown to keep the test stub ergonomic —
     // we never call these unless a test explicitly overrides them.
-    auth: { api, $context: Promise.resolve({ runMigrations: async () => {} }) } as unknown as BetterAuthService['auth'],
+    auth: {
+      api,
+      $context: Promise.resolve({ runMigrations: async () => {} }),
+    } as unknown as BetterAuthService['auth'],
     handler: inert as unknown as BetterAuthService['handler'],
   };
 }

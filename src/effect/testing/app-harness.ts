@@ -24,13 +24,13 @@ import { UsersService } from '../modules/users/service';
 import { auditLayer } from '../platform/audit/index';
 import { BetterAuthHeaders } from '../platform/auth/better-auth';
 import { PermissionProvider } from '../platform/auth/permission-provider';
+import { AppConfig } from '../platform/config/app-config';
 import { makeTestDrizzleLayer } from './integration-layer';
 import {
   makeBetterAuthTestLayer,
   type BetterAuthStubOptions,
 } from './better-auth-test';
 import { makeInMemoryStorageAdapterLayer } from '../platform/storage';
-import { drizzleTransactionLayer } from '../platform/transaction';
 import { TEST_BETTER_AUTH_HEADERS } from './test-harness';
 
 interface TestHttpAppOptions {
@@ -40,10 +40,9 @@ interface TestHttpAppOptions {
 
 export const makeTestApplicationLayer = (options: TestHttpAppOptions = {}) => {
   const storage = makeInMemoryStorageAdapterLayer();
-  const testDrizzleLayer = makeTestDrizzleLayer();
   const platformLayer = Layer.mergeAll(
-    testDrizzleLayer,
-    drizzleTransactionLayer.pipe(Layer.provide(testDrizzleLayer)),
+    AppConfig.Default,
+    makeTestDrizzleLayer(),
     makeBetterAuthTestLayer({
       overrides: {
         getSession: async () => options.session ?? null,

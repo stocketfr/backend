@@ -1,5 +1,5 @@
 import { Effect, Layer } from 'effect';
-import { PhotosService, type UploadedFile } from './service';
+import { PhotosService } from './service';
 import { PhotosRepository } from './repository';
 import type { photos } from '../../platform/db/schema';
 import { makeTestLayer } from '../../testing/utils';
@@ -9,6 +9,7 @@ import {
   type InMemoryStorageAdapter,
 } from '../../platform/storage';
 import { PhotosInfrastructureError } from './photos.errors';
+import type { UploadedFile } from './types';
 
 type PhotoEntity = typeof photos.$inferSelect;
 type CreatePhotoInput = Parameters<PhotosRepository['create']>[0];
@@ -133,9 +134,7 @@ describe('Effect PhotosService', () => {
       if (!objectKey) {
         throw new Error('expected uploaded object key');
       }
-      expect(objectKey).toMatch(
-        /^products\/prod-1\/photos\/[0-9a-f-]+\.jpg$/,
-      );
+      expect(objectKey).toMatch(/^products\/prod-1\/photos\/[0-9a-f-]+\.jpg$/);
       expect(storage.store.get(objectKey)?.equals(JPEG_HEADER)).toBe(true);
       expect(repository.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -171,9 +170,7 @@ describe('Effect PhotosService', () => {
       if (!objectKey) {
         throw new Error('expected uploaded object key');
       }
-      expect(objectKey).toMatch(
-        /^products\/prod-1\/photos\/[0-9a-f-]+\.png$/,
-      );
+      expect(objectKey).toMatch(/^products\/prod-1\/photos\/[0-9a-f-]+\.png$/);
     });
 
     it('rejects invalid mimetype before writing storage', async () => {

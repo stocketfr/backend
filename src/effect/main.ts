@@ -32,6 +32,8 @@ import { SuppliersService } from './modules/suppliers/service';
 import { UsersService } from './modules/users/service';
 import { auditLayer } from './platform/audit/index';
 import { BetterAuth, betterAuthLayer } from './platform/auth/better-auth';
+import { AppConfig } from './platform/config/app-config';
+import { shouldRunBetterAuthMigrations } from './platform/config/startup-config';
 import { runtimeLoggingLayer } from './platform/observability/console-logging';
 import {
   DrizzleDatabase,
@@ -49,7 +51,6 @@ import {
   type StorageConfigurationError,
   storageLayer,
 } from './platform/storage';
-import { drizzleTransactionLayer } from './platform/transaction';
 import { TracingLive } from './platform/observability/tracing';
 import { readRequiredEnv } from '@stocket/types/common';
 
@@ -70,8 +71,8 @@ if (!Number.isInteger(port) || port <= 0) {
 }
 
 const platformLayer = Layer.mergeAll(
+  AppConfig.Default,
   drizzleLayer,
-  drizzleTransactionLayer.pipe(Layer.provide(drizzleLayer)),
   betterAuthLayer,
   storageLayer,
 );
@@ -87,7 +88,9 @@ const permissionProviderLayer = Layer.effect(
   })),
 ).pipe(Layer.provide(rolesApplicationLayer));
 const authApplicationLayer = AuthService.Default.pipe(
-  Layer.provide(Layer.mergeAll(rolesApplicationLayer, featuresApplicationLayer)),
+  Layer.provide(
+    Layer.mergeAll(rolesApplicationLayer, featuresApplicationLayer),
+  ),
 );
 const usersApplicationLayer = UsersService.Default.pipe(
   Layer.provide(Layer.mergeAll(platformLayer, rolesApplicationLayer)),
@@ -97,7 +100,7 @@ const superAdminApplicationLayer = SuperAdminService.Default.pipe(
 );
 
 const shouldRunStartupMigrations = () =>
-  !isProduction || process.env.RUN_BETTER_AUTH_MIGRATIONS === 'true';
+  shouldRunBetterAuthMigrations(isProduction);
 
 const runCommittedSqlMigrations = Effect.gen(function* () {
   const db = yield* DrizzleDatabase;

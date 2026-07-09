@@ -9,22 +9,21 @@ type AuditLogEntity = typeof auditLogs.$inferSelect;
 
 const makeAuditLogEntity = (
   overrides: Partial<AuditLogEntity> = {},
-): AuditLogEntity => ({
-  id: 'log-1',
-  user_id: 'user-1',
-  action: AuditAction.CREATE,
-  entity_type: AuditEntityType.PRODUCT,
-  entity_id: 'entity-1',
-  changes: null,
-  ip_address: '127.0.0.1',
-  user_agent: null,
-  created_at: new Date('2026-01-01'),
-  ...overrides,
-} as AuditLogEntity);
+): AuditLogEntity =>
+  ({
+    id: 'log-1',
+    user_id: 'user-1',
+    action: AuditAction.CREATE,
+    entity_type: AuditEntityType.PRODUCT,
+    entity_id: 'entity-1',
+    changes: null,
+    ip_address: '127.0.0.1',
+    user_agent: null,
+    created_at: new Date('2026-01-01'),
+    ...overrides,
+  }) as AuditLogEntity;
 
-const makeMockRepository = (
-  overrides: Record<string, Mock> = {},
-) => ({
+const makeMockRepository = (overrides: Record<string, Mock> = {}) => ({
   findPaginated: vi.fn().mockReturnValue(
     Effect.succeed({
       data: [makeAuditLogEntity()],
@@ -38,9 +37,7 @@ const makeMockRepository = (
   findByEntityId: vi
     .fn()
     .mockReturnValue(Effect.succeed([makeAuditLogEntity()])),
-  findByUserId: vi
-    .fn()
-    .mockReturnValue(Effect.succeed([makeAuditLogEntity()])),
+  findByUserId: vi.fn().mockReturnValue(Effect.succeed([makeAuditLogEntity()])),
   ...overrides,
 });
 

@@ -24,7 +24,12 @@ const makeHarness = () => {
   const auth = betterAuth({
     secret: 'test-secret-test-secret-test-secret-42',
     baseURL: 'http://localhost:4000',
-    database: memoryAdapter({ user: [], session: [], account: [], verification: [] }),
+    database: memoryAdapter({
+      user: [],
+      session: [],
+      account: [],
+      verification: [],
+    }),
     trustedOrigins: [FRONTEND_ORIGIN],
     emailAndPassword: {
       enabled: true,
@@ -85,7 +90,9 @@ describe('better-auth email hooks (memory adapter)', () => {
     const email = harness.sent[0]!;
     expect(email.to).toBe(SIGNUP.email);
     expect(email.subject).toBe('Vérifiez votre adresse e-mail');
-    expect(email.text).toContain('http://localhost:4000/api/auth/verify-email?token=');
+    expect(email.text).toContain(
+      'http://localhost:4000/api/auth/verify-email?token=',
+    );
   });
 
   it('sends a reset email whose link lands on the frontend with the token attached', async () => {
@@ -119,7 +126,9 @@ describe('better-auth email hooks (memory adapter)', () => {
     await waitForSent(harness, 2);
 
     const email = harness.sent.at(-1)!;
-    expect(email.subject).toBe('Bienvenue sur Stocket — créez votre mot de passe');
+    expect(email.subject).toBe(
+      'Bienvenue sur Stocket — créez votre mot de passe',
+    );
     expect(email.text).toContain('flow=welcome');
     expect(email.text).toContain('token=');
   });
