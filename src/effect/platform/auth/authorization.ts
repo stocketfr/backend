@@ -12,7 +12,10 @@ import {
 } from '../effect/domain-errors';
 import { isPlatformHost, resolveRequestHost } from '../tenancy/host';
 import { requireSession } from '../http/session';
-import { getRequestTenantId, resolveTenantForSession } from '../tenancy/tenant-context';
+import {
+  getRequestTenantId,
+  resolveTenantForSession,
+} from '../tenancy/tenant-context';
 
 export class PermissionDenied extends ForbiddenError('PermissionDenied') {}
 export class PlatformHostRequired extends NotFoundError(

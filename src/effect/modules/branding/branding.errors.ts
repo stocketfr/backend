@@ -1,8 +1,15 @@
-import { InternalError, UnauthorizedError } from '../../platform/effect/domain-errors';
+import {
+  InternalError,
+  UnauthorizedError,
+} from '../../platform/effect/domain-errors';
 
-export class BrandingInfrastructureError extends InternalError('BrandingInfrastructureError')<{
+export class BrandingInfrastructureError extends InternalError(
+  'BrandingInfrastructureError',
+)<{
   readonly action: string;
   readonly cause?: unknown;
 }> {}
 
-export class BrandingUnauthorized extends UnauthorizedError('BrandingUnauthorized') {}
+export class BrandingUnauthorized extends UnauthorizedError(
+  'BrandingUnauthorized',
+) {}

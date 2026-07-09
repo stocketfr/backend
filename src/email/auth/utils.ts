@@ -3,7 +3,10 @@ import {
   WELCOME_FLOW_PARAM,
   WELCOME_FLOW_VALUE,
 } from '@stocket/types/auth';
-import { firstFrontendOrigin, tryParseUrl } from '../../config/frontend-url.utils';
+import {
+  firstFrontendOrigin,
+  tryParseUrl,
+} from '../../config/frontend-url.utils';
 import type { AuthEmailUser } from './types';
 
 // better-auth's reset URL points at its own GET /reset-password/:token redirect
@@ -12,8 +15,9 @@ import type { AuthEmailUser } from './types';
 export const buildResetActionUrl = (url: string, token: string): URL => {
   const callbackParam = tryParseUrl(url)?.searchParams.get('callbackURL');
   const action =
-    (callbackParam ? tryParseUrl(callbackParam, firstFrontendOrigin()) : null) ??
-    new URL(RESET_PASSWORD_PATH, firstFrontendOrigin());
+    (callbackParam
+      ? tryParseUrl(callbackParam, firstFrontendOrigin())
+      : null) ?? new URL(RESET_PASSWORD_PATH, firstFrontendOrigin());
   action.searchParams.set('token', token);
   return action;
 };

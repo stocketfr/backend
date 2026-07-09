@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { UserSession } from '../auth/user-session';
 import { members, organizations } from '../db/schema';
 import { DrizzleDatabase } from '../db/drizzle';
-import { CurrentRequestContext, type RequestContext } from '../http/request-context';
+import {
+  CurrentRequestContext,
+  type RequestContext,
+} from '../http/request-context';
 import {
   resolveTenantForSession,
   TenantMembershipRejected,

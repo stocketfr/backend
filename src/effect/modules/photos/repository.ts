@@ -1,7 +1,10 @@
 import { Effect } from 'effect';
 import { eq, asc, sql, and } from 'drizzle-orm';
 import { makeTryAsync } from '../../platform/effect/try-async';
-import { TenantQuery } from '../../platform/tenancy/tenant-query';
+import {
+  TenantQuery,
+  type TenantScope,
+} from '../../platform/tenancy/tenant-query';
 import { DrizzleDatabase } from '../../platform/db/drizzle';
 import { photos, products } from '../../platform/db/schema';
 import { PhotosInfrastructureError } from './photos.errors';
@@ -21,12 +24,15 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
     effect: Effect.gen(function* () {
       const db = yield* DrizzleDatabase;
       const tenantQuery = yield* TenantQuery;
-      const tenantOwnsProduct = (tenantId: string) =>
-        sql`${photos.product_id} IN (SELECT id FROM products WHERE tenant_id = ${tenantId})`;
+      const currentTenantScope = Effect.map(tenantQuery.tenantId, (tenantId) =>
+        tenantQuery.forTenant(tenantId),
+      );
+      const tenantOwnsProduct = (tenantScope: TenantScope) =>
+        sql`${photos.product_id} IN (SELECT id FROM products WHERE ${tenantScope.whereTenant(products)})`;
 
       const findByProductId = (productId: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const tenantScope = yield* currentTenantScope;
           return yield* tryAsync('list photos by product', () =>
             db
               .select()
@@ -34,7 +40,7 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
               .where(
                 and(
                   eq(photos.product_id, productId),
-                  tenantOwnsProduct(tenantId),
+                  tenantOwnsProduct(tenantScope),
                 ),
               )
               .orderBy(asc(photos.display_order), asc(photos.created_at)),
@@ -43,12 +49,12 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
 
       const findById = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const tenantScope = yield* currentTenantScope;
           return yield* tryAsync('load photo', async () => {
             const rows = await db
               .select()
               .from(photos)
-              .where(and(eq(photos.id, id), tenantOwnsProduct(tenantId)))
+              .where(and(eq(photos.id, id), tenantOwnsProduct(tenantScope)))
               .limit(1);
             return rows[0] ?? null;
           });
@@ -56,17 +62,12 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
 
       const create = (data: typeof photos.$inferInsert) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const tenantScope = yield* currentTenantScope;
           return yield* tryAsync('create photo', async () => {
             const productRows = await db
               .select({ id: products.id })
               .from(products)
-              .where(
-                and(
-                  eq(products.tenant_id, tenantId),
-                  eq(products.id, data.product_id),
-                ),
-              )
+              .where(tenantScope.whereTenantId(products, data.product_id))
               .limit(1);
             if (productRows.length === 0) {
               throw new Error('Photo product does not belong to tenant');
@@ -79,17 +80,17 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
 
       const remove = (id: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const tenantScope = yield* currentTenantScope;
           return yield* tryAsync('delete photo metadata', async () => {
             await db
               .delete(photos)
-              .where(and(eq(photos.id, id), tenantOwnsProduct(tenantId)));
+              .where(and(eq(photos.id, id), tenantOwnsProduct(tenantScope)));
           });
         });
 
       const countByProductId = (productId: string) =>
         Effect.gen(function* () {
-          const tenantId = yield* tenantQuery.tenantId;
+          const tenantScope = yield* currentTenantScope;
           return yield* tryAsync('count photos by product', async () => {
             const rows = await db
               .select({ count: sql<number>`count(*)::int` })
@@ -97,7 +98,7 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
               .where(
                 and(
                   eq(photos.product_id, productId),
-                  tenantOwnsProduct(tenantId),
+                  tenantOwnsProduct(tenantScope),
                 ),
               );
             return rows[0]?.count ?? 0;

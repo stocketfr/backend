@@ -39,10 +39,6 @@ const tryAsync = makeTryAsync(
     }),
 );
 
-export type AuditLogRowWithUser = typeof auditLogs.$inferSelect & {
-  readonly user_name: string | null;
-};
-
 function buildAuditFilters(options: AuditLogQueryOptions): SQL[] {
   const conditions: SQL[] = [];
   if (options.entity_type) {

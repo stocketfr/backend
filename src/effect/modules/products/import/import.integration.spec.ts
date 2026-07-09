@@ -2,10 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 import { afterEach, vi } from 'vitest';
 import { Permission, Resource } from '@stocket/types/auth';
-import {
-  EntitlementSource,
-  PlanKey,
-} from '@stocket/types/features';
+import { EntitlementSource, PlanKey } from '@stocket/types/features';
 import {
   areas,
   inventory,
@@ -295,7 +292,8 @@ afterEach(() => {
 
 describe('POST /api/v1/products/import integration', () => {
   it('imports normalized CSV into products, categories, locations, and inventory', async () => {
-    const response = await postImport(`sku,name,category_path,reorder_point,quantity,location,unit,standard_price,barcode,description,notes,is_active,is_perishable,expiry_date
+    const response =
+      await postImport(`sku,name,category_path,reorder_point,quantity,location,unit,standard_price,barcode,description,notes,is_active,is_perishable,expiry_date
 IMP-001,Imported Gin,Beverages / Spirits,4,9,Main Warehouse,bottle,12.50,123456,Juniper gin,Top shelf,true,false,
 `);
 
@@ -392,14 +390,15 @@ Item,Imported Tonic,SORT-001,Drinks,Mixers,12,Bar,can,2,1.50,,QR2,Sortly notes,2
   });
 
   it('imports Sortly photo URLs into product photos', async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(JPEG_BYTES, {
-        status: 200,
-        headers: {
-          'content-type': 'image/jpeg',
-          'content-length': String(JPEG_BYTES.length),
-        },
-      }),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JPEG_BYTES, {
+          status: 200,
+          headers: {
+            'content-type': 'image/jpeg',
+            'content-length': String(JPEG_BYTES.length),
+          },
+        }),
     );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -615,7 +614,8 @@ SHARED-SKU,Default Tenant Product,Default Category,3,Default Location
       productSku: 'AREA-SKU',
     });
 
-    const response = await postImport(`sku,name,category_path,reorder_point,quantity,location
+    const response =
+      await postImport(`sku,name,category_path,reorder_point,quantity,location
 AREA-SKU,Area Product,Area Category,10,8,Area Location
 `);
 
@@ -646,7 +646,8 @@ AREA-SKU,Area Product,Area Category,10,8,Area Location
       rootQuantity: 4,
     });
 
-    const response = await postImport(`sku,name,category_path,reorder_point,quantity,location
+    const response =
+      await postImport(`sku,name,category_path,reorder_point,quantity,location
 MIXED-AREA-SKU,Mixed Area Product,Mixed Area Category,10,8,Mixed Area Location
 `);
 

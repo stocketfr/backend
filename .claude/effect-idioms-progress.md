@@ -5,6 +5,7 @@ Source of truth for the ralph-loop task: extract Effect-TS idioms from the vendo
 ## Extracted idioms (from `effect/packages/`)
 
 ### Services
+
 - `Effect.Service<Self>()("identifier", { effect | scoped | sync, dependencies?, accessors? })` is the app-code pattern.
 - `dependencies: [OtherService.Default, ...]` auto-bundles transitive layers into `.Default`.
 - `accessors: true` generates static method helpers on the class (e.g. `Logger.info(...)` vs `yield* Logger; logger.info(...)`).
@@ -12,11 +13,13 @@ Source of truth for the ralph-loop task: extract Effect-TS idioms from the vendo
 - Context.Tag / Context.GenericTag are for library-level code; `Effect.Service` is preferred for app services.
 
 ### Errors
+
 - `Schema.TaggedError<Self>()("Tag", {...fields}, HttpApiSchema.annotations({ status: 404 }))` — schema-driven, with HTTP status baked in.
 - `Data.TaggedError("Tag")<{...}>` — lighter; used when you don't need schema encoding.
 - Refinements: `const isFoo = (e): e is Foo => e._tag === "Foo"` — effect uses a `TypeId` symbol for cross-module discrimination.
 
 ### Effects
+
 - `Effect.fn("spanName")(function* (...args) { ... })` auto-wraps in a named span. Use for public service methods.
 - `Effect.fnUntraced` is the untraced variant.
 - `Effect.merge` == `Effect.catchAll(e => Effect.succeed(e))` — prefer `Effect.merge` (or `Effect.either`) over the anonymous arrow.
@@ -25,29 +28,35 @@ Source of truth for the ralph-loop task: extract Effect-TS idioms from the vendo
 - Prefer `Effect.gen` for multi-step logic with bindings, `pipe` for pure operator chains.
 
 ### Options / nullable
+
 - `Option.fromNullable`, `Option.match({ onNone, onSome })`, `Option.getOrElse`.
 - Our `fromNullOr` helper is acceptable sugar; keep.
 
 ### HTTP
+
 - Canonical: `HttpApi` + `HttpApiGroup` + `HttpApiEndpoint` (schema-driven, OpenAPI-ready) over `HttpRouter`.
 - `HttpApiSchema.annotations({ status })` attaches HTTP status to a Schema.
 - Our code uses `HttpRouter` everywhere except Health (which uses `HttpApiBuilder`).
 
 ### Layers
+
 - `Layer.effect`, `Layer.scoped`, `Layer.succeed`, `Layer.mergeAll`, `Layer.provide`, `Layer.provideMerge`, `Layer.effectDiscard`.
 - Layer.launch for the program entry.
 
 ### Match
+
 - `Match.type<T>().pipe(Match.tag("X", ...), Match.exhaustive)` for discriminated unions.
 - `Match.value(x).pipe(Match.when(...), Match.orElse(...))` for runtime branching.
 
 ### Import style
+
 - Effect source itself uses namespace imports (`import * as Effect from "effect/Effect"`) + `.js` extensions (pure ESM).
 - App code idiomatically uses destructured imports (`import { Effect } from "effect"`) — current codebase is consistent and fine.
 
 ## Audit of `src/effect/`
 
 ### Already idiomatic ✓
+
 - `Effect.Service` with `dependencies: [X.Default]` — adopted across nearly all services (areas, audit-logs, auth, categories, clients, fulfillment, inventory, locations, orders, photos, products, roles, stock-movements, suppliers, users).
 - `fromNullOr` (`platform/from-null-or.ts`) — acceptable sugar.
 - `Data.TaggedError`-based custom error factory (`platform/domain-errors.ts`) — carries `statusCode`, `messageKey`, i18n args. Diverges from `Schema.TaggedError` but is coherent.
@@ -73,6 +82,7 @@ Source of truth for the ralph-loop task: extract Effect-TS idioms from the vendo
 - **Iteration 5**: `fulfillment/service.ts` pick loop — inlined the `=== 0` row-count guards as `Effect.filterOrFail` steps in the same pipe, dropping the intermediate bindings. Investigated photos/router.ts raw `tryPromise` calls (each has a distinct `MessageKey` that's hand-typed — per CLAUDE.md's structured-logging invariant, collapsing onto a dynamic-key helper would break Datadog indexing; left as-is).
 
 ### Remaining punch list
+
 1. Routers → HttpApi migration (large, risky; Health is the template).
 2. `accessors: true` on services — would remove `yield* SvcName; svc.method(...)` → `SvcName.method(...)` boilerplate in callers. Worth a PR.
 3. `Schema.TaggedError` migration — coupled with (1).

@@ -3,46 +3,25 @@ import { Option } from 'effect';
 import {
   isValidTenantSlug,
   normalizeHost as normalizeSharedHost,
-  readRequiredHostEnv,
 } from '@stocket/types/common';
+import {
+  readIsLocalRuntime,
+  readPlatformHost,
+  readReservedTenantSlugs,
+  readTenantBaseDomain,
+} from '../config/host-config';
 
 export { isValidTenantSlug } from '@stocket/types/common';
 
 const LOCAL_PLATFORM_HOST = 'localhost';
 const LOCAL_TENANT_BASE_DOMAIN = 'localhost';
 const LOCAL_TENANT_PORT = '3000';
-const DEFAULT_RESERVED_TENANT_SLUGS = [
-  'app',
-  'default',
-  'api',
-  'deploy',
-  'www',
-  'admin',
-  'superadmin',
-  'auth',
-  'assets',
-] as const;
-
-const parseReservedTenantSlugs = () =>
-  new Set(
-    (
-      process.env.RESERVED_TENANT_SLUGS ??
-      DEFAULT_RESERVED_TENANT_SLUGS.join(',')
-    )
-      .split(',')
-      .map((slug) => slug.trim().toLowerCase())
-      .filter(Boolean),
-  );
 
 export const normalizeHost = normalizeSharedHost;
 
-const isLocalRuntime = () =>
-  process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'staging';
+export const getTenantBaseDomain = () => readTenantBaseDomain();
 
-export const getTenantBaseDomain = () =>
-  readRequiredHostEnv('TENANT_BASE_DOMAIN');
-
-export const getPlatformHost = () => readRequiredHostEnv('PLATFORM_HOST');
+export const getPlatformHost = () => readPlatformHost();
 
 // Backwards-compatible exports for callers/tests that still use the old names.
 export const getProductionTenantBaseDomain = getTenantBaseDomain;
@@ -51,19 +30,19 @@ export const getProductionPlatformHost = getPlatformHost;
 const getPlatformHosts = () =>
   new Set([
     getPlatformHost(),
-    ...(isLocalRuntime() ? [LOCAL_PLATFORM_HOST] : []),
+    ...(readIsLocalRuntime() ? [LOCAL_PLATFORM_HOST] : []),
   ]);
 
 const getPrimaryTenantBaseDomain = () =>
-  isLocalRuntime() ? LOCAL_TENANT_BASE_DOMAIN : getTenantBaseDomain();
+  readIsLocalRuntime() ? LOCAL_TENANT_BASE_DOMAIN : getTenantBaseDomain();
 
 const getTenantBaseDomains = () =>
   new Set([
     getTenantBaseDomain(),
-    ...(isLocalRuntime() ? [LOCAL_TENANT_BASE_DOMAIN] : []),
+    ...(readIsLocalRuntime() ? [LOCAL_TENANT_BASE_DOMAIN] : []),
   ]);
 
-const getReservedTenantSlugs = () => parseReservedTenantSlugs();
+const getReservedTenantSlugs = () => readReservedTenantSlugs();
 
 export const isReservedTenantSlug = (slug: string) =>
   getReservedTenantSlugs().has(slug.toLowerCase());
@@ -139,7 +118,7 @@ export const isTenantSubdomain = (host: string | null | undefined) =>
   getTenantSlugFromHost(host) !== null;
 
 export const hostnameForTenantSlug = (slug: string) =>
-  isLocalRuntime()
+  readIsLocalRuntime()
     ? `${slug.toLowerCase()}.${getPrimaryTenantBaseDomain()}:${LOCAL_TENANT_PORT}`
     : `${slug.toLowerCase()}.${getPrimaryTenantBaseDomain()}`;
 

@@ -118,9 +118,7 @@ describe('brandingRouter', () => {
         session: null,
       });
 
-      const response = await handler(
-        new Request('http://localhost/branding'),
-      );
+      const response = await handler(new Request('http://localhost/branding'));
 
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toMatchObject({
@@ -141,9 +139,7 @@ describe('brandingRouter', () => {
         },
       });
 
-      const response = await handler(
-        new Request('http://localhost/branding'),
-      );
+      const response = await handler(new Request('http://localhost/branding'));
 
       expect(response.status).toBe(500);
       await expect(response.json()).resolves.toMatchObject({

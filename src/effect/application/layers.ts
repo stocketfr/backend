@@ -31,6 +31,7 @@ import { SuppliersService } from '../modules/suppliers/service';
 import { UsersService } from '../modules/users/service';
 import { betterAuthLayer } from '../platform/auth/better-auth';
 import { PermissionProvider } from '../platform/auth/permission-provider';
+import { AppConfig } from '../platform/config/app-config';
 import {
   type DrizzleInitializationError,
   drizzleLayer,
@@ -65,6 +66,7 @@ export interface ApplicationLayerOptions {
 }
 
 export const platformLayer = Layer.mergeAll(
+  AppConfig.Default,
   drizzleLayer,
   betterAuthLayer,
   storageLayer,
