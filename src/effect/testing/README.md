@@ -6,13 +6,13 @@ or reach into the individual modules when you want to compose by hand.
 
 ## When to use what
 
-| You are writing...                                                 | Use                                                                     |
-|--------------------------------------------------------------------|-------------------------------------------------------------------------|
-| Pure unit tests on a service with mocked repos / peer services     | `makeTestLayer(tag)({...})` + `it.effect` or plain `it`                 |
-| Integration tests that hit Postgres                                | `withTestDb()` + `testPlatformLayer` + `runTest` / `runTestFailure`     |
-| Router tests (`HttpApp.toWebHandler`)                              | `vi.mock('./service', ...)` like `modules/auth/router.spec.ts`          |
-| Anything touching `UsersService` / `BetterAuth.api`                | `makeBetterAuthTestLayer({ users: [...] })`                             |
-| Photo tests once LIB-176 lands (forward-looking)                   | `makeInMemoryStorageAdapter()` / `makeInMemoryStorageAdapterLayer()`    |
+| You are writing...                                             | Use                                                                  |
+| -------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Pure unit tests on a service with mocked repos / peer services | `makeTestLayer(tag)({...})` + `it.effect` or plain `it`              |
+| Integration tests that hit Postgres                            | `withTestDb()` + `testPlatformLayer` + `runTest` / `runTestFailure`  |
+| Router tests (`HttpApp.toWebHandler`)                          | `vi.mock('./service', ...)` like `modules/auth/router.spec.ts`       |
+| Anything touching `UsersService` / `BetterAuth.api`            | `makeBetterAuthTestLayer({ users: [...] })`                          |
+| Photo tests once LIB-176 lands (forward-looking)               | `makeInMemoryStorageAdapter()` / `makeInMemoryStorageAdapterLayer()` |
 
 ### `it.effect` vs `it` + `Effect.runPromise`
 
@@ -55,7 +55,10 @@ code. For unit tests, follow the pattern in
 For integration / router tests where you want a real layer graph, use:
 
 ```ts
-import { makeBetterAuthTestLayer, makeFakeBetterAuthUser } from './better-auth-test';
+import {
+  makeBetterAuthTestLayer,
+  makeFakeBetterAuthUser,
+} from './better-auth-test';
 
 const authLayer = makeBetterAuthTestLayer({
   users: [makeFakeBetterAuthUser({ id: 'user-1', name: 'Jane' })],

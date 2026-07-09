@@ -188,9 +188,7 @@ describe('stockMovementsRouter', () => {
     });
 
     it('returns movements for the product on success', async () => {
-      const findByProduct = vi.fn(() =>
-        Effect.succeed([makeMovement()]),
-      );
+      const findByProduct = vi.fn(() => Effect.succeed([makeMovement()]));
       const { handler } = makeStockMovementsRouterHarness({
         service: { findByProduct },
         permissions: readOnly,
@@ -253,9 +251,7 @@ describe('stockMovementsRouter', () => {
     });
 
     it('returns movements for the location on success', async () => {
-      const findByLocation = vi.fn(() =>
-        Effect.succeed([makeMovement()]),
-      );
+      const findByLocation = vi.fn(() => Effect.succeed([makeMovement()]));
       const { handler } = makeStockMovementsRouterHarness({
         service: { findByLocation },
         permissions: readOnly,
@@ -315,7 +311,9 @@ describe('stockMovementsRouter', () => {
 
     it('returns the movement on success', async () => {
       const findOne = vi.fn((id: string) =>
-        Effect.succeed(makeMovement({ id } as Partial<StockMovementResponseDto>)),
+        Effect.succeed(
+          makeMovement({ id } as Partial<StockMovementResponseDto>),
+        ),
       );
       const { handler } = makeStockMovementsRouterHarness({
         service: { findOne },

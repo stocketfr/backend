@@ -12,7 +12,10 @@ export function normalizeStorageLocationName(value: string): string {
 }
 
 export const joinAreaPath = (segments: readonly string[]): string =>
-  segments.map((segment) => segment.trim()).filter(Boolean).join(' / ');
+  segments
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .join(' / ');
 
 const escapeRegExp = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

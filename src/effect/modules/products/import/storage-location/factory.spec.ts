@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  createStorageLocationParser,
-  suggestLocationMapping,
-} from './factory';
+import { createStorageLocationParser, suggestLocationMapping } from './factory';
 
 describe('storage location parser factory', () => {
   it('creates parsers for every product import format', () => {

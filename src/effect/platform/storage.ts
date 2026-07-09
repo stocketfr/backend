@@ -9,7 +9,7 @@ import {
   S3Client,
   S3ServiceException,
 } from '@aws-sdk/client-s3';
-import { Context, Data, Effect, Layer } from 'effect';
+import { Config, Context, Data, Effect, Layer } from 'effect';
 
 export class StorageConfigurationError extends Data.TaggedError(
   'StorageConfigurationError',
@@ -68,18 +68,16 @@ interface S3StorageConfig {
 }
 
 const requiredEnv = (name: string) =>
-  Effect.gen(function* () {
-    const value = process.env[name]?.trim();
-    if (!value) {
-      return yield* Effect.fail(
+  Config.nonEmptyString(name).pipe(
+    Effect.mapError(
+      (cause) =>
         new StorageConfigurationError({
           variable: name,
           message: `${name} is required for object storage`,
+          cause,
         }),
-      );
-    }
-    return value;
-  });
+    ),
+  );
 
 const parseEndpoint = (value: string) =>
   Effect.try({

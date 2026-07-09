@@ -1,10 +1,14 @@
 import type { UserSession } from './user-session';
 
-export const getUserIdFromSession = (session: UserSession | undefined): string | null => {
+export const getUserIdFromSession = (
+  session: UserSession | undefined,
+): string | null => {
   return session?.user?.id ?? null;
 };
 
-export const getSessionIdFromSession = (session: UserSession | undefined): string | null => {
+export const getSessionIdFromSession = (
+  session: UserSession | undefined,
+): string | null => {
   return session?.session?.id ?? null;
 };
 

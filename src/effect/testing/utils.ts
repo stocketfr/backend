@@ -14,7 +14,10 @@ import { vi, type Mock } from 'vitest';
  *   });
  *   // Provide via Effect.provide(repoLayer) inside it.effect(...)
  */
-const makeUnimplementedProxy = <S extends object>(key: string, service: Partial<S>): S =>
+const makeUnimplementedProxy = <S extends object>(
+  key: string,
+  service: Partial<S>,
+): S =>
   new Proxy(service as S, {
     get(target, prop) {
       if (prop in target) return (target as any)[prop];
@@ -62,6 +65,7 @@ export const createChainableMock = <T>(
   for (const method of [...DEFAULT_CHAIN_METHODS, ...extraMethods]) {
     chain[method] = vi.fn().mockReturnValue(chain);
   }
+  // oxlint-disable-next-line unicorn/no-thenable -- Drizzle query mocks are awaited in tests.
   chain.then = (resolve) => resolve(resolveValue);
   return chain;
 };

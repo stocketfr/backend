@@ -1,17 +1,23 @@
-import { HttpRouter, HttpServerRequest } from '@effect/platform';
+import { HttpRouter } from '@effect/platform';
 import { Effect, Schema } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
+import { respondAuditedMutation } from '../../platform/audited-mutation';
 import {
   CreateSupplierSchema,
   SupplierIdSchema,
   SupplierQuerySchema,
   UpdateSupplierSchema,
 } from '@stocket/types/suppliers';
-import { requirePermission } from '../../platform/auth/authorization';
-import { respondJson } from '../../platform/http/errors';
-import { respondAuditedMutation } from '../../platform/audited-mutation';
 import { makeMessageResponse } from '../../platform/observability/messages';
+import {
+  jsonBody,
+  pathParams,
+  pathParamsAndJsonBody,
+  queryParams,
+  tenantRouteContext,
+  tenantRoute,
+} from '../../platform/http/tenant-route';
 import { SuppliersService } from './service';
 
 const SupplierPathParams = Schema.Struct({ id: SupplierIdSchema });
@@ -19,63 +25,87 @@ const SupplierPathParams = Schema.Struct({ id: SupplierIdSchema });
 export const suppliersRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
     '/',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.SUPPLIERS, Permission.READ);
-      const query = yield* HttpServerRequest.schemaSearchParams(SupplierQuerySchema);
-      const suppliersService = yield* SuppliersService;
-      return yield* respondJson(suppliersService.findAllPaginated(query));
+    tenantRoute({
+      permissions: [[Resource.SUPPLIERS, Permission.READ]],
+      decode: queryParams(SupplierQuerySchema),
+      handler: ({ input: query }) =>
+        Effect.flatMap(SuppliersService, (suppliersService) =>
+          suppliersService.findAllPaginated(query),
+        ),
     }),
   ),
   HttpRouter.get(
     '/:id',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.SUPPLIERS, Permission.READ);
-      const { id } = yield* HttpRouter.schemaPathParams(SupplierPathParams);
-      const suppliersService = yield* SuppliersService;
-      return yield* respondJson(suppliersService.findOne(id));
+    tenantRoute({
+      permissions: [[Resource.SUPPLIERS, Permission.READ]],
+      decode: pathParams(SupplierPathParams),
+      handler: ({ input: { id } }) =>
+        Effect.flatMap(SuppliersService, (suppliersService) =>
+          suppliersService.findOne(id),
+        ),
     }),
   ),
   HttpRouter.post(
     '/',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.SUPPLIERS, Permission.WRITE);
-      const dto = yield* HttpServerRequest.schemaBodyJson(CreateSupplierSchema);
-      const suppliersService = yield* SuppliersService;
-      return yield* respondAuditedMutation(suppliersService.create(dto), {
-        action: AuditAction.CREATE,
-        entityType: AuditEntityType.SUPPLIER,
-        entityId: (supplier) => supplier.id,
-        responseOptions: { status: 201 },
-      });
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.SUPPLIERS, Permission.WRITE]],
+      decode: jsonBody(CreateSupplierSchema),
+    }).pipe(
+      Effect.flatMap(({ input: dto }) =>
+        respondAuditedMutation(
+          Effect.flatMap(SuppliersService, (suppliersService) =>
+            suppliersService.create(dto),
+          ),
+          {
+            action: AuditAction.CREATE,
+            entityType: AuditEntityType.SUPPLIER,
+            entityId: (supplier) => supplier.id,
+            responseOptions: { status: 201 },
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.put(
     '/:id',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.SUPPLIERS, Permission.WRITE);
-      const { id } = yield* HttpRouter.schemaPathParams(SupplierPathParams);
-      const dto = yield* HttpServerRequest.schemaBodyJson(UpdateSupplierSchema);
-      const suppliersService = yield* SuppliersService;
-      return yield* respondAuditedMutation(suppliersService.update(id, dto), {
-        action: AuditAction.UPDATE,
-        entityType: AuditEntityType.SUPPLIER,
-        entityId: id,
-      });
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.SUPPLIERS, Permission.WRITE]],
+      decode: pathParamsAndJsonBody(SupplierPathParams, UpdateSupplierSchema),
+    }).pipe(
+      Effect.flatMap(({ input: { path, body } }) =>
+        respondAuditedMutation(
+          Effect.flatMap(SuppliersService, (suppliersService) =>
+            suppliersService.update(path.id, body),
+          ),
+          {
+            action: AuditAction.UPDATE,
+            entityType: AuditEntityType.SUPPLIER,
+            entityId: ({ id }) => id,
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.del(
     '/:id',
-    Effect.gen(function* () {
-      yield* requirePermission(Resource.SUPPLIERS, Permission.WRITE);
-      const { id } = yield* HttpRouter.schemaPathParams(SupplierPathParams);
-      const suppliersService = yield* SuppliersService;
-      return yield* respondAuditedMutation(suppliersService.delete(id), {
-        action: AuditAction.DELETE,
-        entityType: AuditEntityType.SUPPLIER,
-        entityId: id,
-        mapResponse: () => makeMessageResponse('suppliers.deleted'),
-      });
-    }),
+    tenantRouteContext({
+      permissions: [[Resource.SUPPLIERS, Permission.WRITE]],
+      decode: pathParams(SupplierPathParams),
+    }).pipe(
+      Effect.flatMap(({ input: { id } }) =>
+        respondAuditedMutation(
+          Effect.flatMap(SuppliersService, (suppliersService) =>
+            suppliersService.delete(id),
+          ),
+          {
+            action: AuditAction.DELETE,
+            entityType: AuditEntityType.SUPPLIER,
+            entityId: id,
+            mapResponse: () => makeMessageResponse('suppliers.deleted'),
+          },
+        ),
+      ),
+    ),
   ),
   HttpRouter.prefixAll('/suppliers'),
 );
