@@ -1,5 +1,5 @@
-import type { ImportCaches, ImportProductRow, ImportRunState } from './types';
-import { makeEmptyProductImportResult } from './utils';
+import type { ImportCaches, ImportProductRow } from './types';
+import { makeEmptyProductImportResult } from './utils/result';
 
 export const makeImportCaches = (): ImportCaches => ({
   categories: new Map<string, string>(),
@@ -9,7 +9,7 @@ export const makeImportCaches = (): ImportCaches => ({
   photoUrlsByProduct: new Map<string, Set<string>>(),
 });
 
-export const makeImportRunState = (): ImportRunState => ({
+export const makeImportRunState = () => ({
   caches: makeImportCaches(),
   result: makeEmptyProductImportResult(),
 });

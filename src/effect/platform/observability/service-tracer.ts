@@ -4,15 +4,24 @@ import { CurrentRequestContext } from '../http/request-context';
 type AnyEffect = Effect.Effect<any, any, any>;
 
 export type TraceModule =
+  | 'audit-logs'
+  | 'areas'
   | 'auth'
+  | 'branding'
   | 'categories'
   | 'clients'
   | 'features'
+  | 'fulfillment'
   | 'health'
+  | 'inventory'
   | 'locations'
   | 'notifications'
   | 'orders'
+  | 'photos'
+  | 'products'
+  | 'roles'
   | 'superadmin'
+  | 'stock-movements'
   | 'suppliers'
   | 'users';
 export type TraceLayer = 'service';

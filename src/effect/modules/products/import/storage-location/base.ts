@@ -7,9 +7,7 @@ import type {
 } from './types';
 import { joinAreaPath, normalizeStorageLocationName } from './utils';
 
-export abstract class StorageLocationParserBase
-  implements StorageLocationParser
-{
+export abstract class StorageLocationParserBase implements StorageLocationParser {
   abstract readonly source: StorageLocationParserSource;
 
   abstract parse(sourceLocation: string): StorageLocationParseResult;

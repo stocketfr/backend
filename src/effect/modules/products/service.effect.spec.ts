@@ -19,9 +19,12 @@
 import { describe, expect, it } from '@effect/vitest';
 import { Effect, Layer } from 'effect';
 import { makeTestLayer } from '../../testing/utils';
+import { CategoryNotFound as CanonicalCategoryNotFound } from '../categories/categories.errors';
 import { CategoriesService } from '../categories/service';
+import { SupplierNotFound } from '../suppliers/suppliers.errors';
 import { SuppliersService } from '../suppliers/service';
 import { ProductsRepository } from './repository';
+import { ProductsInfrastructureError } from './products.errors';
 import { ProductsService } from './service';
 
 // ---------------------------------------------------------------------------
@@ -85,6 +88,7 @@ const defaultRepoMethods: Partial<ProductsRepository> = {
   findAll: () => Effect.succeed([makeProductEntity()]),
   findById: () => Effect.succeed(makeProductEntity()),
   findBySku: () => Effect.succeed(null),
+  findBySkus: () => Effect.succeed([]),
   findByCategoryId: () => Effect.succeed([makeProductEntity()]),
   findByCategoryIds: () => Effect.succeed([makeProductEntity()]),
   findByIds: () => Effect.succeed([makeProductEntity()]),
@@ -92,24 +96,33 @@ const defaultRepoMethods: Partial<ProductsRepository> = {
     Effect.succeed([makeProductEntity({ deleted_at: new Date() })]),
   existsById: () => Effect.succeed(true),
   create: () => Effect.succeed(makeProductEntity()),
-  update: () => Effect.succeed(1),
-  updateMany: () => Effect.succeed(1),
+  update: () => Effect.succeed(makeProductEntity()),
+  updateMany: () => Effect.succeed(['prod-1']),
   softDelete: () => Effect.void,
-  softDeleteMany: () => Effect.succeed(1),
+  softDeleteMany: () => Effect.succeed(['prod-1']),
   restore: () => Effect.void,
-  restoreMany: () => Effect.succeed(1),
+  restoreMany: () => Effect.succeed(['prod-1']),
   hardDelete: () => Effect.void,
-  hardDeleteMany: () => Effect.succeed(1),
+  hardDeleteMany: () => Effect.succeed(['prod-1']),
 };
 
 const defaultCatMethods: Partial<CategoriesService> = {
   existsById: () => Effect.succeed(true),
+  ensureExistByIds: () => Effect.void,
   findAllDescendantIds: () => Effect.succeed(['child-1']),
 };
 
 const defaultSupplierMethods: Partial<SuppliersService> = {
   existsById: () => Effect.succeed(true),
+  ensureExistByIds: () => Effect.void,
 };
+
+const makeSkuUniqueViolation = () =>
+  new ProductsInfrastructureError({
+    action: 'create product',
+    cause: { code: '23505', constraint: 'products_tenant_sku_unique' },
+    messageKey: 'products.repositoryFailed',
+  });
 
 // ---------------------------------------------------------------------------
 // Layer helpers
@@ -282,6 +295,19 @@ describe('ProductsService', () => {
       ),
     );
 
+    it.effect('maps SKU unique insert failures to SkuAlreadyExists', () =>
+      withService(
+        (svc) =>
+          Effect.gen(function* () {
+            const error = yield* Effect.flip(svc.create(baseDto, undefined));
+            expect(error).toMatchObject({ _tag: 'SkuAlreadyExists' });
+          }),
+        {
+          create: () => Effect.fail(makeSkuUniqueViolation()),
+        },
+      ),
+    );
+
     it.effect('fails when price is below cost', () =>
       withService((svc) =>
         Effect.gen(function* () {
@@ -322,7 +348,7 @@ describe('ProductsService', () => {
         {
           update: () => {
             updateCalled = true;
-            return Effect.succeed(1);
+            return Effect.succeed(makeProductEntity());
           },
         },
       );
@@ -423,7 +449,43 @@ describe('ProductsService', () => {
             expect(result.failure_count).toBe(1);
           }),
         undefined,
-        { existsById: () => Effect.succeed(false) },
+        {
+          ensureExistByIds: () =>
+            Effect.fail(
+              new CanonicalCategoryNotFound({
+                id: 'missing',
+                messageKey: 'categories.notFound',
+              }),
+            ),
+        },
+      ),
+    );
+
+    it.effect('records failure when supplier is missing', () =>
+      withService(
+        (svc) =>
+          Effect.gen(function* () {
+            const result = yield* svc.bulkCreate(
+              {
+                products: [
+                  { ...singleProduct, primary_supplier_id: 'missing' },
+                ],
+              },
+              undefined,
+            );
+            expect(result.failure_count).toBe(1);
+          }),
+        undefined,
+        undefined,
+        {
+          ensureExistByIds: () =>
+            Effect.fail(
+              new SupplierNotFound({
+                id: 'missing',
+                messageKey: 'suppliers.notFound',
+              }),
+            ),
+        },
       ),
     );
 
@@ -436,6 +498,93 @@ describe('ProductsService', () => {
           );
           expect(result.failure_count).toBe(2);
         }),
+      ),
+    );
+
+    it.effect('records price-below-cost products as row failures', () => {
+      let createCalled = false;
+      return withService(
+        (svc) =>
+          Effect.gen(function* () {
+            const result = yield* svc.bulkCreate(
+              {
+                products: [
+                  {
+                    ...singleProduct,
+                    standard_cost: 100,
+                    standard_price: 50,
+                  },
+                ],
+              },
+              undefined,
+            );
+            expect(result.success_count).toBe(0);
+            expect(result.failure_count).toBe(1);
+            expect(result.failures[0]).toMatchObject({ sku: 'SKU-A' });
+            expect(createCalled).toBe(false);
+          }),
+        {
+          create: () => {
+            createCalled = true;
+            return Effect.succeed(makeProductEntity());
+          },
+        },
+      );
+    });
+
+    it.effect('checks existing SKUs in one batch lookup', () => {
+      let findBySkuCalled = false;
+      let findBySkusInput: readonly string[] = [];
+      return withService(
+        (svc) =>
+          Effect.gen(function* () {
+            const result = yield* svc.bulkCreate(
+              { products: [singleProduct] },
+              undefined,
+            );
+            expect(result.success_count).toBe(0);
+            expect(result.failure_count).toBe(1);
+            expect(result.failures[0]).toMatchObject({ sku: 'SKU-A' });
+            expect(findBySkusInput).toEqual(['SKU-A']);
+            expect(findBySkuCalled).toBe(false);
+          }),
+        {
+          findBySku: () => {
+            findBySkuCalled = true;
+            return Effect.succeed(null);
+          },
+          findBySkus: (skus) => {
+            findBySkusInput = skus;
+            return Effect.succeed([makeProductEntity({ sku: 'SKU-A' })]);
+          },
+        },
+      );
+    });
+
+    it.effect('records SKU unique insert failures and continues', () =>
+      withService(
+        (svc) =>
+          Effect.gen(function* () {
+            const result = yield* svc.bulkCreate(
+              {
+                products: [
+                  singleProduct,
+                  { ...singleProduct, sku: 'SKU-B', name: 'B' },
+                ],
+              },
+              undefined,
+            );
+            expect(result.success_count).toBe(1);
+            expect(result.failure_count).toBe(1);
+            expect(result.succeeded).toEqual(['prod-b']);
+            expect(result.failures[0]).toMatchObject({ sku: 'SKU-A' });
+          }),
+        {
+          create: (data) =>
+            data.sku === 'SKU-A'
+              ? Effect.fail(makeSkuUniqueViolation())
+              : Effect.succeed(makeProductEntity({ id: 'prod-b' })),
+        },
       ),
     );
   });
@@ -466,6 +615,28 @@ describe('ProductsService', () => {
         { findByIds: () => Effect.succeed([]) },
       ),
     );
+
+    it.effect('reports the ids returned by the update', () =>
+      withService(
+        (svc) =>
+          Effect.gen(function* () {
+            const result = yield* svc.bulkUpdateStatus(
+              { ids: ['prod-1', 'prod-2'], is_active: false },
+              undefined,
+            );
+            expect(result.success_count).toBe(1);
+            expect(result.succeeded).toEqual(['prod-2']);
+          }),
+        {
+          findByIds: () =>
+            Effect.succeed([
+              makeProductEntity({ id: 'prod-1' }),
+              makeProductEntity({ id: 'prod-2' }),
+            ]),
+          updateMany: () => Effect.succeed(['prod-2']),
+        },
+      ),
+    );
   });
 
   describe('bulkDelete', () => {
@@ -484,7 +655,7 @@ describe('ProductsService', () => {
         {
           softDeleteMany: () => {
             softDeleteManyCalled = true;
-            return Effect.succeed(1);
+            return Effect.succeed(['prod-1']);
           },
         },
       );
@@ -505,11 +676,33 @@ describe('ProductsService', () => {
         {
           hardDeleteMany: () => {
             hardDeleteManyCalled = true;
-            return Effect.succeed(1);
+            return Effect.succeed(['prod-1']);
           },
         },
       );
     });
+
+    it.effect('reports the ids returned by the delete', () =>
+      withService(
+        (svc) =>
+          Effect.gen(function* () {
+            const result = yield* svc.bulkDelete(
+              { ids: ['prod-1', 'prod-2'], permanent: false },
+              undefined,
+            );
+            expect(result.success_count).toBe(1);
+            expect(result.succeeded).toEqual(['prod-2']);
+          }),
+        {
+          findByIds: () =>
+            Effect.succeed([
+              makeProductEntity({ id: 'prod-1' }),
+              makeProductEntity({ id: 'prod-2' }),
+            ]),
+          softDeleteMany: () => Effect.succeed(['prod-2']),
+        },
+      ),
+    );
   });
 
   describe('bulkRestore', () => {
@@ -530,6 +723,27 @@ describe('ProductsService', () => {
             expect(result.failure_count).toBe(1);
           }),
         { findDeletedByIds: () => Effect.succeed([]) },
+      ),
+    );
+
+    it.effect('reports the ids returned by the restore', () =>
+      withService(
+        (svc) =>
+          Effect.gen(function* () {
+            const result = yield* svc.bulkRestore({
+              ids: ['prod-1', 'prod-2'],
+            });
+            expect(result.success_count).toBe(1);
+            expect(result.succeeded).toEqual(['prod-2']);
+          }),
+        {
+          findDeletedByIds: () =>
+            Effect.succeed([
+              makeProductEntity({ id: 'prod-1', deleted_at: new Date() }),
+              makeProductEntity({ id: 'prod-2', deleted_at: new Date() }),
+            ]),
+          restoreMany: () => Effect.succeed(['prod-2']),
+        },
       ),
     );
   });

@@ -19,9 +19,7 @@ const makeAreaEntity = (overrides: Record<string, any> = {}) => ({
   ...overrides,
 });
 
-const makeMockAreasRepository = (
-  overrides: Record<string, Mock> = {},
-) => ({
+const makeMockAreasRepository = (overrides: Record<string, Mock> = {}) => ({
   create: vi.fn().mockReturnValue(Effect.succeed(makeAreaEntity())),
   findAll: vi.fn().mockReturnValue(Effect.succeed([makeAreaEntity()])),
   findById: vi.fn().mockReturnValue(Effect.succeed(makeAreaEntity())),

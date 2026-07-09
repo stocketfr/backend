@@ -3,19 +3,38 @@ import { getOrderState } from './order-state';
 
 describe('OrderState', () => {
   describe('getOrderState', () => {
-    it.each(Object.values(OrderStatus))('should return a state for %s', (status) => {
-      const state = getOrderState(status);
-      expect(state.status).toBe(status);
-    });
+    it.each(Object.values(OrderStatus))(
+      'should return a state for %s',
+      (status) => {
+        const state = getOrderState(status);
+        expect(state.status).toBe(status);
+      },
+    );
   });
 
   describe('valid transitions', () => {
     const expectedTransitions: Record<OrderStatus, OrderStatus[]> = {
       [OrderStatus.DRAFT]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
-      [OrderStatus.CONFIRMED]: [OrderStatus.SOURCING, OrderStatus.ON_HOLD, OrderStatus.CANCELLED],
-      [OrderStatus.SOURCING]: [OrderStatus.PICKING, OrderStatus.ON_HOLD, OrderStatus.CANCELLED],
-      [OrderStatus.PICKING]: [OrderStatus.PACKED, OrderStatus.ON_HOLD, OrderStatus.CANCELLED],
-      [OrderStatus.PACKED]: [OrderStatus.SHIPPED, OrderStatus.ON_HOLD, OrderStatus.CANCELLED],
+      [OrderStatus.CONFIRMED]: [
+        OrderStatus.SOURCING,
+        OrderStatus.ON_HOLD,
+        OrderStatus.CANCELLED,
+      ],
+      [OrderStatus.SOURCING]: [
+        OrderStatus.PICKING,
+        OrderStatus.ON_HOLD,
+        OrderStatus.CANCELLED,
+      ],
+      [OrderStatus.PICKING]: [
+        OrderStatus.PACKED,
+        OrderStatus.ON_HOLD,
+        OrderStatus.CANCELLED,
+      ],
+      [OrderStatus.PACKED]: [
+        OrderStatus.SHIPPED,
+        OrderStatus.ON_HOLD,
+        OrderStatus.CANCELLED,
+      ],
       [OrderStatus.SHIPPED]: [OrderStatus.DELIVERED],
       [OrderStatus.DELIVERED]: [],
       [OrderStatus.CANCELLED]: [],
@@ -32,7 +51,9 @@ describe('OrderState', () => {
       '%s should have the correct valid transitions',
       (status) => {
         const state = getOrderState(status);
-        expect([...state.validTransitions]).toEqual(expectedTransitions[status]);
+        expect([...state.validTransitions]).toEqual(
+          expectedTransitions[status],
+        );
       },
     );
 
@@ -62,9 +83,7 @@ describe('OrderState', () => {
       const state = getOrderState(OrderStatus.DELIVERED);
       for (const target of Object.values(OrderStatus)) {
         if (target === OrderStatus.DELIVERED) continue;
-        expect(() => state.validateTransition(target)).toThrow(
-          Error,
-        );
+        expect(() => state.validateTransition(target)).toThrow(Error);
       }
     });
 
@@ -72,24 +91,28 @@ describe('OrderState', () => {
       const state = getOrderState(OrderStatus.CANCELLED);
       for (const target of Object.values(OrderStatus)) {
         if (target === OrderStatus.CANCELLED) continue;
-        expect(() => state.validateTransition(target)).toThrow(
-          Error,
-        );
+        expect(() => state.validateTransition(target)).toThrow(Error);
       }
     });
   });
 
   describe('timestampField', () => {
     it('CONFIRMED state should have timestampField confirmed_at', () => {
-      expect(getOrderState(OrderStatus.CONFIRMED).timestampField).toBe('confirmed_at');
+      expect(getOrderState(OrderStatus.CONFIRMED).timestampField).toBe(
+        'confirmed_at',
+      );
     });
 
     it('SHIPPED state should have timestampField shipped_at', () => {
-      expect(getOrderState(OrderStatus.SHIPPED).timestampField).toBe('shipped_at');
+      expect(getOrderState(OrderStatus.SHIPPED).timestampField).toBe(
+        'shipped_at',
+      );
     });
 
     it('DELIVERED state should have timestampField delivered_at', () => {
-      expect(getOrderState(OrderStatus.DELIVERED).timestampField).toBe('delivered_at');
+      expect(getOrderState(OrderStatus.DELIVERED).timestampField).toBe(
+        'delivered_at',
+      );
     });
 
     it.each([
@@ -106,11 +129,15 @@ describe('OrderState', () => {
 
   describe('terminal states', () => {
     it('DELIVERED should have no valid transitions', () => {
-      expect(getOrderState(OrderStatus.DELIVERED).validTransitions).toHaveLength(0);
+      expect(
+        getOrderState(OrderStatus.DELIVERED).validTransitions,
+      ).toHaveLength(0);
     });
 
     it('CANCELLED should have no valid transitions', () => {
-      expect(getOrderState(OrderStatus.CANCELLED).validTransitions).toHaveLength(0);
+      expect(
+        getOrderState(OrderStatus.CANCELLED).validTransitions,
+      ).toHaveLength(0);
     });
   });
 
@@ -118,7 +145,9 @@ describe('OrderState', () => {
     it('should not throw for any state (default no-op)', () => {
       const mockOrder = { status: OrderStatus.DRAFT } as any;
       for (const status of Object.values(OrderStatus)) {
-        expect(() => getOrderState(status).validateEntry(mockOrder)).not.toThrow();
+        expect(() =>
+          getOrderState(status).validateEntry(mockOrder),
+        ).not.toThrow();
       }
     });
   });

@@ -24,7 +24,9 @@ export function buildSupplier(
     phone: faker.phone.number(),
     address: faker.location.streetAddress({ useFullAddress: true }),
     website: faker.internet.url(),
-    notes: faker.helpers.maybe(() => faker.lorem.sentence(), { probability: 0.3 }),
+    notes: faker.helpers.maybe(() => faker.lorem.sentence(), {
+      probability: 0.3,
+    }),
     is_active: faker.helpers.maybe(() => false, { probability: 0.1 }) ?? true,
     ...overrides,
   };
@@ -35,22 +37,37 @@ export function buildProduct(
   supplierId: string,
   overrides: Partial<typeof products.$inferInsert> = {},
 ): typeof products.$inferInsert {
-  const standardCost = faker.number.float({ min: 5, max: 5000, fractionDigits: 2 });
-  const markupPercentage = faker.number.float({ min: 10, max: 100, fractionDigits: 2 });
+  const standardCost = faker.number.float({
+    min: 5,
+    max: 5000,
+    fractionDigits: 2,
+  });
+  const markupPercentage = faker.number.float({
+    min: 10,
+    max: 100,
+    fractionDigits: 2,
+  });
   const standardPrice = standardCost * (1 + markupPercentage / 100);
 
   return {
     sku: `SKU-${faker.string.alphanumeric({ length: 8, casing: 'upper' })}`,
     name: faker.commerce.productName(),
-    description: faker.helpers.maybe(() => faker.commerce.productDescription(), { probability: 0.7 }),
+    description: faker.helpers.maybe(
+      () => faker.commerce.productDescription(),
+      { probability: 0.7 },
+    ),
     category_id: categoryId,
-    volume_ml: faker.helpers.maybe(() => faker.number.int({ min: 100, max: 5000 }), { probability: 0.5 }),
+    volume_ml: faker.helpers.maybe(
+      () => faker.number.int({ min: 100, max: 5000 }),
+      { probability: 0.5 },
+    ),
     weight_kg: faker.helpers.maybe(
       () => faker.number.float({ min: 0.1, max: 50, fractionDigits: 3 }),
       { probability: 0.7 },
     ),
     dimensions_cm: faker.helpers.maybe(
-      () => `${faker.number.int({ min: 5, max: 100 })}x${faker.number.int({ min: 5, max: 100 })}x${faker.number.int({ min: 5, max: 100 })}`,
+      () =>
+        `${faker.number.int({ min: 5, max: 100 })}x${faker.number.int({ min: 5, max: 100 })}x${faker.number.int({ min: 5, max: 100 })}`,
       { probability: 0.6 },
     ),
     standard_cost: standardCost,
@@ -63,8 +80,11 @@ export function buildProduct(
       { probability: 0.8 },
     ),
     is_active: faker.helpers.maybe(() => false, { probability: 0.1 }) ?? true,
-    is_perishable: faker.helpers.maybe(() => true, { probability: 0.2 }) ?? false,
-    notes: faker.helpers.maybe(() => faker.lorem.sentence(), { probability: 0.3 }),
+    is_perishable:
+      faker.helpers.maybe(() => true, { probability: 0.2 }) ?? false,
+    notes: faker.helpers.maybe(() => faker.lorem.sentence(), {
+      probability: 0.3,
+    }),
     created_by: MOCK_USER_ID,
     updated_by: MOCK_USER_ID,
     ...overrides,
@@ -96,13 +116,16 @@ export function buildClient(
     yacht_name: YACHT_NAMES[index % YACHT_NAMES.length],
     contact_person: faker.person.fullName(),
     email: faker.internet.email(),
-    phone: faker.helpers.maybe(() => faker.phone.number(), { probability: 0.8 }),
+    phone: faker.helpers.maybe(() => faker.phone.number(), {
+      probability: 0.8,
+    }),
     billing_address: faker.helpers.maybe(
       () => faker.location.streetAddress({ useFullAddress: true }),
       { probability: 0.7 },
     ),
     default_delivery_address: faker.helpers.maybe(
-      () => `${faker.location.streetAddress({ useFullAddress: true })}, Marina Berth ${faker.number.int({ min: 1, max: 200 })}`,
+      () =>
+        `${faker.location.streetAddress({ useFullAddress: true })}, Marina Berth ${faker.number.int({ min: 1, max: 200 })}`,
       { probability: 0.6 },
     ),
     account_status: faker.helpers.weightedArrayElement([
@@ -111,7 +134,14 @@ export function buildClient(
       { value: ClientStatus.INACTIVE, weight: 1 },
     ]),
     payment_terms: faker.helpers.maybe(
-      () => faker.helpers.arrayElement(['Net 30', 'Net 60', 'COD', 'Prepaid', 'Net 15']),
+      () =>
+        faker.helpers.arrayElement([
+          'Net 30',
+          'Net 60',
+          'COD',
+          'Prepaid',
+          'Net 15',
+        ]),
       { probability: 0.7 },
     ),
     credit_limit: faker.helpers.maybe(
@@ -119,13 +149,14 @@ export function buildClient(
       { probability: 0.5 },
     ),
     notes: faker.helpers.maybe(
-      () => faker.helpers.arrayElement([
-        'VIP client - priority handling',
-        'Requires advance notification for deliveries',
-        'Seasonal client - active May through October',
-        'Prefers morning deliveries',
-        faker.lorem.sentence(),
-      ]),
+      () =>
+        faker.helpers.arrayElement([
+          'VIP client - priority handling',
+          'Requires advance notification for deliveries',
+          'Seasonal client - active May through October',
+          'Prefers morning deliveries',
+          faker.lorem.sentence(),
+        ]),
       { probability: 0.4 },
     ),
     ...overrides,
@@ -142,15 +173,22 @@ export function buildSupplierProduct(
     supplier_id: supplierId,
     product_id: productId,
     supplier_sku: faker.helpers.maybe(
-      () => `${supplierName.substring(0, 3).toUpperCase()}-${faker.string.alphanumeric({ length: 6, casing: 'upper' })}`,
+      () =>
+        `${supplierName.substring(0, 3).toUpperCase()}-${faker.string.alphanumeric({ length: 6, casing: 'upper' })}`,
       { probability: 0.7 },
     ),
     cost_per_unit: faker.helpers.maybe(
       () => faker.number.float({ min: 1, max: 3000, fractionDigits: 2 }),
       { probability: 0.8 },
     ),
-    lead_time_days: faker.helpers.maybe(() => faker.number.int({ min: 1, max: 45 }), { probability: 0.6 }),
-    minimum_order_quantity: faker.helpers.maybe(() => faker.number.int({ min: 1, max: 100 }), { probability: 0.5 }),
+    lead_time_days: faker.helpers.maybe(
+      () => faker.number.int({ min: 1, max: 45 }),
+      { probability: 0.6 },
+    ),
+    minimum_order_quantity: faker.helpers.maybe(
+      () => faker.number.int({ min: 1, max: 100 }),
+      { probability: 0.5 },
+    ),
     is_preferred: false,
     ...overrides,
   };
@@ -159,7 +197,11 @@ export function buildSupplierProduct(
 export function buildInventory(
   productId: string,
   locationId: string,
-  opts: { areaId?: string | null; isPerishable?: boolean; standardCost?: number | null } = {},
+  opts: {
+    areaId?: string | null;
+    isPerishable?: boolean;
+    standardCost?: number | null;
+  } = {},
   overrides: Partial<typeof inventory.$inferInsert> = {},
 ): typeof inventory.$inferInsert {
   const receivedDate = faker.date.recent({ days: 90 });
@@ -171,7 +213,8 @@ export function buildInventory(
     quantity: faker.number.int({ min: 0, max: 500 }),
     batch_number:
       faker.helpers.maybe(
-        () => `BATCH-${faker.date.recent({ days: 30 }).toISOString().slice(0, 10).replace(/-/g, '')}-${faker.string.alphanumeric({ length: 4, casing: 'upper' })}`,
+        () =>
+          `BATCH-${faker.date.recent({ days: 30 }).toISOString().slice(0, 10).replace(/-/g, '')}-${faker.string.alphanumeric({ length: 4, casing: 'upper' })}`,
         { probability: 0.4 },
       ) ?? '',
     expiry_date: opts.isPerishable
@@ -179,7 +222,10 @@ export function buildInventory(
       : undefined,
     cost_per_unit: opts.standardCost
       ? Number.parseFloat(
-          (opts.standardCost * faker.number.float({ min: 0.85, max: 1.15, fractionDigits: 2 })).toFixed(2),
+          (
+            opts.standardCost *
+            faker.number.float({ min: 0.85, max: 1.15, fractionDigits: 2 })
+          ).toFixed(2),
         )
       : undefined,
     received_date: receivedDate,

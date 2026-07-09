@@ -59,7 +59,9 @@ const withRepo = <A, E>(
   body: (repo: NotificationsRepository) => Effect.Effect<A, E, never>,
 ) => run(Effect.flatMap(NotificationsRepository, body));
 
-const pending = (over: Partial<RecordPendingParams> = {}): RecordPendingParams => ({
+const pending = (
+  over: Partial<RecordPendingParams> = {},
+): RecordPendingParams => ({
   userId: 'user-1',
   eventKind: 'low-stock',
   category: NotificationCategory.INVENTORY_ALERTS,

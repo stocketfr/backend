@@ -2,8 +2,8 @@
  * Canonical `@effect/vitest` example (Wave 0 reference).
  *
  * Why branding?
- *   - Single dependency: `DrizzleDatabase` — easy to mock with
- *     `createChainableMock`, no cross-service wiring required.
+ *   - Single dependency: `BrandingRepository` — easy to mock, no cross-service
+ *     wiring required.
  *   - Tiny public surface (`get`, `update`) — patterns stay visible.
  *   - Keeps `service.spec.ts` intact; this file demonstrates the
  *     migrated shape side-by-side.
@@ -14,8 +14,8 @@
  *      itself an Effect.
  *   2. Layers provided per-test via `Effect.provide(layer)`. Each
  *      test owns its own layer graph so there is no shared mutable state.
- *   3. Service construction via `ServiceClass.Default.pipe(Layer.provide(...))`,
- *      matching production wiring.
+ *   3. Service construction via `ServiceClass.DefaultWithoutDependencies` so
+ *      only the direct dependency is mocked.
  *
  * See `backend/src/effect/testing/README.md` for when to pick `it.effect`
  * vs plain `it` + `Effect.runPromise`.
@@ -28,10 +28,9 @@ import {
   POWERED_BY,
 } from './branding.constants';
 import { BrandingService } from './service';
-import { DrizzleDatabase, type DrizzleDb } from '../../platform/db/drizzle';
-import type { brandingSettings } from '../../platform/db/schema';
+import { BrandingRepository } from './repository';
+import type { BrandingSettingsRow } from './types';
 import { CurrentRequestContext } from '../../platform/http/request-context';
-import { createChainableMock } from '../../testing/test-harness';
 
 const tenantRequestContext = {
   requestId: '00000000-0000-4000-8000-000000000099',
@@ -42,7 +41,7 @@ const tenantRequestContext = {
   tenantId: '00000000-0000-4000-8000-000000000001',
 };
 
-type BrandingEntity = typeof brandingSettings.$inferSelect;
+type BrandingEntity = BrandingSettingsRow;
 
 const makeBrandingEntity = (
   overrides: Partial<BrandingEntity> = {},
@@ -59,9 +58,20 @@ const makeBrandingEntity = (
   ...overrides,
 });
 
-const serviceLayer = (mockDb: unknown) =>
-  BrandingService.Default.pipe(
-    Layer.provide(Layer.succeed(DrizzleDatabase, mockDb as DrizzleDb)),
+const makeMockRepository = (
+  overrides: Partial<BrandingRepository> = {},
+): BrandingRepository => ({
+  _tag: '@stocket/effect/branding/BrandingRepository',
+  findSettings: vi.fn((_tenantId: string) =>
+    Effect.succeed(makeBrandingEntity()),
+  ),
+  upsertSettings: vi.fn().mockReturnValue(Effect.void),
+  ...overrides,
+});
+
+const serviceLayer = (repository = makeMockRepository()) =>
+  BrandingService.DefaultWithoutDependencies.pipe(
+    Layer.provide(Layer.succeed(BrandingRepository, repository)),
   );
 
 const requestContextLayer = Layer.succeed(
@@ -71,7 +81,11 @@ const requestContextLayer = Layer.succeed(
 
 describe('BrandingService (it.effect)', () => {
   it.effect('returns stored branding settings', () => {
-    const mockDb = createChainableMock([makeBrandingEntity()]);
+    const repository = makeMockRepository({
+      findSettings: vi.fn((_tenantId: string) =>
+        Effect.succeed(makeBrandingEntity()),
+      ),
+    });
     return Effect.gen(function* () {
       const svc = yield* BrandingService;
       const result = yield* svc.get();
@@ -81,14 +95,19 @@ describe('BrandingService (it.effect)', () => {
         primary_color: '#ff0000',
         powered_by: POWERED_BY,
       });
+      expect(repository.findSettings).toHaveBeenCalledWith(
+        tenantRequestContext.tenantId,
+      );
     }).pipe(
-      Effect.provide(serviceLayer(mockDb)),
+      Effect.provide(serviceLayer(repository)),
       Effect.provide(requestContextLayer),
     );
   });
 
   it.effect('returns default branding when no record exists', () => {
-    const mockDb = createChainableMock([]);
+    const repository = makeMockRepository({
+      findSettings: vi.fn((_tenantId: string) => Effect.succeed(null)),
+    });
     return Effect.gen(function* () {
       const svc = yield* BrandingService;
       const result = yield* svc.get();
@@ -97,31 +116,32 @@ describe('BrandingService (it.effect)', () => {
         powered_by: POWERED_BY,
       });
     }).pipe(
-      Effect.provide(serviceLayer(mockDb)),
+      Effect.provide(serviceLayer(repository)),
       Effect.provide(requestContextLayer),
     );
   });
 
   it.effect('upserts and reloads on update', () => {
-    // Service calls insert(...).onConflictDoUpdate(...) then select(...).limit().
-    const selectChain = createChainableMock([
-      makeBrandingEntity({ app_name: 'NewName' }),
-    ]);
-    const insertChain = createChainableMock(undefined);
-    const mockDb = {
-      select: vi.fn().mockReturnValue(selectChain),
-      insert: vi.fn().mockReturnValue(insertChain),
-    };
+    const repository = makeMockRepository({
+      findSettings: vi.fn((_tenantId: string) =>
+        Effect.succeed(makeBrandingEntity({ app_name: 'NewName' })),
+      ),
+    });
 
     return Effect.gen(function* () {
       const svc = yield* BrandingService;
       const result = yield* svc.update({ app_name: 'NewName' }, 'user-1');
-      expect(mockDb.insert).toHaveBeenCalled();
-      expect(insertChain.values).toHaveBeenCalled();
-      expect(insertChain.onConflictDoUpdate).toHaveBeenCalled();
+      expect(repository.upsertSettings).toHaveBeenCalledWith(
+        tenantRequestContext.tenantId,
+        { app_name: 'NewName' },
+        'user-1',
+      );
+      expect(repository.findSettings).toHaveBeenCalledWith(
+        tenantRequestContext.tenantId,
+      );
       expect(result).toMatchObject({ app_name: 'NewName' });
     }).pipe(
-      Effect.provide(serviceLayer(mockDb)),
+      Effect.provide(serviceLayer(repository)),
       Effect.provide(requestContextLayer),
     );
   });

@@ -49,8 +49,6 @@ describe('Resend email transport', () => {
     expect(caught.status).toBe(422);
     expect(caught.responseBody).toBe(responseBody);
     expect(caught.from).toBe('Stocket <hello@stocket.test>');
-    expect(caught.message).toContain(
-      'for from="Stocket <hello@stocket.test>"',
-    );
+    expect(caught.message).toContain('for from="Stocket <hello@stocket.test>"');
   });
 });

@@ -1,4 +1,7 @@
-import { NotFoundError, InternalError } from '../../platform/effect/domain-errors';
+import {
+  NotFoundError,
+  InternalError,
+} from '../../platform/effect/domain-errors';
 
 export class AuditLogNotFound extends NotFoundError('AuditLogNotFound')<{
   readonly id: string;

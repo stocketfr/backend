@@ -7,25 +7,24 @@ import type {
   ProductImportResultDto,
 } from './types';
 import {
-  detectProductImportFormat,
   deriveConflictingDuplicateSkuRows,
   findConflictingDuplicateSkuRows,
-  formatImportError,
-  getImportPlanSkuConflictPolicy,
-  makeProductImportPreview,
-  normalizeProductImportRecords,
-  parseCsvContent,
-  parseDate,
-  pushRowError,
-} from './utils';
-import {
+} from './utils/duplicates';
+import { formatImportError, pushRowError } from './utils/result';
+import { makeProductImportPreview } from './utils/preview';
+import { normalizeProductImportRecords } from './utils/csv';
+import { parseDate } from './utils/value-parsers';
+import type {
   ProductImportCsvParseFailed,
   ProductImportUnsupportedFormat,
 } from '../products.errors';
+import { makeServiceTracer } from '../../../platform/observability/service-tracer';
 import { ProductImportLlmProposer } from './llm-proposer';
 import { ProductImportPhotoImporter } from './photo-importer';
 import { ProductImportRepository } from './repository';
-import { processProductImportRow } from './row-processing';
+import { getSkuConflictPolicy } from './plan';
+import { parseAndDetectProductImportFormat } from './parser';
+import { importProductRow } from './row/import';
 import { makeImportRunState } from './state';
 
 export class ProductImportService extends Effect.Service<ProductImportService>()(
@@ -35,30 +34,11 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
       const repository = yield* ProductImportRepository;
       const llmProposer = yield* ProductImportLlmProposer;
       const photoImporter = yield* ProductImportPhotoImporter;
-
-      const parseAndDetectFormat = ({
-        content,
-        importType = 'auto',
-      }: AnalyzeProductsFromCsvOptions) =>
-        Effect.gen(function* () {
-          const parsed = yield* Effect.try({
-            try: () => parseCsvContent(content),
-            catch: (cause) =>
-              new ProductImportCsvParseFailed({
-                cause,
-                messageKey: 'products.importCsvParseFailed',
-              }),
-          });
-          const format = detectProductImportFormat(parsed.headers, importType);
-          if (!format) {
-            return yield* Effect.fail(
-              new ProductImportUnsupportedFormat({
-                messageKey: 'products.importUnsupportedFormat',
-              }),
-            );
-          }
-          return { parsed, format };
-        });
+      const trace = makeServiceTracer({
+        serviceName: 'ProductImportService',
+        module: 'products',
+        layer: 'service',
+      });
 
       const importFromCsvContent = ({
         content,
@@ -70,7 +50,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
         ProductImportCsvParseFailed | ProductImportUnsupportedFormat
       > =>
         Effect.gen(function* () {
-          const { parsed, format } = yield* parseAndDetectFormat({
+          const { parsed, format } = yield* parseAndDetectProductImportFormat({
             content,
             importType,
           });
@@ -81,7 +61,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
             includeReorderPoint: format === 'normalized-products',
           });
           const derivedSkusByRow =
-            getImportPlanSkuConflictPolicy(approvedPlan) === 'derive-sku'
+            getSkuConflictPolicy(approvedPlan) === 'derive-sku'
               ? deriveConflictingDuplicateSkuRows(rows, {
                   includeReorderPoint: format === 'normalized-products',
                 })
@@ -121,10 +101,12 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
               continue;
             }
 
-            yield* processProductImportRow({
-              services: { repository, photoImporter },
+            yield* importProductRow({
+              repository,
+              photoImporter,
               row,
-              state,
+              caches: state.caches,
+              result: state.result,
               expiryDate,
               userId,
               approvedPlan,
@@ -142,7 +124,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           }
 
           return state.result;
-        }).pipe(Effect.withSpan('ProductImportService.importFromCsvContent'));
+        }).pipe(trace.span('importFromCsvContent'));
 
       const previewCsvContent = (
         options: AnalyzeProductsFromCsvOptions,
@@ -151,9 +133,10 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
         ProductImportCsvParseFailed | ProductImportUnsupportedFormat
       > =>
         Effect.gen(function* () {
-          const { parsed, format } = yield* parseAndDetectFormat(options);
+          const { parsed, format } =
+            yield* parseAndDetectProductImportFormat(options);
           return makeProductImportPreview(parsed.records, format);
-        }).pipe(Effect.withSpan('ProductImportService.previewCsvContent'));
+        }).pipe(trace.span('previewCsvContent'));
 
       const proposeImportPlan = (
         options: AnalyzeProductsFromCsvOptions,
@@ -162,10 +145,11 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
         ProductImportCsvParseFailed | ProductImportUnsupportedFormat
       > =>
         Effect.gen(function* () {
-          const { parsed, format } = yield* parseAndDetectFormat(options);
+          const { parsed, format } =
+            yield* parseAndDetectProductImportFormat(options);
           const preview = makeProductImportPreview(parsed.records, format);
           return yield* llmProposer.propose(preview);
-        }).pipe(Effect.withSpan('ProductImportService.proposeImportPlan'));
+        }).pipe(trace.span('proposeImportPlan'));
 
       return {
         importFromCsvContent,

@@ -37,7 +37,9 @@ const makeStockMovementEntity = (overrides: Record<string, any> = {}) => ({
 });
 
 const makeMockRepository = (
-  overrides: Partial<Record<keyof import('./repository').StockMovementsRepository, Mock>> = {},
+  overrides: Partial<
+    Record<keyof import('./repository').StockMovementsRepository, Mock>
+  > = {},
 ) => ({
   findAllPaginated: vi.fn().mockReturnValue(
     Effect.succeed({
@@ -49,25 +51,39 @@ const makeMockRepository = (
     }),
   ),
   findById: vi.fn().mockReturnValue(Effect.succeed(makeStockMovementEntity())),
-  findByProductId: vi.fn().mockReturnValue(Effect.succeed([makeStockMovementEntity()])),
-  findByLocationId: vi.fn().mockReturnValue(Effect.succeed([makeStockMovementEntity()])),
-  create: vi.fn().mockReturnValue(Effect.succeed(makeStockMovementEntity({ id: 'stock-movement-created' }))),
+  findByProductId: vi
+    .fn()
+    .mockReturnValue(Effect.succeed([makeStockMovementEntity()])),
+  findByLocationId: vi
+    .fn()
+    .mockReturnValue(Effect.succeed([makeStockMovementEntity()])),
+  create: vi
+    .fn()
+    .mockReturnValue(
+      Effect.succeed(makeStockMovementEntity({ id: 'stock-movement-created' })),
+    ),
   ...overrides,
 });
 
 const makeMockProductsService = (
-  overrides: Partial<Record<keyof import('../products/service').ProductsService, Mock>> = {},
-) => ({
-  existsById: vi.fn().mockReturnValue(Effect.succeed(true)),
-  ...overrides,
-} as any);
+  overrides: Partial<
+    Record<keyof import('../products/service').ProductsService, Mock>
+  > = {},
+) =>
+  ({
+    existsById: vi.fn().mockReturnValue(Effect.succeed(true)),
+    ...overrides,
+  }) as any;
 
 const makeMockLocationsService = (
-  overrides: Partial<Record<keyof import('../locations/service').LocationsService, Mock>> = {},
-) => ({
-  existsById: vi.fn().mockReturnValue(Effect.succeed(true)),
-  ...overrides,
-} as any);
+  overrides: Partial<
+    Record<keyof import('../locations/service').LocationsService, Mock>
+  > = {},
+) =>
+  ({
+    existsById: vi.fn().mockReturnValue(Effect.succeed(true)),
+    ...overrides,
+  }) as any;
 
 const buildService = (
   repository = makeMockRepository(),
@@ -166,7 +182,11 @@ describe('Effect StockMovementsService', () => {
       const locationsService = makeMockLocationsService({
         existsById: vi.fn().mockReturnValue(Effect.succeed(false)),
       });
-      const service = await buildService(undefined, undefined, locationsService);
+      const service = await buildService(
+        undefined,
+        undefined,
+        locationsService,
+      );
 
       const error = await fail(service.findByLocation('missing'));
       expect(error).toMatchObject({ _tag: 'StockMovementLocationNotFound' });
@@ -191,7 +211,9 @@ describe('Effect StockMovementsService', () => {
         findById: vi
           .fn()
           .mockReturnValueOnce(
-            Effect.succeed(makeStockMovementEntity({ id: 'stock-movement-created' })),
+            Effect.succeed(
+              makeStockMovementEntity({ id: 'stock-movement-created' }),
+            ),
           ),
       });
       const service = await buildService(repository);
@@ -227,7 +249,11 @@ describe('Effect StockMovementsService', () => {
       const locationsService = makeMockLocationsService({
         existsById: vi.fn().mockReturnValueOnce(Effect.succeed(false)),
       });
-      const service = await buildService(undefined, undefined, locationsService);
+      const service = await buildService(
+        undefined,
+        undefined,
+        locationsService,
+      );
 
       const error = await fail(service.create(createDto, 'user-1'));
       expect(error).toMatchObject({ _tag: 'InvalidSourceLocation' });
@@ -240,7 +266,11 @@ describe('Effect StockMovementsService', () => {
           .mockReturnValueOnce(Effect.succeed(true))
           .mockReturnValueOnce(Effect.succeed(false)),
       });
-      const service = await buildService(undefined, undefined, locationsService);
+      const service = await buildService(
+        undefined,
+        undefined,
+        locationsService,
+      );
 
       const error = await fail(service.create(createDto, 'user-1'));
       expect(error).toMatchObject({ _tag: 'InvalidDestinationLocation' });

@@ -38,10 +38,13 @@ const isFeatureKey = (value: string): value is FeatureKey =>
 
 export const normalizeFeatureStates = (
   features: Partial<FeatureStates> | null | undefined,
-): FeatureStates => ({
-  ...DEFAULT_FEATURE_STATES,
-  ...(features ?? {}),
-});
+): FeatureStates =>
+  features === null || features === undefined
+    ? { ...DEFAULT_FEATURE_STATES }
+    : {
+        ...DEFAULT_FEATURE_STATES,
+        ...features,
+      };
 
 export const resolveFeatureStates = (
   overrides: ReadonlyArray<TenantFeatureOverrideRow>,

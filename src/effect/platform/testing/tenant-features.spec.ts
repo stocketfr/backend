@@ -1,10 +1,15 @@
 import { FeatureKey } from '@stocket/types/features';
 import {
   DEFAULT_FEATURE_STATES,
+  normalizeFeatureStates,
   resolveFeatureStates,
 } from '../tenancy/tenant-features';
 
 describe('tenant feature resolution', () => {
+  it('normalizes null feature overrides to shared defaults', () => {
+    expect(normalizeFeatureStates(null)).toEqual(DEFAULT_FEATURE_STATES);
+  });
+
   it('returns shared defaults with no overrides', () => {
     expect(resolveFeatureStates([])).toEqual(DEFAULT_FEATURE_STATES);
   });

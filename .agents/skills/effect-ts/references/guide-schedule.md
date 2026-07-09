@@ -85,7 +85,7 @@ Good rule of thumb:
 Use `recurs(n)` for a bounded number of additional runs.
 
 ```ts
-const retryPolicy = Schedule.recurs(3)
+const retryPolicy = Schedule.recurs(3);
 ```
 
 This is one of the most common repo retry policies.
@@ -95,7 +95,7 @@ This is one of the most common repo retry policies.
 Use `forever` when the schedule should never terminate on its own.
 
 ```ts
-const retryForever = Schedule.forever
+const retryForever = Schedule.forever;
 ```
 
 This is common in infrastructure code and long-running retry loops.
@@ -105,7 +105,7 @@ This is common in infrastructure code and long-running retry loops.
 Use `spaced(duration)` for simple constant spacing.
 
 ```ts
-const pollEverySecond = Schedule.spaced("1 second")
+const pollEverySecond = Schedule.spaced('1 second');
 ```
 
 This is the most straightforward schedule for polling or retry spacing.
@@ -129,7 +129,7 @@ This is useful for periodic flush or batching behavior.
 Use `duration(duration)` for a one-shot delay schedule.
 
 ```ts
-const onceAfterOneSecond = Schedule.duration("1 second")
+const onceAfterOneSecond = Schedule.duration('1 second');
 ```
 
 ### `Schedule.cron`
@@ -165,7 +165,7 @@ Examples from production code:
 Typical pattern:
 
 ```ts
-const retryPolicy = Schedule.exponential(500, 1.5)
+const retryPolicy = Schedule.exponential(500, 1.5);
 ```
 
 Use this for:
@@ -182,8 +182,8 @@ Example pattern from production modules:
 
 ```ts
 const retryPolicy = Schedule.exponential(500, 1.5).pipe(
-  Schedule.either(Schedule.spaced(5000))
-)
+  Schedule.either(Schedule.spaced(5000)),
+);
 ```
 
 This keeps early retries responsive without letting delays grow without bound.
@@ -215,9 +215,9 @@ The repo uses this for:
 Example pattern:
 
 ```ts
-const bounded = Schedule.spaced("1 second").pipe(
-  Schedule.while(({ attempt }) => Effect.succeed(attempt <= 5))
-)
+const bounded = Schedule.spaced('1 second').pipe(
+  Schedule.while(({ attempt }) => Effect.succeed(attempt <= 5)),
+);
 ```
 
 ### `Schedule.andThenResult`
@@ -249,10 +249,8 @@ Example shape:
 
 ```ts
 const policy = Schedule.forever.pipe(
-  Schedule.addDelay((error) =>
-    Effect.succeed("1 second")
-  )
-)
+  Schedule.addDelay((error) => Effect.succeed('1 second')),
+);
 ```
 
 Use this when:
@@ -305,35 +303,35 @@ These are especially useful in tests and low-level policy construction.
 ### Simple bounded retry
 
 ```ts
-const retryPolicy = Schedule.recurs(3)
+const retryPolicy = Schedule.recurs(3);
 ```
 
 ### Spaced polling
 
 ```ts
-const pollPolicy = Schedule.spaced("5 seconds")
+const pollPolicy = Schedule.spaced('5 seconds');
 ```
 
 ### Exponential retry with a stable fallback cadence
 
 ```ts
 const retryPolicy = Schedule.exponential(500, 1.5).pipe(
-  Schedule.either(Schedule.spaced("5 seconds"))
-)
+  Schedule.either(Schedule.spaced('5 seconds')),
+);
 ```
 
 ### Retry forever with custom delay logic
 
 ```ts
 const retryPolicy = Schedule.forever.pipe(
-  Schedule.addDelay((error) => Effect.succeed("1 second"))
-)
+  Schedule.addDelay((error) => Effect.succeed('1 second')),
+);
 ```
 
 ### Cron-driven recurring job
 
 ```ts
-const nightly = Schedule.cron("0 0 * * *")
+const nightly = Schedule.cron('0 0 * * *');
 ```
 
 ## Testing Schedules

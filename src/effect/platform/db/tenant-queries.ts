@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import type { DrizzleDb } from './drizzle';
 import { members, organizations, tenantDomains } from './schema';
+import type { AppConfigShape } from '../config/app-config';
 
 export interface TenantRow {
   readonly id: string;
@@ -28,22 +29,32 @@ export const findTenantMembership = (
     )
     .limit(1);
 
-const localTenantHostnameCandidates = (hostname: string) => {
-  if (process.env.NODE_ENV === 'production' || !hostname.endsWith('.localhost')) {
+const localTenantHostnameCandidates = (
+  hostname: string,
+  appConfig: AppConfigShape,
+) => {
+  if (appConfig.isProduction || !hostname.endsWith('.localhost')) {
     return [hostname];
   }
 
   return [hostname, `${hostname}:3000`];
 };
 
-export const findTenantByHostname = (db: DrizzleDb, hostname: string) =>
+export const findTenantByHostname = (
+  db: DrizzleDb,
+  hostname: string,
+  appConfig: AppConfigShape,
+) =>
   db
     .select(tenantSelection)
     .from(organizations)
     .innerJoin(tenantDomains, eq(tenantDomains.tenant_id, organizations.id))
     .where(
       and(
-        inArray(tenantDomains.hostname, localTenantHostnameCandidates(hostname)),
+        inArray(
+          tenantDomains.hostname,
+          localTenantHostnameCandidates(hostname, appConfig),
+        ),
         isNotNull(tenantDomains.verified_at),
       ),
     )

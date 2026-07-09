@@ -32,7 +32,7 @@ export interface TranslatableMessageDescriptor {
   readonly messageArgs?: MessageArgs;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
+const isUnknownRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
 const formatMessageValue = (value: string | number): string => String(value);
@@ -137,7 +137,7 @@ export const localizeMessageTree = (
     return value.map((item) => localizeMessageTree(item, locale));
   }
 
-  if (!isRecord(value) || value instanceof Date) {
+  if (!isUnknownRecord(value) || value instanceof Date) {
     return value;
   }
 
@@ -155,7 +155,7 @@ export const localizeMessageTree = (
     return localized;
   }
 
-  const messageArgs = isRecord(localized.messageArgs)
+  const messageArgs = isUnknownRecord(localized.messageArgs)
     ? localized.messageArgs
     : undefined;
 

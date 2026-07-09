@@ -16,9 +16,7 @@ const makeLocationEntity = (overrides: Record<string, any> = {}) => ({
   ...overrides,
 });
 
-const makeMockRepository = (
-  overrides: Record<string, Mock> = {},
-) => ({
+const makeMockRepository = (overrides: Record<string, Mock> = {}) => ({
   findAllPaginated: vi.fn().mockReturnValue(
     Effect.succeed({
       data: [makeLocationEntity()],
@@ -42,9 +40,7 @@ const buildService = (repo = makeMockRepository()) =>
     LocationsService.pipe(
       Effect.provide(
         LocationsService.DefaultWithoutDependencies.pipe(
-          Layer.provide(
-            Layer.succeed(LocationsRepository, repo as any),
-          ),
+          Layer.provide(Layer.succeed(LocationsRepository, repo as any)),
         ),
       ),
     ),
@@ -123,7 +119,9 @@ describe('Effect LocationsService', () => {
     const repo = makeMockRepository({
       update: vi
         .fn()
-        .mockReturnValue(Effect.succeed(makeLocationEntity({ name: 'Updated' }))),
+        .mockReturnValue(
+          Effect.succeed(makeLocationEntity({ name: 'Updated' })),
+        ),
     });
     const service = await buildService(repo);
 
