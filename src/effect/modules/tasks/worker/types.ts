@@ -40,6 +40,10 @@ export interface TaskHandler {
     unknown,
     TaskHandlerError | TasksInfrastructureError | TaskLeaseLost
   >;
+  readonly onSettled?: (
+    task: TaskRow,
+    status: TaskTerminalStatus,
+  ) => Effect.Effect<void>;
 }
 
 export interface TaskLeaseState {
@@ -48,6 +52,7 @@ export interface TaskLeaseState {
 }
 
 export type TaskSettlementStatus = 'succeeded' | 'canceled';
+export type TaskTerminalStatus = TaskSettlementStatus | 'failed';
 
 export interface TaskWorkerConfigShape {
   readonly concurrency: number;

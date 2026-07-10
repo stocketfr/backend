@@ -13,10 +13,13 @@ import {
 import { makeServiceTracer } from '../../../platform/observability/service-tracer';
 import { TaskWorkerConfig } from '../../../platform/config/task-worker-config';
 import type { TasksInfrastructureError } from '../tasks.errors';
+import type { TaskRow } from '../types';
 import type {
   ClaimedTask,
   TaskExecutionContext,
+  TaskHandler,
   TaskProgressPatch,
+  TaskTerminalStatus,
   TaskWorkerConfigShape,
 } from './types';
 import { TaskRegistry, emptyTaskRegistryLayer } from './registry';
@@ -145,16 +148,62 @@ export const makeTaskWorker = ({
       workerId: task.workerId,
     });
 
-  const settleSuccess = (task: ClaimedTask, result: unknown) =>
+  const runTerminalHook = (
+    task: ClaimedTask,
+    handler: TaskHandler,
+    status: TaskTerminalStatus,
+  ) =>
+    handler.onSettled === undefined
+      ? Effect.void
+      : handler.onSettled(task.row, status);
+
+  const logTerminalSettlement = (
+    task: ClaimedTask,
+    handler: TaskHandler,
+    status: TaskTerminalStatus,
+  ) =>
+    runTerminalHook(task, handler, status).pipe(
+      Effect.andThen(logSettlement(task, status)),
+    );
+
+  const settleReturnedRow = (
+    task: ClaimedTask,
+    handler: TaskHandler | undefined,
+    row: TaskRow | null,
+  ) => {
+    if (row === null) return logLeaseLost(task);
+    if (
+      row.status === TaskStatus.SUCCEEDED ||
+      row.status === TaskStatus.FAILED ||
+      row.status === TaskStatus.CANCELED
+    ) {
+      return handler === undefined
+        ? logSettlement(task, row.status)
+        : logTerminalSettlement(task, handler, row.status);
+    }
+    return logSettlement(task, row.status);
+  };
+
+  const settleSuccess = (
+    task: ClaimedTask,
+    handler: TaskHandler,
+    result: unknown,
+  ) =>
     repository
       .complete(task, result)
       .pipe(
         Effect.flatMap((status) =>
-          status === null ? logLeaseLost(task) : logSettlement(task, status),
+          status === null
+            ? logLeaseLost(task)
+            : logTerminalSettlement(task, handler, status),
         ),
       );
 
-  const settleFailure = (task: ClaimedTask, failure: WorkerFailure) => {
+  const settleFailure = (
+    task: ClaimedTask,
+    failure: WorkerFailure,
+    handler?: TaskHandler,
+  ) => {
     switch (failure._tag) {
       case 'TaskLeaseLost':
         return logLeaseLost(task);
@@ -164,20 +213,16 @@ export const makeTaskWorker = ({
           .pipe(
             Effect.flatMap((settled) =>
               settled
-                ? logSettlement(task, TaskStatus.CANCELED)
+                ? handler === undefined
+                  ? logSettlement(task, TaskStatus.CANCELED)
+                  : logTerminalSettlement(task, handler, TaskStatus.CANCELED)
                 : logLeaseLost(task),
             ),
           );
       case 'TaskPayloadInvalid':
         return repository
           .fail(task, 'Invalid background task payload', false, 0)
-          .pipe(
-            Effect.flatMap((row) =>
-              row === null
-                ? logLeaseLost(task)
-                : logSettlement(task, row.status),
-            ),
-          );
+          .pipe(Effect.flatMap((row) => settleReturnedRow(task, handler, row)));
       case 'TaskHandlerNotFound':
         return repository
           .fail(
@@ -186,23 +231,11 @@ export const makeTaskWorker = ({
             false,
             0,
           )
-          .pipe(
-            Effect.flatMap((row) =>
-              row === null
-                ? logLeaseLost(task)
-                : logSettlement(task, row.status),
-            ),
-          );
+          .pipe(Effect.flatMap((row) => settleReturnedRow(task, handler, row)));
       case 'TaskExecutionFailed':
         return repository
           .fail(task, failure.error, failure.retryable, config.retryDelayMs)
-          .pipe(
-            Effect.flatMap((row) =>
-              row === null
-                ? logLeaseLost(task)
-                : logSettlement(task, row.status),
-            ),
-          );
+          .pipe(Effect.flatMap((row) => settleReturnedRow(task, handler, row)));
       case 'TasksInfrastructureError':
         return repository
           .fail(
@@ -211,27 +244,29 @@ export const makeTaskWorker = ({
             true,
             config.retryDelayMs,
           )
-          .pipe(
-            Effect.flatMap((row) =>
-              row === null
-                ? logLeaseLost(task)
-                : logSettlement(task, row.status),
-            ),
-          );
+          .pipe(Effect.flatMap((row) => settleReturnedRow(task, handler, row)));
     }
   };
 
   const runClaimedTask = (task: ClaimedTask) =>
     Effect.gen(function* () {
       const executionContext = yield* makeExecutionContext(task);
-      const execution = Effect.gen(function* () {
-        const handler = yield* registry.get(task.row.type);
-        return yield* handler.run(task.row, executionContext);
-      }).pipe(Effect.raceFirst(heartbeat(task)));
+      const handler = yield* registry
+        .get(task.row.type)
+        .pipe(
+          Effect.catchTag('TaskHandlerNotFound', (failure) =>
+            settleFailure(task, failure).pipe(Effect.as(null)),
+          ),
+        );
+      if (handler === null) return;
+
+      const execution = handler
+        .run(task.row, executionContext)
+        .pipe(Effect.raceFirst(heartbeat(task)));
 
       const exit = yield* Effect.exit(execution);
       if (exit._tag === 'Success') {
-        yield* settleSuccess(task, exit.value);
+        yield* settleSuccess(task, handler, exit.value);
         return;
       }
 
@@ -241,7 +276,7 @@ export const makeTaskWorker = ({
 
       const failure = Cause.failureOption(exit.cause);
       if (Option.isSome(failure)) {
-        yield* settleFailure(task, failure.value);
+        yield* settleFailure(task, failure.value, handler);
         return;
       }
 
@@ -258,11 +293,7 @@ export const makeTaskWorker = ({
           true,
           config.retryDelayMs,
         )
-        .pipe(
-          Effect.flatMap((row) =>
-            row === null ? logLeaseLost(task) : logSettlement(task, row.status),
-          ),
-        );
+        .pipe(Effect.flatMap((row) => settleReturnedRow(task, handler, row)));
     }).pipe(
       Effect.provideService(
         CurrentRequestContext,

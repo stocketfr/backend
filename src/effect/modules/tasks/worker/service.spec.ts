@@ -26,6 +26,7 @@ interface RepositoryState {
   canceled: number;
   failed: Array<{ readonly error: string; readonly retryable: boolean }>;
   progress: number;
+  events: string[];
 }
 
 const makeRepository = () => {
@@ -37,6 +38,7 @@ const makeRepository = () => {
     canceled: 0,
     failed: [],
     progress: 0,
+    events: [],
   };
   const runningRow = makeTaskRow({
     status: TaskStatus.RUNNING,
@@ -73,16 +75,21 @@ const makeRepository = () => {
     complete: () =>
       Effect.sync(() => {
         state.completed += 1;
+        state.events.push('settlement:succeeded');
         return 'succeeded' as const;
       }),
     markCanceled: () =>
       Effect.sync(() => {
         state.canceled += 1;
+        state.events.push('settlement:canceled');
         return true;
       }),
     fail: (_task, error, retryable) =>
       Effect.sync(() => {
         state.failed.push({ error, retryable });
+        state.events.push(
+          `settlement:${retryable ? TaskStatus.QUEUED : TaskStatus.FAILED}`,
+        );
         return makeTaskRow({
           status: retryable ? TaskStatus.QUEUED : TaskStatus.FAILED,
         });
@@ -115,12 +122,17 @@ describe('TaskWorkerService', () => {
         context
           .reportProgress({ processed: 1, force: true })
           .pipe(Effect.as({ imported: 1 })),
+      onSettled: (_task, status) =>
+        Effect.sync(() => {
+          state.events.push(`hook:${status}`);
+        }),
     };
 
     await expect(runWithHandler(handler, repository)).resolves.toBe(true);
     expect(state.progress).toBe(1);
     expect(state.completed).toBe(1);
     expect(state.failed).toEqual([]);
+    expect(state.events).toEqual(['settlement:succeeded', 'hook:succeeded']);
   });
 
   it('does not retry an invalid payload', async () => {
@@ -129,6 +141,10 @@ describe('TaskWorkerService', () => {
       type: 'test-task',
       run: () =>
         Effect.fail(new TaskPayloadInvalid({ details: 'missing blob key' })),
+      onSettled: (_task, status) =>
+        Effect.sync(() => {
+          state.events.push(`hook:${status}`);
+        }),
     };
 
     await expect(runWithHandler(handler, repository)).resolves.toBe(true);
@@ -136,6 +152,7 @@ describe('TaskWorkerService', () => {
     expect(state.failed).toEqual([
       { error: 'Invalid background task payload', retryable: false },
     ]);
+    expect(state.events).toEqual(['settlement:failed', 'hook:failed']);
   });
 
   it('requeues explicitly retryable handler failures', async () => {
@@ -149,12 +166,17 @@ describe('TaskWorkerService', () => {
             retryable: true,
           }),
         ),
+      onSettled: (_task, status) =>
+        Effect.sync(() => {
+          state.events.push(`hook:${status}`);
+        }),
     };
 
     await expect(runWithHandler(handler, repository)).resolves.toBe(true);
     expect(state.failed).toEqual([
       { error: 'dependency unavailable', retryable: true },
     ]);
+    expect(state.events).toEqual(['settlement:queued']);
   });
 
   it('interrupts the handler when the heartbeat loses its lease', async () => {
@@ -171,12 +193,17 @@ describe('TaskWorkerService', () => {
             }),
           ),
         ),
+      onSettled: (_task, status) =>
+        Effect.sync(() => {
+          state.events.push(`hook:${status}`);
+        }),
     };
 
     await expect(runWithHandler(handler, repository)).resolves.toBe(true);
     expect(interrupted).toBe(true);
     expect(state.completed).toBe(0);
     expect(state.failed).toEqual([]);
+    expect(state.events).toEqual([]);
   });
 
   it('interrupts and cancels the handler after a cancellation request', async () => {
@@ -193,12 +220,17 @@ describe('TaskWorkerService', () => {
             }),
           ),
         ),
+      onSettled: (_task, status) =>
+        Effect.sync(() => {
+          state.events.push(`hook:${status}`);
+        }),
     };
 
     await expect(runWithHandler(handler, repository)).resolves.toBe(true);
     expect(interrupted).toBe(true);
     expect(state.canceled).toBe(1);
     expect(state.completed).toBe(0);
+    expect(state.events).toEqual(['settlement:canceled', 'hook:canceled']);
   });
 
   it('returns false when no task is available', async () => {
