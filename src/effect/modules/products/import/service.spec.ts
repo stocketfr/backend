@@ -1059,7 +1059,7 @@ Item,Nail File,SORT-2,Spa,Nails,4,,,
         sku: 'SORT-1',
         rows: [3, 4],
         names: ['Service Gloves Black', 'Service Gloves White'],
-        conflictKey: 'sku-conflict:sort-1',
+        conflictKey: 'sku-conflict:SORT-1',
         variants: expect.arrayContaining([
           expect.objectContaining({ rows: [3] }),
           expect.objectContaining({ rows: [4] }),
@@ -1158,6 +1158,36 @@ Item,Shampoo,SORT-2,Bulgari,Green Tea,5,Bay C - Shelf 3
         }),
       ]),
     );
+  });
+
+  it('keeps case-distinct duplicate SKU conflict keys separate', async () => {
+    const preview = await runPreview(
+      `sku,name,category_path
+SKU-1,First Product,Category A
+SKU-1,Second Product,Category B
+sku-1,Third Product,Category C
+sku-1,Fourth Product,Category D
+`,
+      'normalized-products',
+    );
+
+    expect(preview.duplicateSkuConflicts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sku: 'SKU-1',
+          conflictKey: 'sku-conflict:SKU-1',
+        }),
+        expect.objectContaining({
+          sku: 'sku-1',
+          conflictKey: 'sku-conflict:sku-1',
+        }),
+      ]),
+    );
+    expect(
+      new Set(
+        preview.duplicateSkuConflicts.map((conflict) => conflict.conflictKey),
+      ).size,
+    ).toBe(2);
   });
 
   it('delegates reviewed proposals to the LLM proposer after deterministic preview', async () => {

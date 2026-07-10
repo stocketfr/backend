@@ -1,5 +1,10 @@
 import { Effect } from 'effect';
-import type { ProductImportPreviewDto } from '@stocket/types/products';
+import { LocationType } from '@stocket/types/locations';
+import type {
+  ProductImportPreviewDto,
+  ProductImportSkuConflictResolutionV2Dto,
+  ProductImportTargetContextDto,
+} from '@stocket/types/products';
 import { validateProductImportGuidance } from './guidance';
 import { makeProductImportProposal } from './utils/proposal';
 
@@ -10,7 +15,26 @@ const preview: ProductImportPreviewDto = {
   folderRows: 0,
   importableRows: 1,
   missingRequiredRows: 0,
-  duplicateSkuConflicts: [],
+  duplicateSkuConflicts: [
+    {
+      conflictKey: 'sku-conflict:SKU-1',
+      sku: 'SKU-1',
+      rows: [2, 3],
+      names: ['First', 'Second'],
+      variants: [
+        {
+          variantKey: 'sku-conflict:SKU-1:variant:first',
+          rows: [2],
+          names: ['First'],
+        },
+        {
+          variantKey: 'sku-conflict:SKU-1:variant:second',
+          rows: [3],
+          names: ['Second'],
+        },
+      ],
+    },
+  ],
   categoryMappings: [
     {
       sourcePath: 'Dental',
@@ -20,15 +44,44 @@ const preview: ProductImportPreviewDto = {
     },
   ],
   supplierMappings: [],
-  locationMappings: [],
-  inventoryPreviews: [],
+  locationMappings: [
+    {
+      sourceLocation: 'Bay I - Shelf 3',
+      areaPath: 'Bay I / Shelf 3',
+      action: 'create-area',
+      confidence: 0.9,
+      rowCount: 1,
+    },
+  ],
+  inventoryPreviews: [
+    {
+      row: 4,
+      sku: 'SKU-2',
+      location: '',
+      quantity: 1,
+      action: 'skip',
+      reason: 'Missing location',
+    },
+  ],
   warnings: [],
 };
 
-const context = {
+const context: ProductImportTargetContextDto = {
   categories: [{ id: 'category-existing', path: 'Consumables / Dental' }],
-  locations: [],
-  areas: [],
+  locations: [
+    {
+      id: 'location-existing',
+      name: 'Warehouse',
+      type: LocationType.WAREHOUSE,
+    },
+  ],
+  areas: [
+    {
+      id: 'area-existing',
+      locationId: 'location-existing',
+      path: 'Bay I / Shelf 3',
+    },
+  ],
 };
 
 const toCurrentPlan = (
@@ -108,5 +161,122 @@ describe('validateProductImportGuidance', () => {
         ),
       ),
     ).resolves.toMatchObject({ currentPlan });
+  });
+
+  it('requires exact source coverage and canonical server binding', async () => {
+    const baseline = makeProductImportProposal(preview, context);
+    const plan = toCurrentPlan(baseline);
+    const [categoryMapping] = plan.categoryMappings;
+    if (!categoryMapping) throw new Error('Expected category mapping');
+    const invalidPlans = [
+      { ...plan, categoryMappings: [] },
+      {
+        ...plan,
+        categoryMappings: [categoryMapping, categoryMapping],
+      },
+      {
+        ...plan,
+        categoryMappings: [
+          { ...categoryMapping, mappingKey: 'category:forged' },
+        ],
+      },
+      {
+        ...plan,
+        categoryMappings: [{ ...categoryMapping, rowCount: 100 }],
+      },
+      {
+        ...plan,
+        categoryMappings: [
+          {
+            ...categoryMapping,
+            targetPath: `${'x'.repeat(101)} / Dental`,
+          },
+        ],
+      },
+    ];
+
+    for (const currentPlan of invalidPlans) {
+      await expect(
+        Effect.runPromise(
+          Effect.flip(
+            validateProductImportGuidance({ currentPlan }, baseline, context),
+          ),
+        ),
+      ).resolves.toMatchObject({ _tag: 'ProductImportProposalInvalid' });
+    }
+  });
+
+  it('requires canonical conflict identity, variants, rows, and bounded SKUs', async () => {
+    const baseline = makeProductImportProposal(preview, context);
+    const plan = toCurrentPlan(baseline);
+    const [resolution] = plan.skuConflictResolutions;
+    if (!resolution) throw new Error('Expected conflict resolution');
+    const [firstVariant, secondVariant] = resolution.variants;
+    if (!firstVariant || !secondVariant) throw new Error('Expected variants');
+    const invalidResolutions: ProductImportSkuConflictResolutionV2Dto[] = [
+      { ...resolution, sourceSku: 'forged' },
+      { ...resolution, mappingKey: 'sku-conflict:forged' },
+      { ...resolution, variants: [firstVariant] },
+      {
+        ...resolution,
+        variants: [{ ...firstVariant, rows: [999] }, secondVariant],
+      },
+      {
+        ...resolution,
+        variants: [
+          firstVariant,
+          {
+            ...secondVariant,
+            action: 'custom-sku',
+            targetSku: 'x'.repeat(51),
+          },
+        ],
+      },
+    ];
+
+    for (const invalidResolution of invalidResolutions) {
+      await expect(
+        Effect.runPromise(
+          Effect.flip(
+            validateProductImportGuidance(
+              {
+                currentPlan: {
+                  ...plan,
+                  skuConflictResolutions: [invalidResolution],
+                },
+              },
+              baseline,
+              context,
+            ),
+          ),
+        ),
+      ).resolves.toMatchObject({ _tag: 'ProductImportProposalInvalid' });
+    }
+  });
+
+  it('binds the missing-location singleton key and row count', async () => {
+    const baseline = makeProductImportProposal(preview, context);
+    const plan = toCurrentPlan(baseline);
+    for (const missingLocationStrategy of [
+      {
+        ...plan.missingLocationStrategy,
+        mappingKey: 'missing-location:forged',
+      },
+      { ...plan.missingLocationStrategy, rowCount: 999 },
+    ]) {
+      await expect(
+        Effect.runPromise(
+          Effect.flip(
+            validateProductImportGuidance(
+              {
+                currentPlan: { ...plan, missingLocationStrategy },
+              },
+              baseline,
+              context,
+            ),
+          ),
+        ),
+      ).resolves.toMatchObject({ _tag: 'ProductImportProposalInvalid' });
+    }
   });
 });

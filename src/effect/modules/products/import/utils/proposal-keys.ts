@@ -1,5 +1,5 @@
 const encodeDecisionSegment = (value: string) =>
-  encodeURIComponent(value.trim().toLowerCase());
+  encodeURIComponent(value.trim());
 
 const shortHash = (value: string): string => {
   let hash = 0x811c9dc5;

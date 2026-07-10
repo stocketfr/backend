@@ -1,4 +1,5 @@
-import { decodeRawLlmProposal } from './raw';
+import { Effect } from 'effect';
+import { decodeOpenAiProposalResponse, decodeRawLlmProposal } from './raw';
 
 const validRawProposal = {
   format: 'normalized-products',
@@ -9,13 +10,13 @@ const validRawProposal = {
   },
   skuConflictResolutions: [
     {
-      conflictKey: 'sku-conflict:sku-1',
+      conflictKey: 'sku-conflict:SKU-1',
       confidence: 0.8,
       reason: null,
       reviewRequired: true,
       variants: [
         {
-          variantKey: 'sku-conflict:sku-1:variant:first',
+          variantKey: 'sku-conflict:SKU-1:variant:first',
           action: 'derive-sku',
           targetSku: 'SKU-1-1',
         },
@@ -67,27 +68,48 @@ const validRawProposal = {
   ],
 } as const;
 
-describe('decodeRawLlmProposal', () => {
-  it('decodes a complete strict v2 proposal', () => {
-    expect(decodeRawLlmProposal(validRawProposal)).toEqual(validRawProposal);
+describe('OpenAI proposal decoding', () => {
+  it('decodes a complete strict proposal object', async () => {
+    await expect(
+      Effect.runPromise(decodeRawLlmProposal(validRawProposal)),
+    ).resolves.toEqual(validRawProposal);
   });
 
-  it('rejects non-object input', () => {
-    expect(() => decodeRawLlmProposal('not-json-object')).toThrow();
+  it('decodes direct and nested Responses API JSON text once', async () => {
+    const text = JSON.stringify(validRawProposal);
+    await expect(
+      Effect.runPromise(decodeOpenAiProposalResponse({ output_text: text })),
+    ).resolves.toEqual(validRawProposal);
+    await expect(
+      Effect.runPromise(
+        decodeOpenAiProposalResponse({
+          output: [
+            { type: 'reasoning' },
+            { content: [{ type: 'output_text', text }] },
+          ],
+        }),
+      ),
+    ).resolves.toEqual(validRawProposal);
   });
 
-  it('rejects incomplete or semantically unknown output', () => {
-    expect(() =>
-      decodeRawLlmProposal({
-        ...validRawProposal,
-        format: 'hallucinated',
-      }),
-    ).toThrow();
-    expect(() =>
-      decodeRawLlmProposal({
-        ...validRawProposal,
-        skuConflictResolutions: undefined,
-      }),
-    ).toThrow();
+  it('rejects malformed envelopes and nested proposal JSON', async () => {
+    await expect(
+      Effect.runPromise(decodeOpenAiProposalResponse({ output: [] })),
+    ).rejects.toBeDefined();
+    await expect(
+      Effect.runPromise(
+        decodeOpenAiProposalResponse({ output_text: '{not-json' }),
+      ),
+    ).rejects.toBeDefined();
+    await expect(
+      Effect.runPromise(
+        decodeOpenAiProposalResponse({
+          output_text: JSON.stringify({
+            ...validRawProposal,
+            format: 'hallucinated',
+          }),
+        }),
+      ),
+    ).rejects.toBeDefined();
   });
 });

@@ -10,70 +10,75 @@ import {
   type OpenAiProductImportConfig,
 } from '../../../../config/openai.utils';
 import { makeOpenAiProductImportProposalRequest } from './llm-proposal/request';
-import {
-  extractResponseText,
-  sanitizeLlmProposal,
-} from './llm-proposal/sanitizer';
+import { decodeOpenAiProposalResponse } from './llm-proposal/raw';
+import { sanitizeLlmProposal } from './llm-proposal/sanitizer';
 import { appendWarning, messageFromUnknown } from './llm-proposal/shared';
 import { makeProductImportProposal } from './utils/proposal';
 
 type FetchLike = typeof fetch;
 
-async function callOpenAiForProposal(
+const callOpenAiForProposal = (
   preview: ProductImportPreviewDto,
   context: ProductImportTargetContextDto,
   guidance: ProductImportProposalGuidanceDto | undefined,
   config: OpenAiProductImportConfig,
   fetchImpl: FetchLike,
-): Promise<ProductImportAiProposalV2Dto> {
+): Effect.Effect<ProductImportAiProposalV2Dto, unknown> => {
   if (!config.apiKey) {
-    return appendWarning(
-      makeProductImportProposal(preview, context, guidance),
-      'AI proposal unavailable because OPENAI_API_KEY is not configured.',
+    return Effect.succeed(
+      appendWarning(
+        makeProductImportProposal(preview, context, guidance),
+        'AI proposal unavailable because OPENAI_API_KEY is not configured.',
+      ),
     );
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
-  try {
-    const response = await fetchImpl(
-      `${config.baseUrl.replace(/\/+$/, '')}/responses`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${config.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        signal: controller.signal,
-        body: JSON.stringify(
-          makeOpenAiProductImportProposalRequest(
-            preview,
-            context,
-            guidance,
-            config,
+  return Effect.suspend(() => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+    return Effect.gen(function* () {
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          fetchImpl(`${config.baseUrl.replace(/\/+$/, '')}/responses`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${config.apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            signal: controller.signal,
+            body: JSON.stringify(
+              makeOpenAiProductImportProposalRequest(
+                preview,
+                context,
+                guidance,
+                config,
+              ),
+            ),
+          }),
+        catch: (cause) => cause,
+      });
+
+      if (!response.ok) {
+        const body = yield* Effect.tryPromise({
+          try: () => response.text(),
+          catch: () => '',
+        }).pipe(Effect.merge);
+        return yield* Effect.fail(
+          new Error(
+            `OpenAI proposal request failed with status ${response.status}${body ? `: ${body.slice(0, 500)}` : ''}`,
           ),
-        ),
-      },
-    );
+        );
+      }
 
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new Error(
-        `OpenAI proposal request failed with status ${response.status}${body ? `: ${body.slice(0, 500)}` : ''}`,
-      );
-    }
-
-    const json = await response.json();
-    return sanitizeLlmProposal(
-      JSON.parse(extractResponseText(json)),
-      preview,
-      context,
-      guidance,
-    );
-  } finally {
-    clearTimeout(timeout);
-  }
-}
+      const json: unknown = yield* Effect.tryPromise({
+        try: () => response.json(),
+        catch: (cause) => cause,
+      });
+      const rawProposal = yield* decodeOpenAiProposalResponse(json);
+      return sanitizeLlmProposal(rawProposal, preview, context, guidance);
+    }).pipe(Effect.ensuring(Effect.sync(() => clearTimeout(timeout))));
+  });
+};
 
 export class ProductImportLlmProposer extends Effect.Service<ProductImportLlmProposer>()(
   '@stocket/effect/products/ProductImportLlmProposer',
@@ -84,17 +89,13 @@ export class ProductImportLlmProposer extends Effect.Service<ProductImportLlmPro
         context: ProductImportTargetContextDto,
         guidance?: ProductImportProposalGuidanceDto,
       ): Effect.Effect<ProductImportAiProposalV2Dto> =>
-        Effect.tryPromise({
-          try: () =>
-            callOpenAiForProposal(
-              preview,
-              context,
-              guidance,
-              getOpenAiProductImportConfig(),
-              globalThis.fetch.bind(globalThis),
-            ),
-          catch: (cause) => cause,
-        }).pipe(
+        callOpenAiForProposal(
+          preview,
+          context,
+          guidance,
+          getOpenAiProductImportConfig(),
+          globalThis.fetch.bind(globalThis),
+        ).pipe(
           Effect.catchAll((cause) =>
             Effect.succeed(
               appendWarning(

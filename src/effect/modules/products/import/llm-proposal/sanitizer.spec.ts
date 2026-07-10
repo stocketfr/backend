@@ -4,7 +4,8 @@ import type {
   ProductImportTargetContextDto,
 } from '@stocket/types/products';
 import { categoryDecisionKey } from '../utils/proposal-keys';
-import { extractResponseText, sanitizeLlmProposal } from './sanitizer';
+import type { RawLlmProposal } from './raw';
+import { sanitizeLlmProposal } from './sanitizer';
 
 const preview: ProductImportPreviewDto = {
   format: 'sortly-items',
@@ -48,7 +49,7 @@ const context: ProductImportTargetContextDto = {
   areas: [{ id: 'area-1', locationId: 'loc-1', path: 'Bay I / Shelf 3' }],
 };
 
-const rawProposal = () => ({
+const rawProposal = (): RawLlmProposal => ({
   format: 'sortly-items',
   confidence: 0.95,
   productIdentity: { sourceColumn: 'SID', conflictPolicy: 'reject' },
@@ -105,25 +106,6 @@ const rawProposal = () => ({
       message: ' Review taxonomy. ',
     },
   ],
-});
-
-describe('extractResponseText', () => {
-  it('reads direct and nested Responses API text', () => {
-    expect(extractResponseText({ output_text: '{"ok":true}' })).toBe(
-      '{"ok":true}',
-    );
-    expect(
-      extractResponseText({
-        output: [{ content: [{ text: '{"nested":true}' }] }],
-      }),
-    ).toBe('{"nested":true}');
-  });
-
-  it('fails when the response does not contain text', () => {
-    expect(() => extractResponseText({ output: [] })).toThrow(
-      'OpenAI response did not include output text',
-    );
-  });
 });
 
 describe('sanitizeLlmProposal', () => {
@@ -187,6 +169,112 @@ describe('sanitizeLlmProposal', () => {
       mappingKey,
       targetPath: 'User Locked / Dental',
       action: 'create',
+    });
+  });
+
+  it('uses canonical tenant display fields and the server-owned source column', () => {
+    const raw = rawProposal();
+    const [rawCategory] = raw.categoryMappings;
+    const [rawLocation] = raw.locationMappings;
+    if (!rawCategory || !rawLocation) throw new Error('Expected raw mappings');
+    const proposal = sanitizeLlmProposal(
+      {
+        ...raw,
+        productIdentity: {
+          ...raw.productIdentity,
+          sourceColumn: 'hallucinated-column',
+        },
+        categoryMappings: [
+          {
+            ...rawCategory,
+            targetCategoryId: 'cat-1',
+            targetPath: 'Spoofed Category Label',
+          },
+        ],
+        locationMappings: [
+          {
+            ...rawLocation,
+            targetAreaId: 'area-1',
+            targetLocationName: 'Spoofed Warehouse',
+            areaPath: 'Spoofed / Area',
+          },
+        ],
+      },
+      preview,
+      context,
+    );
+
+    expect(proposal.productIdentity.sourceColumn).toBe('SID');
+    expect(proposal.categoryMappings[0]).toMatchObject({
+      targetCategoryId: 'cat-1',
+      targetPath: 'Guest Accessories / Dental',
+    });
+    expect(proposal.locationMappings[0]).toMatchObject({
+      targetLocationId: 'loc-1',
+      targetLocationName: 'Warehouse',
+      targetAreaId: 'area-1',
+      areaPath: 'Bay I / Shelf 3',
+    });
+  });
+
+  it('rejects overlong model SKUs by retaining the deterministic variant', () => {
+    const conflictPreview: ProductImportPreviewDto = {
+      ...preview,
+      duplicateSkuConflicts: [
+        {
+          conflictKey: 'sku-conflict:SKU-1',
+          sku: 'SKU-1',
+          rows: [2, 3],
+          names: ['First', 'Second'],
+          variants: [
+            {
+              variantKey: 'sku-conflict:SKU-1:variant:first',
+              rows: [2],
+              names: ['First'],
+            },
+            {
+              variantKey: 'sku-conflict:SKU-1:variant:second',
+              rows: [3],
+              names: ['Second'],
+            },
+          ],
+        },
+      ],
+    };
+    const raw = rawProposal();
+    const proposal = sanitizeLlmProposal(
+      {
+        ...raw,
+        skuConflictResolutions: [
+          {
+            conflictKey: 'sku-conflict:SKU-1',
+            confidence: 0.9,
+            reason: null,
+            reviewRequired: true,
+            variants: [
+              {
+                variantKey: 'sku-conflict:SKU-1:variant:first',
+                action: 'keep-source-sku',
+                targetSku: 'SKU-1',
+              },
+              {
+                variantKey: 'sku-conflict:SKU-1:variant:second',
+                action: 'custom-sku',
+                targetSku: 'x'.repeat(51),
+              },
+            ],
+          },
+        ],
+      },
+      conflictPreview,
+      context,
+    );
+
+    const secondVariant = proposal.skuConflictResolutions[0]?.variants[1];
+    expect(secondVariant).toMatchObject({
+      variantKey: 'sku-conflict:SKU-1:variant:second',
+      action: 'derive-sku',
+      targetSku: 'SKU-1-2',
     });
   });
 });

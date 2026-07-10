@@ -1,4 +1,4 @@
-import { Schema } from 'effect';
+import { Effect, Schema } from 'effect';
 
 const NullableString = Schema.NullOr(Schema.String);
 const NullableNumber = Schema.NullOr(Schema.Number);
@@ -67,7 +67,7 @@ const RawWarningSchema = Schema.Struct({
   message: Schema.String,
 });
 
-const RawLlmProposalSchema = Schema.Struct({
+export const RawLlmProposalSchema = Schema.Struct({
   format: Schema.Literal('normalized-products', 'sortly-items', 'unknown'),
   confidence: Schema.Number,
   productIdentity: Schema.Struct({
@@ -84,5 +84,49 @@ const RawLlmProposalSchema = Schema.Struct({
 
 export type RawLlmProposal = Schema.Schema.Type<typeof RawLlmProposalSchema>;
 
-export const decodeRawLlmProposal =
-  Schema.decodeUnknownSync(RawLlmProposalSchema);
+const OpenAiResponseContentSchema = Schema.Struct({
+  text: Schema.optional(Schema.String),
+});
+
+const OpenAiResponseOutputSchema = Schema.Struct({
+  content: Schema.optional(Schema.Array(OpenAiResponseContentSchema)),
+});
+
+const OpenAiResponseEnvelopeSchema = Schema.Struct({
+  output_text: Schema.optional(Schema.NullOr(Schema.String)),
+  output: Schema.optional(Schema.Array(OpenAiResponseOutputSchema)),
+});
+
+type OpenAiResponseEnvelope = Schema.Schema.Type<
+  typeof OpenAiResponseEnvelopeSchema
+>;
+
+const proposalText = (envelope: OpenAiResponseEnvelope) => {
+  if (envelope.output_text?.trim()) return envelope.output_text;
+  for (const output of envelope.output ?? []) {
+    for (const content of output.content ?? []) {
+      if (content.text?.trim()) return content.text;
+    }
+  }
+  return undefined;
+};
+
+const decodeOpenAiResponseEnvelope = Schema.decodeUnknown(
+  OpenAiResponseEnvelopeSchema,
+);
+const decodeRawLlmProposalJson = Schema.decodeUnknown(
+  Schema.parseJson(RawLlmProposalSchema),
+);
+
+export const decodeRawLlmProposal = Schema.decodeUnknown(RawLlmProposalSchema);
+
+export const decodeOpenAiProposalResponse = (input: unknown) =>
+  Effect.gen(function* () {
+    const envelope = yield* decodeOpenAiResponseEnvelope(input);
+    const text = yield* Effect.fromNullable(proposalText(envelope)).pipe(
+      Effect.mapError(
+        () => new Error('OpenAI response did not include output text'),
+      ),
+    );
+    return yield* decodeRawLlmProposalJson(text);
+  });

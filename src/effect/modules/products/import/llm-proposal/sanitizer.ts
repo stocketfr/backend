@@ -1,7 +1,10 @@
 import type {
   ProductImportAiProposalV2Dto,
+  ProductImportAreaTargetDto,
   ProductImportCategoryMappingV2Dto,
+  ProductImportCategoryTargetDto,
   ProductImportLocationMappingV2Dto,
+  ProductImportLocationTargetDto,
   ProductImportPreviewDto,
   ProductImportProposalGuidanceDto,
   ProductImportSkuConflictResolutionV2Dto,
@@ -13,8 +16,12 @@ import {
   applyProductImportGuidanceLocks,
   makeProductImportProposal,
 } from '../utils/proposal';
-import { decodeRawLlmProposal, type RawLlmProposal } from './raw';
-import { isUnknownRecord } from './shared';
+import type { RawLlmProposal } from './raw';
+import {
+  normalizeProductImportLocationName,
+  normalizeProductImportPath,
+  normalizeProductImportSku,
+} from '../utils/proposal-values';
 
 const mapEntry = <K, V>(key: K, value: V): readonly [K, V] => [key, value];
 
@@ -61,30 +68,32 @@ const sanitizeWarnings = (
 const sanitizeCategoryMapping = (
   raw: RawLlmProposal['categoryMappings'][number],
   fallback: ProductImportCategoryMappingV2Dto,
-  categoryIds: ReadonlySet<string>,
+  categoriesById: ReadonlyMap<string, ProductImportCategoryTargetDto>,
 ): ProductImportCategoryMappingV2Dto => {
+  const targetPath = normalizeProductImportPath(raw.targetPath);
   const metadata = {
     mappingKey: fallback.mappingKey,
     confidence: clampConfidence(raw.confidence, fallback.confidence),
     ...optionalReason(raw.reason),
     reviewRequired: raw.reviewRequired,
     sourcePath: fallback.sourcePath,
-    targetPath: raw.targetPath.trim() || fallback.targetPath,
+    targetPath: targetPath ?? fallback.targetPath,
     rowCount: fallback.rowCount,
   };
-  if (
-    raw.action === 'use-existing' &&
-    raw.targetCategoryId &&
-    categoryIds.has(raw.targetCategoryId)
-  ) {
+  if (raw.action === 'use-existing' && raw.targetCategoryId) {
+    const category = categoriesById.get(raw.targetCategoryId);
+    if (!category) return { ...fallback, reviewRequired: true };
     return {
       ...metadata,
+      targetPath: category.path,
       action: 'use-existing',
-      targetCategoryId: raw.targetCategoryId,
+      targetCategoryId: category.id,
     };
   }
   if (raw.action === 'create' || raw.action === 'default') {
-    return { ...metadata, action: raw.action };
+    return targetPath
+      ? { ...metadata, targetPath, action: raw.action }
+      : { ...fallback, reviewRequired: true };
   }
   return { ...fallback, reviewRequired: true };
 };
@@ -92,8 +101,8 @@ const sanitizeCategoryMapping = (
 const sanitizeLocationMapping = (
   raw: RawLlmProposal['locationMappings'][number],
   fallback: ProductImportLocationMappingV2Dto,
-  locationIds: ReadonlySet<string>,
-  areaLocationById: ReadonlyMap<string, string>,
+  locationsById: ReadonlyMap<string, ProductImportLocationTargetDto>,
+  areasById: ReadonlyMap<string, ProductImportAreaTargetDto>,
 ): ProductImportLocationMappingV2Dto => {
   const metadata = {
     mappingKey: fallback.mappingKey,
@@ -103,60 +112,66 @@ const sanitizeLocationMapping = (
     sourceLocation: fallback.sourceLocation,
     rowCount: fallback.rowCount,
   };
-  if (
-    raw.action === 'use-existing' &&
-    raw.targetLocationId &&
-    locationIds.has(raw.targetLocationId)
-  ) {
+  if (raw.action === 'use-existing' && raw.targetLocationId) {
+    const location = locationsById.get(raw.targetLocationId);
+    if (!location) return { ...fallback, reviewRequired: true };
     return {
       ...metadata,
       action: 'use-existing',
-      targetLocationId: raw.targetLocationId,
-      ...(raw.targetLocationName?.trim()
-        ? { targetLocationName: raw.targetLocationName.trim() }
-        : {}),
+      targetLocationId: location.id,
+      targetLocationName: location.name,
     };
   }
   if (
     raw.action === 'use-existing-area' &&
     raw.targetLocationId &&
-    raw.targetAreaId &&
-    locationIds.has(raw.targetLocationId) &&
-    areaLocationById.get(raw.targetAreaId) === raw.targetLocationId
+    raw.targetAreaId
   ) {
+    const location = locationsById.get(raw.targetLocationId);
+    const area = areasById.get(raw.targetAreaId);
+    if (!location || !area || area.locationId !== location.id) {
+      return { ...fallback, reviewRequired: true };
+    }
     return {
       ...metadata,
       action: 'use-existing-area',
-      targetLocationId: raw.targetLocationId,
-      ...(raw.targetLocationName?.trim()
-        ? { targetLocationName: raw.targetLocationName.trim() }
-        : {}),
-      targetAreaId: raw.targetAreaId,
-      ...(raw.areaPath?.trim() ? { areaPath: raw.areaPath.trim() } : {}),
+      targetLocationId: location.id,
+      targetLocationName: location.name,
+      targetAreaId: area.id,
+      areaPath: area.path,
     };
   }
-  if (raw.action === 'create-location' && raw.targetLocationName?.trim()) {
+  const targetLocationName = raw.targetLocationName
+    ? normalizeProductImportLocationName(raw.targetLocationName)
+    : undefined;
+  if (raw.action === 'create-location' && targetLocationName) {
     return {
       ...metadata,
       action: 'create-location',
-      targetLocationName: raw.targetLocationName.trim(),
+      targetLocationName,
     };
   }
-  if (raw.action === 'create-area' && raw.areaPath?.trim()) {
-    if (raw.targetLocationId && locationIds.has(raw.targetLocationId)) {
+  const areaPath = raw.areaPath
+    ? normalizeProductImportPath(raw.areaPath)
+    : undefined;
+  if (raw.action === 'create-area' && areaPath) {
+    const location = raw.targetLocationId
+      ? locationsById.get(raw.targetLocationId)
+      : undefined;
+    if (location) {
       return {
         ...metadata,
         action: 'create-area',
-        targetLocationId: raw.targetLocationId,
-        areaPath: raw.areaPath.trim(),
+        targetLocationId: location.id,
+        areaPath,
       };
     }
-    if (raw.targetLocationName?.trim()) {
+    if (targetLocationName) {
       return {
         ...metadata,
         action: 'create-area',
-        targetLocationName: raw.targetLocationName.trim(),
-        areaPath: raw.areaPath.trim(),
+        targetLocationName,
+        areaPath,
       };
     }
   }
@@ -167,8 +182,8 @@ const sanitizeLocationMapping = (
 const sanitizeMissingLocationStrategy = (
   raw: RawLlmProposal['missingLocationStrategy'],
   fallback: ProductImportAiProposalV2Dto['missingLocationStrategy'],
-  locationIds: ReadonlySet<string>,
-  areaLocationById: ReadonlyMap<string, string>,
+  locationsById: ReadonlyMap<string, ProductImportLocationTargetDto>,
+  areasById: ReadonlyMap<string, ProductImportAreaTargetDto>,
 ): ProductImportAiProposalV2Dto['missingLocationStrategy'] => {
   const metadata = {
     mappingKey: fallback.mappingKey,
@@ -183,36 +198,46 @@ const sanitizeMissingLocationStrategy = (
   if (
     raw.action === 'use-existing-area' &&
     raw.targetLocationId &&
-    raw.targetAreaId &&
-    locationIds.has(raw.targetLocationId) &&
-    areaLocationById.get(raw.targetAreaId) === raw.targetLocationId
+    raw.targetAreaId
   ) {
+    const location = locationsById.get(raw.targetLocationId);
+    const area = areasById.get(raw.targetAreaId);
+    if (!location || !area || area.locationId !== location.id) {
+      return { ...fallback, reviewRequired: true };
+    }
     return {
       ...metadata,
       action: 'use-existing-area',
-      targetLocationId: raw.targetLocationId,
-      ...(raw.targetLocationName?.trim()
-        ? { targetLocationName: raw.targetLocationName.trim() }
-        : {}),
-      targetAreaId: raw.targetAreaId,
-      ...(raw.areaPath?.trim() ? { areaPath: raw.areaPath.trim() } : {}),
+      targetLocationId: location.id,
+      targetLocationName: location.name,
+      targetAreaId: area.id,
+      areaPath: area.path,
     };
   }
-  if (raw.action === 'assign-review-area' && raw.areaPath?.trim()) {
-    if (raw.targetLocationId && locationIds.has(raw.targetLocationId)) {
+  const areaPath = raw.areaPath
+    ? normalizeProductImportPath(raw.areaPath)
+    : undefined;
+  const targetLocationName = raw.targetLocationName
+    ? normalizeProductImportLocationName(raw.targetLocationName)
+    : undefined;
+  if (raw.action === 'assign-review-area' && areaPath) {
+    const location = raw.targetLocationId
+      ? locationsById.get(raw.targetLocationId)
+      : undefined;
+    if (location) {
       return {
         ...metadata,
         action: 'assign-review-area',
-        targetLocationId: raw.targetLocationId,
-        areaPath: raw.areaPath.trim(),
+        targetLocationId: location.id,
+        areaPath,
       };
     }
-    if (raw.targetLocationName?.trim()) {
+    if (targetLocationName) {
       return {
         ...metadata,
         action: 'assign-review-area',
-        targetLocationName: raw.targetLocationName.trim(),
-        areaPath: raw.areaPath.trim(),
+        targetLocationName,
+        areaPath,
       };
     }
   }
@@ -224,6 +249,7 @@ const sanitizeSkuVariant = (
   rawVariant:
     | RawLlmProposal['skuConflictResolutions'][number]['variants'][number]
     | undefined,
+  sourceSku: string,
 ): ProductImportSkuVariantResolutionDto => {
   if (!rawVariant) return variant;
   if (rawVariant.action === 'skip') {
@@ -233,7 +259,12 @@ const sanitizeSkuVariant = (
       action: 'skip',
     };
   }
-  const targetSku = rawVariant.targetSku?.trim();
+  const targetSku = rawVariant.targetSku
+    ? normalizeProductImportSku(rawVariant.targetSku)
+    : undefined;
+  if (rawVariant.action === 'keep-source-sku' && targetSku !== sourceSku) {
+    return variant;
+  }
   return targetSku
     ? {
         variantKey: variant.variantKey,
@@ -245,19 +276,20 @@ const sanitizeSkuVariant = (
 };
 
 export const sanitizeLlmProposal = (
-  raw: unknown,
+  proposal: RawLlmProposal,
   preview: ProductImportPreviewDto,
   context: ProductImportTargetContextDto,
   guidance?: ProductImportProposalGuidanceDto,
 ): ProductImportAiProposalV2Dto => {
-  const proposal = decodeRawLlmProposal(raw);
   const fallback = makeProductImportProposal(preview, context);
-  const categoryIds = new Set(
-    context.categories.map((category) => category.id),
+  const categoriesById = new Map(
+    context.categories.map((category) => mapEntry(category.id, category)),
   );
-  const locationIds = new Set(context.locations.map((location) => location.id));
-  const areaLocationById = new Map(
-    context.areas.map((area) => mapEntry(area.id, area.locationId)),
+  const locationsById = new Map(
+    context.locations.map((location) => mapEntry(location.id, location)),
+  );
+  const areasById = new Map(
+    context.areas.map((area) => mapEntry(area.id, area)),
   );
   const rawCategoriesBySource = new Map(
     proposal.categoryMappings.map((mapping) =>
@@ -267,7 +299,7 @@ export const sanitizeLlmProposal = (
   const categoryMappings = fallback.categoryMappings.map((mapping) => {
     const rawMapping = rawCategoriesBySource.get(mapping.sourcePath);
     return rawMapping
-      ? sanitizeCategoryMapping(rawMapping, mapping, categoryIds)
+      ? sanitizeCategoryMapping(rawMapping, mapping, categoriesById)
       : mapping;
   });
   const rawLocationsBySource = new Map(
@@ -278,12 +310,7 @@ export const sanitizeLlmProposal = (
   const locationMappings = fallback.locationMappings.map((mapping) => {
     const rawMapping = rawLocationsBySource.get(mapping.sourceLocation);
     return rawMapping
-      ? sanitizeLocationMapping(
-          rawMapping,
-          mapping,
-          locationIds,
-          areaLocationById,
-        )
+      ? sanitizeLocationMapping(rawMapping, mapping, locationsById, areasById)
       : mapping;
   });
   const rawConflictsByKey = new Map(
@@ -309,7 +336,11 @@ export const sanitizeLlmProposal = (
         ...optionalReason(rawResolution.reason),
         reviewRequired: rawResolution.reviewRequired,
         variants: resolution.variants.map((variant) =>
-          sanitizeSkuVariant(variant, rawVariantsByKey.get(variant.variantKey)),
+          sanitizeSkuVariant(
+            variant,
+            rawVariantsByKey.get(variant.variantKey),
+            resolution.sourceSku,
+          ),
         ),
       };
     },
@@ -322,17 +353,15 @@ export const sanitizeLlmProposal = (
       format: preview.format,
       confidence: clampConfidence(proposal.confidence, fallback.confidence),
       productIdentity: {
-        sourceColumn:
-          proposal.productIdentity.sourceColumn.trim() ||
-          fallback.productIdentity.sourceColumn,
+        sourceColumn: fallback.productIdentity.sourceColumn,
         conflictPolicy: proposal.productIdentity.conflictPolicy,
       },
       skuConflictResolutions,
       missingLocationStrategy: sanitizeMissingLocationStrategy(
         proposal.missingLocationStrategy,
         fallback.missingLocationStrategy,
-        locationIds,
-        areaLocationById,
+        locationsById,
+        areasById,
       ),
       categoryMappings,
       supplierMappings: [],
@@ -341,21 +370,4 @@ export const sanitizeLlmProposal = (
     },
     guidance,
   );
-};
-
-export const extractResponseText = (json: unknown): string => {
-  if (!isUnknownRecord(json)) {
-    throw new Error('OpenAI response was not a JSON object');
-  }
-
-  if (typeof json.output_text === 'string') return json.output_text;
-  const output = Array.isArray(json.output) ? json.output : [];
-  for (const item of output) {
-    if (!isUnknownRecord(item) || !Array.isArray(item.content)) continue;
-    for (const content of item.content) {
-      if (!isUnknownRecord(content)) continue;
-      if (typeof content.text === 'string') return content.text;
-    }
-  }
-  throw new Error('OpenAI response did not include output text');
 };

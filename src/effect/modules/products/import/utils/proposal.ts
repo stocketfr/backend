@@ -1,11 +1,13 @@
 import type {
   ProductImportAiProposalV2Dto,
   ProductImportCategoryMappingV2Dto,
+  ProductImportLocationMappingDto,
   ProductImportLocationMappingV2Dto,
   ProductImportPlanDto,
   ProductImportPreviewDto,
   ProductImportProposalGuidanceDto,
   ProductImportSkuConflictResolutionV2Dto,
+  ProductImportSkuVariantResolutionDto,
   ProductImportTargetContextDto,
 } from '@stocket/types/products';
 import { normalizeStorageLocationName } from '../storage-location/utils';
@@ -17,6 +19,11 @@ import {
   skuConflictDecisionKey,
   skuVariantDecisionKey,
 } from './proposal-keys';
+import {
+  normalizeProductImportLocationName,
+  normalizeProductImportPath,
+  normalizeProductImportSku,
+} from './proposal-values';
 import { makeImportWarning } from './warnings';
 
 const EMPTY_TARGET_CONTEXT: ProductImportTargetContextDto = {
@@ -83,7 +90,10 @@ const makeCategoryMappings = (
   );
 
   return preview.categoryMappings.map((mapping) => {
-    const targetPath = inferTargetCategoryPath(mapping.sourcePath);
+    const inferredTargetPath = inferTargetCategoryPath(mapping.sourcePath);
+    const targetPath =
+      normalizeProductImportPath(inferredTargetPath) ??
+      'Needs Review / Uncategorized';
     const existing =
       categoriesByPath.get(normalizedKey(targetPath)) ??
       categoriesByPath.get(normalizedKey(mapping.sourcePath));
@@ -131,6 +141,13 @@ const makeLocationMappings = (
   return preview.locationMappings.map((mapping) => {
     const sourceLocation = normalizeStorageLocationName(mapping.sourceLocation);
     const mappingKey = locationDecisionKey(sourceLocation);
+    const safeTargetLocationName =
+      normalizeProductImportLocationName(sourceLocation) ??
+      importedLocationName;
+    const safeAreaPath = mapping.areaPath
+      ? (normalizeProductImportPath(mapping.areaPath) ??
+        'Unassigned / Needs Review')
+      : undefined;
     const exactLocation = locationsByName.get(normalizedKey(sourceLocation));
     if (exactLocation) {
       return {
@@ -146,10 +163,10 @@ const makeLocationMappings = (
       };
     }
 
-    if (mapping.areaPath) {
+    if (safeAreaPath) {
       const matchingArea = context.locations.flatMap((location) => {
         const area = areasByPath.get(
-          `${location.id}:${normalizedKey(mapping.areaPath ?? '')}`,
+          `${location.id}:${normalizedKey(safeAreaPath)}`,
         );
         return area ? [{ area, location }] : [];
       })[0];
@@ -179,7 +196,7 @@ const makeLocationMappings = (
           : 'The CSV value is an area hierarchy but its root location needs review.',
         reviewRequired: !onlyLocation || context.truncated === true,
         sourceLocation,
-        areaPath: mapping.areaPath,
+        areaPath: safeAreaPath,
         rowCount: mapping.rowCount,
       };
       return onlyLocation
@@ -202,7 +219,7 @@ const makeLocationMappings = (
       reviewRequired: context.truncated === true,
       sourceLocation,
       action: 'create-location',
-      targetLocationName: sourceLocation,
+      targetLocationName: safeTargetLocationName,
       rowCount: mapping.rowCount,
     };
   });
@@ -228,6 +245,7 @@ const makeSkuConflictResolutions = (
         names: [name],
       }));
 
+    const validSourceSku = normalizeProductImportSku(conflict.sku);
     return {
       mappingKey: conflictKey,
       confidence: 0.9,
@@ -236,12 +254,12 @@ const makeSkuConflictResolutions = (
       conflictKey,
       sourceSku: conflict.sku,
       variants: variants.map((variant, index) =>
-        index === 0
+        index === 0 && validSourceSku
           ? {
               variantKey: variant.variantKey,
               rows: variant.rows,
               action: 'keep-source-sku',
-              targetSku: conflict.sku,
+              targetSku: validSourceSku,
             }
           : {
               variantKey: variant.variantKey,
@@ -275,6 +293,9 @@ const makeMissingLocationStrategy = (
     (area) => normalizedKey(area.path) === 'unassigned / needs review',
   );
   if (existingReviewArea) {
+    const existingReviewLocation = context.locations.find(
+      (location) => location.id === existingReviewArea.locationId,
+    );
     return {
       mappingKey: MISSING_LOCATION_DECISION_KEY,
       confidence: 0.98,
@@ -283,6 +304,9 @@ const makeMissingLocationStrategy = (
       rowCount,
       action: 'use-existing-area',
       targetLocationId: existingReviewArea.locationId,
+      ...(existingReviewLocation
+        ? { targetLocationName: existingReviewLocation.name }
+        : {}),
       targetAreaId: existingReviewArea.id,
       areaPath: existingReviewArea.path,
     };
@@ -340,84 +364,107 @@ const lockedMappings = <
 const normalizeLockedCategory = (
   mapping: NonNullable<ProductImportPlanDto['categoryMappings']>[number],
   fallback: ProductImportCategoryMappingV2Dto,
+  context: ProductImportTargetContextDto,
 ): ProductImportCategoryMappingV2Dto => {
+  const category = mapping.targetCategoryId
+    ? context.categories.find(
+        (candidate) => candidate.id === mapping.targetCategoryId,
+      )
+    : undefined;
+  const targetPath = normalizeProductImportPath(mapping.targetPath);
   const metadata = {
-    mappingKey: mapping.mappingKey ?? fallback.mappingKey,
+    mappingKey: fallback.mappingKey,
     confidence: mapping.confidence ?? fallback.confidence,
     ...(mapping.reason ? { reason: mapping.reason } : {}),
     reviewRequired: mapping.reviewRequired ?? fallback.reviewRequired,
-    sourcePath: mapping.sourcePath,
-    targetPath: mapping.targetPath,
-    rowCount: mapping.rowCount,
+    sourcePath: fallback.sourcePath,
+    targetPath: category?.path ?? targetPath ?? fallback.targetPath,
+    rowCount: fallback.rowCount,
   };
-  return mapping.action === 'use-existing' && mapping.targetCategoryId
+  if (mapping.action === 'use-existing') {
+    return category
+      ? {
+          ...metadata,
+          action: 'use-existing',
+          targetCategoryId: category.id,
+        }
+      : fallback;
+  }
+  return targetPath
     ? {
         ...metadata,
-        action: 'use-existing',
-        targetCategoryId: mapping.targetCategoryId,
-      }
-    : {
-        ...metadata,
         action: mapping.action === 'default' ? 'default' : 'create',
-      };
+      }
+    : fallback;
 };
 
 const normalizeLockedLocation = (
-  mapping: NonNullable<ProductImportPlanDto['locationMappings']>[number],
+  mapping: ProductImportLocationMappingDto | ProductImportLocationMappingV2Dto,
   fallback: ProductImportLocationMappingV2Dto,
+  context: ProductImportTargetContextDto,
 ): ProductImportLocationMappingV2Dto => {
+  const location = mapping.targetLocationId
+    ? context.locations.find(
+        (candidate) => candidate.id === mapping.targetLocationId,
+      )
+    : undefined;
+  const area = mapping.targetAreaId
+    ? context.areas.find((candidate) => candidate.id === mapping.targetAreaId)
+    : undefined;
+  const areaPath = mapping.areaPath
+    ? normalizeProductImportPath(mapping.areaPath)
+    : undefined;
+  const targetLocationName = mapping.targetLocationName
+    ? normalizeProductImportLocationName(mapping.targetLocationName)
+    : undefined;
   const metadata = {
-    mappingKey: mapping.mappingKey ?? fallback.mappingKey,
+    mappingKey: fallback.mappingKey,
     confidence: mapping.confidence ?? fallback.confidence,
     ...(mapping.reason ? { reason: mapping.reason } : {}),
     reviewRequired: mapping.reviewRequired ?? fallback.reviewRequired,
-    sourceLocation: mapping.sourceLocation,
-    rowCount: mapping.rowCount,
+    sourceLocation: fallback.sourceLocation,
+    rowCount: fallback.rowCount,
   };
-  if (mapping.targetAreaId && mapping.targetLocationId) {
+  if (area && location && area.locationId === location.id) {
     return {
       ...metadata,
       action: 'use-existing-area',
-      targetLocationId: mapping.targetLocationId,
-      ...(mapping.targetLocationName
-        ? { targetLocationName: mapping.targetLocationName }
-        : {}),
-      targetAreaId: mapping.targetAreaId,
-      ...(mapping.areaPath ? { areaPath: mapping.areaPath } : {}),
+      targetLocationId: location.id,
+      targetLocationName: location.name,
+      targetAreaId: area.id,
+      areaPath: area.path,
     };
   }
-  if (mapping.action === 'use-existing' && mapping.targetLocationId) {
+  if (mapping.action === 'use-existing' && location) {
     return {
       ...metadata,
       action: 'use-existing',
-      targetLocationId: mapping.targetLocationId,
-      ...(mapping.targetLocationName
-        ? { targetLocationName: mapping.targetLocationName }
-        : {}),
+      targetLocationId: location.id,
+      targetLocationName: location.name,
     };
   }
-  if (mapping.action === 'create-location' && mapping.targetLocationName) {
+  if (mapping.action === 'create-location' && targetLocationName) {
     return {
       ...metadata,
       action: 'create-location',
-      targetLocationName: mapping.targetLocationName,
+      targetLocationName,
     };
   }
-  if (mapping.action === 'create-area' && mapping.areaPath) {
-    if (mapping.targetLocationId) {
+  if (mapping.action === 'create-area' && areaPath) {
+    if (location) {
       return {
         ...metadata,
         action: 'create-area',
-        targetLocationId: mapping.targetLocationId,
-        areaPath: mapping.areaPath,
+        targetLocationId: location.id,
+        areaPath,
       };
     }
-    if (mapping.targetLocationName) {
+    if (targetLocationName) {
       return {
         ...metadata,
         action: 'create-area',
-        targetLocationName: mapping.targetLocationName,
-        areaPath: mapping.areaPath,
+        targetLocationName,
+        areaPath,
       };
     }
   }
@@ -429,46 +476,94 @@ const normalizeLockedLocation = (
 const normalizeLockedMissingLocation = (
   strategy: NonNullable<ProductImportPlanDto['missingLocationStrategy']>,
   fallback: ProductImportAiProposalV2Dto['missingLocationStrategy'],
+  context: ProductImportTargetContextDto,
 ): ProductImportAiProposalV2Dto['missingLocationStrategy'] => {
+  const location = strategy.targetLocationId
+    ? context.locations.find(
+        (candidate) => candidate.id === strategy.targetLocationId,
+      )
+    : undefined;
+  const area = strategy.targetAreaId
+    ? context.areas.find((candidate) => candidate.id === strategy.targetAreaId)
+    : undefined;
+  const areaPath = strategy.areaPath
+    ? normalizeProductImportPath(strategy.areaPath)
+    : undefined;
+  const targetLocationName = strategy.targetLocationName
+    ? normalizeProductImportLocationName(strategy.targetLocationName)
+    : undefined;
   const metadata = {
-    mappingKey: strategy.mappingKey ?? fallback.mappingKey,
+    mappingKey: fallback.mappingKey,
     confidence: strategy.confidence ?? fallback.confidence,
     ...(strategy.reason ? { reason: strategy.reason } : {}),
     reviewRequired: strategy.reviewRequired ?? fallback.reviewRequired,
-    rowCount: strategy.rowCount,
+    rowCount: fallback.rowCount,
   };
   if (strategy.action === 'skip-inventory') {
     return { ...metadata, action: 'skip-inventory' };
   }
-  if (strategy.action === 'use-existing-area') {
+  if (
+    strategy.action === 'use-existing-area' &&
+    area &&
+    location &&
+    area.locationId === location.id
+  ) {
     return {
       ...metadata,
       action: 'use-existing-area',
-      targetLocationId: strategy.targetLocationId,
-      ...(strategy.targetLocationName
-        ? { targetLocationName: strategy.targetLocationName }
-        : {}),
-      targetAreaId: strategy.targetAreaId,
-      ...(strategy.areaPath ? { areaPath: strategy.areaPath } : {}),
+      targetLocationId: location.id,
+      targetLocationName: location.name,
+      targetAreaId: area.id,
+      areaPath: area.path,
     };
   }
-  if (strategy.targetLocationId) {
+  if (strategy.action === 'assign-review-area' && location && areaPath) {
     return {
       ...metadata,
       action: 'assign-review-area',
-      targetLocationId: strategy.targetLocationId,
-      areaPath: strategy.areaPath,
+      targetLocationId: location.id,
+      areaPath,
     };
   }
-  if (strategy.targetLocationName) {
+  if (
+    strategy.action === 'assign-review-area' &&
+    targetLocationName &&
+    areaPath
+  ) {
     return {
       ...metadata,
       action: 'assign-review-area',
-      targetLocationName: strategy.targetLocationName,
-      areaPath: strategy.areaPath,
+      targetLocationName,
+      areaPath,
     };
   }
   return fallback;
+};
+
+const normalizeLockedSkuVariant = (
+  edited: ProductImportSkuVariantResolutionDto,
+  fallback: ProductImportSkuVariantResolutionDto,
+  sourceSku: string,
+): ProductImportSkuVariantResolutionDto => {
+  if (edited.action === 'skip') {
+    return {
+      variantKey: fallback.variantKey,
+      rows: fallback.rows,
+      action: 'skip',
+    };
+  }
+  const targetSku = normalizeProductImportSku(edited.targetSku);
+  if (edited.action === 'keep-source-sku' && targetSku !== sourceSku) {
+    return fallback;
+  }
+  return targetSku
+    ? {
+        variantKey: fallback.variantKey,
+        rows: fallback.rows,
+        action: edited.action,
+        targetSku,
+      }
+    : fallback;
 };
 
 export const applyProductImportGuidanceLocks = (
@@ -477,31 +572,51 @@ export const applyProductImportGuidanceLocks = (
 ): ProductImportAiProposalV2Dto => {
   const plan = guidance?.currentPlan;
   const locks = guidance?.locks;
-  if (!plan || !locks) return proposal;
+  if (!plan || plan.planVersion !== 2 || !locks) return proposal;
+  const planLocationMappings:
+    | readonly (
+        | ProductImportLocationMappingDto
+        | ProductImportLocationMappingV2Dto
+      )[]
+    | undefined = plan.locationMappings;
 
   const categoryMappings = lockedMappings(
     proposal.categoryMappings,
     plan.categoryMappings,
     locks.categoryMappings,
-    normalizeLockedCategory,
+    (mapping, fallback) =>
+      normalizeLockedCategory(mapping, fallback, proposal.targetContext),
   );
   const locationMappings = lockedMappings(
     proposal.locationMappings,
-    plan.locationMappings,
+    planLocationMappings,
     locks.locationMappings,
-    normalizeLockedLocation,
+    (mapping, fallback) =>
+      normalizeLockedLocation(mapping, fallback, proposal.targetContext),
   );
   const skuConflictResolutions = lockedMappings(
     proposal.skuConflictResolutions,
     plan.skuConflictResolutions,
     locks.skuConflictResolutions,
-    (mapping, fallback) => ({
-      ...fallback,
-      ...mapping,
-      mappingKey: mapping.mappingKey ?? fallback.mappingKey,
-      confidence: mapping.confidence ?? fallback.confidence,
-      reviewRequired: mapping.reviewRequired ?? fallback.reviewRequired,
-    }),
+    (mapping, fallback) => {
+      const variantsByKey = new Map(
+        mapping.variants.map((variant) =>
+          mapEntry(variant.variantKey, variant),
+        ),
+      );
+      return {
+        ...fallback,
+        confidence: mapping.confidence ?? fallback.confidence,
+        ...(mapping.reason ? { reason: mapping.reason } : {}),
+        reviewRequired: mapping.reviewRequired ?? fallback.reviewRequired,
+        variants: fallback.variants.map((variant) => {
+          const edited = variantsByKey.get(variant.variantKey);
+          return edited
+            ? normalizeLockedSkuVariant(edited, variant, fallback.sourceSku)
+            : variant;
+        }),
+      };
+    },
   );
 
   return {
@@ -521,6 +636,7 @@ export const applyProductImportGuidanceLocks = (
         ? normalizeLockedMissingLocation(
             plan.missingLocationStrategy,
             proposal.missingLocationStrategy,
+            proposal.targetContext,
           )
         : proposal.missingLocationStrategy,
   };
