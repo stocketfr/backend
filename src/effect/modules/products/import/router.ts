@@ -1,6 +1,11 @@
 import { readFile } from 'node:fs/promises';
-import { HttpRouter, HttpServerRequest, Multipart } from '@effect/platform';
-import { Effect, Schema } from 'effect';
+import {
+  Headers,
+  HttpRouter,
+  HttpServerRequest,
+  Multipart,
+} from '@effect/platform';
+import { Effect, Option, Schema } from 'effect';
 import { respondJsonOk } from '../../../platform/http/errors';
 import {
   tenantRoute,
@@ -16,6 +21,10 @@ import { ProductImportBackgroundService } from './background/service';
 import { ProductImportPlanSchema, ProductImportTypes } from './types';
 
 const ProductImportTypeSchema = Schema.Literal(...ProductImportTypes);
+const ProductImportIdempotencyKeySchema = Schema.Trim.pipe(
+  Schema.nonEmptyString(),
+  Schema.maxLength(200),
+);
 const ProductImportUploadSchema = Schema.Struct({
   file: Multipart.SingleFileSchema,
   import_type: Schema.optionalWith(ProductImportTypeSchema, {
@@ -45,6 +54,13 @@ const parseProductImportPlan = (plan: string | undefined) =>
   });
 
 const readProductImportUpload = Effect.gen(function* () {
+  const request = yield* HttpServerRequest.HttpServerRequest;
+  const idempotencyKeyHeader = Headers.get(request.headers, 'idempotency-key');
+  const idempotencyKey = Option.isSome(idempotencyKeyHeader)
+    ? yield* Schema.decodeUnknown(ProductImportIdempotencyKeySchema)(
+        idempotencyKeyHeader.value,
+      )
+    : undefined;
   const upload = yield* HttpServerRequest.schemaBodyMultipart(
     ProductImportUploadSchema,
   );
@@ -62,6 +78,7 @@ const readProductImportUpload = Effect.gen(function* () {
     bytes: buffer,
     importType: upload.import_type,
     approvedPlan: yield* parseProductImportPlan(upload.plan),
+    idempotencyKey,
   };
 });
 
@@ -74,7 +91,10 @@ export const productImportRouter = HttpRouter.empty.pipe(
       session: 'required',
     }).pipe(
       Effect.flatMap(
-        ({ input: { bytes, importType, approvedPlan }, session }) =>
+        ({
+          input: { bytes, importType, approvedPlan, idempotencyKey },
+          session,
+        }) =>
           session
             ? Effect.flatMap(
                 ProductImportBackgroundService,
@@ -83,6 +103,7 @@ export const productImportRouter = HttpRouter.empty.pipe(
                     bytes,
                     importType,
                     approvedPlan,
+                    ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
                     userId: session.user.id,
                   }),
               )

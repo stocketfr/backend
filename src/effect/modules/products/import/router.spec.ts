@@ -198,6 +198,26 @@ describe('productImportRouter', () => {
       expect(enqueue).not.toHaveBeenCalled();
     });
 
+    it('returns 400 for an empty idempotency key', async () => {
+      const enqueue = vi.fn(() => Effect.succeed(queuedTask()));
+      const { handler } = makeProductImportRouterHarness({
+        backgroundService: { enqueue },
+        permissions: writeAll,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/import', {
+          method: 'POST',
+          headers: { 'idempotency-key': '   ' },
+          body: 'ignored',
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      expect(mockMultipart).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
+    });
+
     it('returns 500 when reading the uploaded file fails', async () => {
       mockMultipart.mockReturnValue(
         Effect.succeed({
@@ -243,6 +263,7 @@ describe('productImportRouter', () => {
       const response = await handler(
         new Request('http://localhost/import', {
           method: 'POST',
+          headers: { 'idempotency-key': ' product-import-request-1 ' },
           body: 'ignored',
         }),
       );
@@ -261,6 +282,7 @@ describe('productImportRouter', () => {
         bytes: Buffer.from('sku,name,category_path\nSKU-1,Whisky,Spirits\n'),
         importType: 'auto',
         approvedPlan: undefined,
+        idempotencyKey: 'product-import-request-1',
         userId: '00000000-0000-4000-a000-000000000001',
       });
     });

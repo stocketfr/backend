@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import { randomUUID } from 'node:crypto';
 import { PRODUCT_IMPORT_PROGRESS_MESSAGES } from '../types';
+import { retainOnCreate } from '../../../../platform/effect/create-or-reuse';
 import { StorageAdapter } from '../../../../platform/storage';
 import { TenantQuery } from '../../../../platform/tenancy/tenant-query';
 import { makeServiceTracer } from '../../../../platform/observability/service-tracer';
@@ -40,21 +41,26 @@ export class ProductImportBackgroundService extends Effect.Service<ProductImport
             contentType: 'text/csv; charset=utf-8',
           });
 
-          return yield* tasks
-            .enqueue({
-              type: PRODUCT_IMPORT_TASK_TYPE,
-              payload,
-              createdBy: options.userId,
-              maxAttempts: 3,
-              progress: {
-                messageKey: PRODUCT_IMPORT_PROGRESS_MESSAGES.queued,
-              },
-            })
-            .pipe(
-              Effect.tapError(() =>
-                storage.deleteObject(blobKey).pipe(Effect.ignore),
+          return yield* retainOnCreate(
+            tasks
+              .enqueue({
+                type: PRODUCT_IMPORT_TASK_TYPE,
+                payload,
+                createdBy: options.userId,
+                idempotencyKey: options.idempotencyKey,
+                maxAttempts: 3,
+                progress: {
+                  messageKey: PRODUCT_IMPORT_PROGRESS_MESSAGES.queued,
+                },
+              })
+              .pipe(
+                Effect.map((result) => ({
+                  value: result.task,
+                  disposition: result.disposition,
+                })),
               ),
-            );
+            storage.deleteObject(blobKey),
+          );
         }).pipe(trace.span('enqueue'));
 
       return { enqueue };

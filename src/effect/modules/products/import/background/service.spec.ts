@@ -16,6 +16,12 @@ const taskResponse = toTaskResponseDto(
   makeTaskRow({ type: 'product-import' }),
   'en',
 );
+const taskEnqueueResult = (
+  disposition: 'created' | 'existing' = 'created',
+) => ({
+  task: taskResponse,
+  disposition,
+});
 
 const buildService = async (
   enqueue: TasksService['enqueue'],
@@ -44,7 +50,7 @@ const buildService = async (
 describe('ProductImportBackgroundService', () => {
   it('stores the CSV and enqueues only its blob reference', async () => {
     const enqueue = vi.fn<TasksService['enqueue']>(() =>
-      Effect.succeed(taskResponse),
+      Effect.succeed(taskEnqueueResult()),
     );
     const { service, storage } = await buildService(enqueue);
     const bytes = Buffer.from('sku,name\nSKU-1,Whisky\n');
@@ -54,6 +60,7 @@ describe('ProductImportBackgroundService', () => {
         service.enqueue({
           bytes,
           importType: 'auto',
+          idempotencyKey: 'request-1',
           userId: 'user-1',
         }),
       ),
@@ -68,9 +75,30 @@ describe('ProductImportBackgroundService', () => {
       type: 'product-import',
       payload: { blobKey, importType: 'auto' },
       createdBy: 'user-1',
+      idempotencyKey: 'request-1',
       maxAttempts: 3,
       progress: { messageKey: 'products.importProgressQueued' },
     });
+  });
+
+  it('deletes the losing blob when enqueueing reuses an existing task', async () => {
+    const enqueue = vi.fn<TasksService['enqueue']>(() =>
+      Effect.succeed(taskEnqueueResult('existing')),
+    );
+    const { service, storage } = await buildService(enqueue);
+
+    await expect(
+      Effect.runPromise(
+        service.enqueue({
+          bytes: Buffer.from('sku,name\nSKU-1,Whisky\n'),
+          importType: 'auto',
+          idempotencyKey: 'request-1',
+          userId: 'user-1',
+        }),
+      ),
+    ).resolves.toEqual(taskResponse);
+
+    expect(storage.store.size).toBe(0);
   });
 
   it('deletes the blob when task enqueueing fails', async () => {
