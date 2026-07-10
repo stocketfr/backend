@@ -6,13 +6,13 @@ or reach into the individual modules when you want to compose by hand.
 
 ## When to use what
 
-| You are writing...                                             | Use                                                                  |
-| -------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Pure unit tests on a service with mocked repos / peer services | `makeTestLayer(tag)({...})` + `it.effect` or plain `it`              |
-| Integration tests that hit Postgres                            | `withTestDb()` + `testPlatformLayer` + `runTest` / `runTestFailure`  |
-| Router tests (`HttpApp.toWebHandler`)                          | `vi.mock('./service', ...)` like `modules/auth/router.spec.ts`       |
-| Anything touching `UsersService` / `BetterAuth.api`            | `makeBetterAuthTestLayer({ users: [...] })`                          |
-| Photo tests once LIB-176 lands (forward-looking)               | `makeInMemoryStorageAdapter()` / `makeInMemoryStorageAdapterLayer()` |
+| You are writing...                                             | Use                                                                       |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Pure unit tests on a service with mocked repos / peer services | `makeMockServiceLayer(...)` + `makeServiceTestHarness(...)` + `it.effect` |
+| Integration tests that hit Postgres                            | `withTestDb()` + `testPlatformLayer` + `runTest` / `runTestFailure`       |
+| Router tests (`HttpApp.toWebHandler`)                          | `vi.mock('./service', ...)` like `modules/auth/router.spec.ts`            |
+| Anything touching `UsersService` / `BetterAuth.api`            | `makeBetterAuthTestLayer({ users: [...] })`                               |
+| Photo tests once LIB-176 lands (forward-looking)               | `makeInMemoryStorageAdapter()` / `makeInMemoryStorageAdapterLayer()`      |
 
 ### `it.effect` vs `it` + `Effect.runPromise`
 
@@ -25,6 +25,13 @@ or reach into the individual modules when you want to compose by hand.
   and for tests that mix non-Effect setup with Effect execution
   (e.g. most existing integration specs). Don't rewrite working
   tests just to change the harness.
+
+Use `layer(...)` / `it.layer(...)` from `@effect/vitest` when a layer-backed
+fixture is intentionally shared across a test group. `makeServiceTestHarness`
+is the per-test counterpart for mutable Vitest mocks: each call to
+`harness.effect(...)` builds and releases the supplied service graph around one
+test body. Its `harness.layer(...)` method remains available when the native
+layer API is the better fit.
 
 ## DB bootstrap (integration tests)
 
@@ -75,27 +82,33 @@ or the real `auth` module.
 
 ```ts
 import { describe, expect, it } from '@effect/vitest';
-import { Effect, Layer } from 'effect';
-import { makeTestLayer } from '../../testing/test-harness';
+import { Effect } from 'effect';
+import {
+  makeMockServiceLayer,
+  makeServiceTestHarness,
+} from '../../testing/test-harness';
 import { MyRepository } from './repository';
 import { MyService } from './service';
 
-const repoLayer = (overrides: Partial<MyRepository> = {}) =>
-  makeTestLayer(MyRepository)({
+const makeDefaultRepo = () =>
+  ({
     findById: () => Effect.succeed(null),
-    ...overrides,
-  });
+  }) satisfies Partial<MyRepository>;
+
+const makeRepo = makeMockServiceLayer(MyRepository, makeDefaultRepo);
+
+const harness = makeServiceTestHarness(
+  MyService,
+  MyService.DefaultWithoutDependencies,
+);
 
 describe('MyService', () => {
   it.effect('does the thing', () =>
-    Effect.gen(function* () {
-      const svc = yield* MyService;
-      const result = yield* svc.doTheThing('abc');
-      expect(result).toBeDefined();
-    }).pipe(
-      Effect.provide(
-        MyService.DefaultWithoutDependencies.pipe(Layer.provide(repoLayer())),
-      ),
+    harness.effect(makeRepo().layer, (svc) =>
+      Effect.gen(function* () {
+        const result = yield* svc.doTheThing('abc');
+        expect(result).toBeDefined();
+      }),
     ),
   );
 });
@@ -139,11 +152,12 @@ describe('MyService Integration', () => {
 
 - `test-harness.ts` — entry point; `testPlatformLayer`, `runTest`,
   `runTestFailure`, `withTestDb`, plus re-exports of seeds and
-  `makeTestLayer`.
+  service unit-test harness helpers.
 - `integration-layer.ts` — test database pool, Drizzle layer, request context,
   and truncation helpers.
 - `seed.ts` — shared integration-test row factories.
-- `utils.ts` — generic unit-test helpers such as `makeTestLayer`.
+- `utils.ts` — generic unit-test helpers such as `makeTestLayer`,
+  `makeMockServiceLayer`, and `makeServiceTestHarness`.
 - `better-auth-test.ts` — `makeBetterAuthStub`,
   `makeBetterAuthTestLayer`, `makeFakeBetterAuthUser`.
 - `storage-adapter-test.ts` — re-exports the platform `StorageAdapter`

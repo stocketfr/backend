@@ -1,11 +1,14 @@
 import { describe, expect, it } from '@effect/vitest';
 import { beforeEach, vi } from 'vitest';
-import { Effect, Layer } from 'effect';
+import { Effect } from 'effect';
 import {
   NotificationCategory,
   NotificationChannel,
 } from '@stocket/types/notifications';
-import { makeTestLayer } from '../../testing/utils';
+import {
+  makeMockServiceLayer,
+  makeServiceTestHarness,
+} from '../../testing/test-harness';
 import {
   NotificationsRepository,
   type AudienceCandidate,
@@ -59,8 +62,8 @@ const candidate = (over: Partial<AudienceCandidate>): AudienceCandidate => ({
   ...over,
 });
 
-const makeRepo = (overrides: Record<string, unknown> = {}) => {
-  const mocks = {
+const makeDefaultRepo = () =>
+  ({
     recordPending: vi.fn((_p: RecordPendingParams) =>
       Effect.succeed<string | null>('notif-1'),
     ),
@@ -69,30 +72,14 @@ const makeRepo = (overrides: Record<string, unknown> = {}) => {
     findLowStock: vi.fn(() => Effect.succeed([lowStockItem])),
     listTenantIds: vi.fn(() => Effect.succeed(['t1'])),
     findAudience: vi.fn(() => Effect.succeed([candidate({})])),
-    ...overrides,
-  };
-  return {
-    mocks,
-    layer: makeTestLayer(NotificationsRepository)(
-      mocks as unknown as Partial<NotificationsRepository>,
-    ),
-  };
-};
+  }) satisfies Partial<NotificationsRepository>;
 
-const run = <A, E>(
-  repoLayer: Layer.Layer<NotificationsRepository>,
-  body: (svc: NotificationsService) => Effect.Effect<A, E>,
-) =>
-  Effect.gen(function* () {
-    const svc = yield* NotificationsService;
-    return yield* body(svc);
-  }).pipe(
-    Effect.provide(
-      NotificationsService.DefaultWithoutDependencies.pipe(
-        Layer.provide(repoLayer),
-      ),
-    ),
-  );
+const makeRepo = makeMockServiceLayer(NotificationsRepository, makeDefaultRepo);
+
+const serviceHarness = makeServiceTestHarness(
+  NotificationsService,
+  NotificationsService.DefaultWithoutDependencies,
+);
 
 describe('NotificationsService', () => {
   beforeEach(() => {
@@ -104,16 +91,16 @@ describe('NotificationsService', () => {
     it.effect('records, sends, and marks the ledger row sent', () => {
       mockSend.mockResolvedValue({ id: 'provider-1' });
       const repo = makeRepo();
-      return run(repo.layer, (svc) =>
+      return serviceHarness.effect(repo.layer, (svc) =>
         Effect.gen(function* () {
           yield* svc.notify(recipient, lowStockEvent);
-          expect(repo.mocks.recordPending).toHaveBeenCalledTimes(1);
+          expect(repo.service.recordPending).toHaveBeenCalledTimes(1);
           expect(mockSend).toHaveBeenCalledTimes(1);
-          expect(repo.mocks.markSent).toHaveBeenCalledWith(
+          expect(repo.service.markSent).toHaveBeenCalledWith(
             'notif-1',
             'provider-1',
           );
-          expect(repo.mocks.markFailed).not.toHaveBeenCalled();
+          expect(repo.service.markFailed).not.toHaveBeenCalled();
         }),
       );
     });
@@ -124,12 +111,12 @@ describe('NotificationsService', () => {
           Effect.succeed<string | null>(null),
         ),
       });
-      return run(repo.layer, (svc) =>
+      return serviceHarness.effect(repo.layer, (svc) =>
         Effect.gen(function* () {
           yield* svc.notify(recipient, lowStockEvent);
-          expect(repo.mocks.recordPending).toHaveBeenCalledTimes(1);
+          expect(repo.service.recordPending).toHaveBeenCalledTimes(1);
           expect(mockSend).not.toHaveBeenCalled();
-          expect(repo.mocks.markSent).not.toHaveBeenCalled();
+          expect(repo.service.markSent).not.toHaveBeenCalled();
         }),
       );
     });
@@ -139,13 +126,13 @@ describe('NotificationsService', () => {
     it.live('marks failed after the provider keeps failing', () => {
       mockSend.mockRejectedValue(new Error('smtp down'));
       const repo = makeRepo();
-      return run(repo.layer, (svc) =>
+      return serviceHarness.effect(repo.layer, (svc) =>
         Effect.gen(function* () {
           yield* svc.notify(recipient, lowStockEvent);
           // 1 initial attempt + 3 bounded retries
           expect(mockSend).toHaveBeenCalledTimes(4);
-          expect(repo.mocks.markFailed).toHaveBeenCalledTimes(1);
-          expect(repo.mocks.markSent).not.toHaveBeenCalled();
+          expect(repo.service.markFailed).toHaveBeenCalledTimes(1);
+          expect(repo.service.markSent).not.toHaveBeenCalled();
         }),
       );
     });
@@ -169,12 +156,12 @@ describe('NotificationsService', () => {
             ]),
           ),
         });
-        return run(repo.layer, (svc) =>
+        return serviceHarness.effect(repo.layer, (svc) =>
           Effect.gen(function* () {
             yield* svc.runScan;
             // 1 low-stock item × 1 eligible recipient ('in')
-            expect(repo.mocks.recordPending).toHaveBeenCalledTimes(1);
-            const arg = repo.mocks.recordPending.mock.calls[0]![0];
+            expect(repo.service.recordPending).toHaveBeenCalledTimes(1);
+            const arg = repo.service.recordPending.mock.calls[0]![0];
             expect(arg.userId).toBe('in');
             expect(arg.category).toBe(NotificationCategory.INVENTORY_ALERTS);
             expect(arg.channel).toBe(NotificationChannel.EMAIL);
@@ -185,11 +172,11 @@ describe('NotificationsService', () => {
 
     it.effect('does nothing when there are no low-stock items', () => {
       const repo = makeRepo({ findLowStock: vi.fn(() => Effect.succeed([])) });
-      return run(repo.layer, (svc) =>
+      return serviceHarness.effect(repo.layer, (svc) =>
         Effect.gen(function* () {
           yield* svc.runScan;
-          expect(repo.mocks.findAudience).not.toHaveBeenCalled();
-          expect(repo.mocks.recordPending).not.toHaveBeenCalled();
+          expect(repo.service.findAudience).not.toHaveBeenCalled();
+          expect(repo.service.recordPending).not.toHaveBeenCalled();
         }),
       );
     });
