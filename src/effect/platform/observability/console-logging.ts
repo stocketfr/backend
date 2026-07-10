@@ -2,6 +2,7 @@ import type { Logger as DrizzleLogger } from 'drizzle-orm/logger';
 import { HashMap, Layer, Logger, LogLevel, Cause } from 'effect';
 
 import {
+  readLogFormatName,
   readLogLevelName,
   readSqlLogModeName,
 } from '../config/observability-config';
@@ -12,6 +13,7 @@ const MAX_SQL_LENGTH = 220;
 const UUID_SEGMENT_LENGTH = 8;
 
 type SqlLogMode = 'off' | 'summary' | 'full';
+type LogFormat = 'json' | 'text';
 
 type LogRecord = Record<string, unknown> & {
   readonly messageKey?: string;
@@ -264,6 +266,11 @@ const formatMessage = (message: unknown): string => {
 };
 
 const formatCause = (cause: Cause.Cause<unknown>) => {
+  const rendered = formatCauseValue(cause);
+  return rendered ? `cause=${rendered}` : undefined;
+};
+
+const formatCauseValue = (cause: Cause.Cause<unknown>) => {
   if (Cause.isEmptyType(cause)) {
     return undefined;
   }
@@ -272,7 +279,7 @@ const formatCause = (cause: Cause.Cause<unknown>) => {
     .split('\n')[0]
     ?.trim();
 
-  return rendered ? `cause=${truncate(rendered, MAX_FIELD_LENGTH)}` : undefined;
+  return rendered ? truncate(rendered, MAX_FIELD_LENGTH) : undefined;
 };
 
 const formatAnnotations = (annotations: HashMap.HashMap<string, unknown>) => {
@@ -316,9 +323,98 @@ const formatStructuredLogLine = ({
   return parts.join(' ');
 };
 
+const extractLogRecord = (message: unknown): LogRecord | undefined => {
+  if (isUnknownRecord(message)) {
+    return message;
+  }
+
+  if (
+    Array.isArray(message) &&
+    message.length === 1 &&
+    isUnknownRecord(message[0])
+  ) {
+    return message[0];
+  }
+
+  return undefined;
+};
+
+const annotationsToRecord = (
+  annotations: HashMap.HashMap<string, unknown> | undefined,
+) => (annotations ? Object.fromEntries(annotations) : {});
+
+const makeJsonReplacer = () => {
+  const seen = new WeakSet<object>();
+
+  return (_key: string, value: unknown): unknown => {
+    if (value instanceof Error) {
+      return {
+        kind: value.name,
+        message: value.message,
+      };
+    }
+
+    if (typeof value === 'bigint') {
+      return `${value}n`;
+    }
+
+    if (typeof value === 'symbol') {
+      return value.toString();
+    }
+
+    if (typeof value === 'function') {
+      return `[function ${value.name || 'anonymous'}]`;
+    }
+
+    if (value !== null && typeof value === 'object') {
+      if (seen.has(value)) {
+        return '[Circular]';
+      }
+      seen.add(value);
+    }
+
+    return value;
+  };
+};
+
+const formatJsonLogLine = ({
+  annotations,
+  cause,
+  date,
+  level,
+  message,
+}: {
+  readonly annotations?: HashMap.HashMap<string, unknown>;
+  readonly cause?: Cause.Cause<unknown>;
+  readonly date: Date;
+  readonly level: string;
+  readonly message: unknown;
+}) => {
+  const causeValue = cause ? formatCauseValue(cause) : undefined;
+  const record = {
+    ...extractLogRecord(message),
+    ...annotationsToRecord(annotations),
+    ...(causeValue ? { cause: causeValue } : {}),
+    timestamp: date.toISOString(),
+    status: formatLevel(level).toLowerCase(),
+    message: formatMessage(message),
+  };
+
+  return JSON.stringify(record, makeJsonReplacer());
+};
+
+const resolveLogFormat = (): LogFormat =>
+  readLogFormatName() === 'json' ? 'json' : 'text';
+
+export const formatLogLine = (
+  input: Parameters<typeof formatStructuredLogLine>[0],
+  format: LogFormat = resolveLogFormat(),
+) =>
+  format === 'json' ? formatJsonLogLine(input) : formatStructuredLogLine(input);
+
 const appConsoleLogger = Logger.withLeveledConsole(
   Logger.make(({ annotations, cause, date, logLevel, message }) => {
-    return formatStructuredLogLine({
+    return formatLogLine({
       annotations,
       cause,
       date,
@@ -404,7 +500,7 @@ export const makeDrizzleLogger = (): DrizzleLogger | undefined => {
   return {
     logQuery(query, params) {
       console.info(
-        formatStructuredLogLine({
+        formatLogLine({
           date: new Date(),
           level: 'DEBUG',
           message: makeSqlLogRecord(query, params, mode),

@@ -14,5 +14,8 @@ export const readTracingRuntimeConfig = (): TracingRuntimeConfig => ({
 export const readLogLevelName = () =>
   process.env.LOG_LEVEL?.trim().toLowerCase();
 
+export const readLogFormatName = () =>
+  process.env.LOG_FORMAT?.trim().toLowerCase();
+
 export const readSqlLogModeName = () =>
   process.env.LOG_SQL?.trim().toLowerCase();
