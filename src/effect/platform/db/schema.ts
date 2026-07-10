@@ -607,11 +607,17 @@ export const photos = pgTable(
     storage_path: varchar('storage_path', { length: 500 }).notNull(),
     display_order: integer('display_order').notNull().default(0),
     uploaded_by: uuid('uploaded_by'),
+    source_hash: varchar('source_hash', { length: 64 }),
     created_at: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
-  (table) => [index('photos_product_id_idx').on(table.product_id)],
+  (table) => [
+    index('photos_product_id_idx').on(table.product_id),
+    uniqueIndex('photos_product_source_hash_unique')
+      .on(table.product_id, table.source_hash)
+      .where(sql`${table.source_hash} is not null`),
+  ],
 );
 
 export const supplierProducts = pgTable('supplier_products', {

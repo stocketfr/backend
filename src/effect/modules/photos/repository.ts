@@ -6,6 +6,7 @@ import {
   type TenantScope,
 } from '../../platform/tenancy/tenant-query';
 import { DrizzleDatabase } from '../../platform/db/drizzle';
+import { insertOrGet } from '../../platform/db/insert-or-get';
 import { photos, products } from '../../platform/db/schema';
 import { PhotosInfrastructureError } from './photos.errors';
 
@@ -29,6 +30,19 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
       );
       const tenantOwnsProduct = (tenantScope: TenantScope) =>
         sql`${photos.product_id} IN (SELECT id FROM products WHERE ${tenantScope.whereTenant(products)})`;
+      const assertProductBelongsToTenant = async (
+        tenantScope: TenantScope,
+        productId: string,
+      ) => {
+        const productRows = await db
+          .select({ id: products.id })
+          .from(products)
+          .where(tenantScope.whereTenantId(products, productId))
+          .limit(1);
+        if (productRows.length === 0) {
+          throw new Error('Photo product does not belong to tenant');
+        }
+      };
 
       const findByProductId = (productId: string) =>
         Effect.gen(function* () {
@@ -60,21 +74,75 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
           });
         });
 
+      const findByProductSourceHash = (productId: string, sourceHash: string) =>
+        Effect.gen(function* () {
+          const tenantScope = yield* currentTenantScope;
+          return yield* tryAsync('load photo by source hash', async () => {
+            const rows = await db
+              .select()
+              .from(photos)
+              .where(
+                and(
+                  eq(photos.product_id, productId),
+                  eq(photos.source_hash, sourceHash),
+                  tenantOwnsProduct(tenantScope),
+                ),
+              )
+              .limit(1);
+            return rows[0] ?? null;
+          });
+        });
+
       const create = (data: typeof photos.$inferInsert) =>
         Effect.gen(function* () {
           const tenantScope = yield* currentTenantScope;
           return yield* tryAsync('create photo', async () => {
-            const productRows = await db
-              .select({ id: products.id })
-              .from(products)
-              .where(tenantScope.whereTenantId(products, data.product_id))
-              .limit(1);
-            if (productRows.length === 0) {
-              throw new Error('Photo product does not belong to tenant');
-            }
+            await assertProductBelongsToTenant(tenantScope, data.product_id);
 
             const rows = await db.insert(photos).values(data).returning();
             return rows[0]!;
+          });
+        });
+
+      const createIdempotent = (
+        data: typeof photos.$inferInsert & { readonly source_hash: string },
+      ) =>
+        Effect.gen(function* () {
+          const tenantScope = yield* currentTenantScope;
+          return yield* tryAsync('create idempotent photo', async () => {
+            await assertProductBelongsToTenant(tenantScope, data.product_id);
+
+            return insertOrGet({
+              insert: async () => {
+                const [inserted] = await db
+                  .insert(photos)
+                  .values(data)
+                  .onConflictDoNothing({
+                    target: [photos.product_id, photos.source_hash],
+                    where: sql`${photos.source_hash} is not null`,
+                  })
+                  .returning();
+                return inserted;
+              },
+              getExisting: async () => {
+                const [found] = await db
+                  .select()
+                  .from(photos)
+                  .where(
+                    and(
+                      eq(photos.product_id, data.product_id),
+                      eq(photos.source_hash, data.source_hash),
+                      tenantOwnsProduct(tenantScope),
+                    ),
+                  )
+                  .limit(1);
+                return found;
+              },
+              unresolvedConflictError: () =>
+                new Error(
+                  'Photo source conflict did not resolve to an existing photo',
+                ),
+            });
           });
         });
 
@@ -108,7 +176,9 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
       return {
         findByProductId,
         findById,
+        findByProductSourceHash,
         create,
+        createIdempotent,
         delete: remove,
         countByProductId,
       };

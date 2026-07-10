@@ -142,17 +142,23 @@ export function extractSortlyPhotoUrls(record: CsvRecord): string[] {
   return [...urls];
 }
 
-export function isSupportedSortlyPhotoUrl(value: string): boolean {
+export function sortlyPhotoSourceKey(value: string): string | null {
   try {
     const url = new URL(value);
-    return (
-      url.protocol === 'https:' &&
-      supportedSortlyPhotoHosts.has(url.hostname.toLowerCase())
-    );
+    const hostname = url.hostname.toLowerCase();
+    if (url.protocol !== 'https:' || !supportedSortlyPhotoHosts.has(hostname)) {
+      return null;
+    }
+
+    const pathname = url.pathname.replace(/\/+$/, '');
+    return pathname === '' ? hostname : `${hostname}${pathname}`;
   } catch {
-    return false;
+    return null;
   }
 }
+
+export const isSupportedSortlyPhotoUrl = (value: string): boolean =>
+  sortlyPhotoSourceKey(value) !== null;
 
 const normalizeSortlyRecord = (
   record: CsvRecord,

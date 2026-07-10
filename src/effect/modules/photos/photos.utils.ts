@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { PhotoCreateValues, PhotoCreateValuesOptions } from './types';
 import { PHOTO_MAGIC_SIGNATURES, PHOTO_MIME_EXTENSIONS } from './types';
 
@@ -23,12 +24,16 @@ export const makePhotoObjectKey = (
 ): string =>
   `products/${productId}/photos/${objectId}${getPhotoExtension(mimetype)}`;
 
+export const hashPhotoSourceKey = (sourceKey: string): string =>
+  createHash('sha256').update(sourceKey.trim()).digest('hex');
+
 export const toPhotoCreateValues = ({
   productId,
   file,
   objectKey,
   displayOrder,
   userId,
+  sourceHash,
 }: PhotoCreateValuesOptions): PhotoCreateValues => ({
   product_id: productId,
   filename: file.originalname,
@@ -37,4 +42,5 @@ export const toPhotoCreateValues = ({
   storage_path: objectKey,
   display_order: displayOrder,
   uploaded_by: userId ?? null,
+  source_hash: sourceHash ?? null,
 });

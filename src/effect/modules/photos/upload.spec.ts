@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@effect/vitest';
 import { Effect } from 'effect';
+import { created, existing } from '../../platform/effect/create-or-reuse';
 import { makeInMemoryStorageAdapter } from '../../platform/storage';
 import { PhotosInfrastructureError } from './photos.errors';
 import { makePhotoUploadWorkflow, type PhotoUploadRepository } from './upload';
@@ -17,6 +18,7 @@ const makePhoto = (overrides: Partial<PhotoEntity> = {}): PhotoEntity => ({
   storage_path: 'products/product-1/photos/object-1.jpg',
   display_order: 0,
   uploaded_by: null,
+  source_hash: null,
   created_at: now,
   ...overrides,
 });
@@ -41,6 +43,17 @@ const makeRepository = (
         created_at: now,
       }),
     ),
+  createIdempotent: (values) =>
+    Effect.succeed(
+      created(
+        makePhoto({
+          ...values,
+          id: 'photo-created',
+          created_at: now,
+        }),
+      ),
+    ),
+  findByProductSourceHash: () => Effect.succeed(null),
   ...overrides,
 });
 
@@ -80,6 +93,7 @@ describe('makePhotoUploadWorkflow', () => {
         storage_path: 'products/product-1/photos/object-1.jpg',
         display_order: 2,
         uploaded_by: 'user-1',
+        source_hash: null,
       });
       expect(
         storage.store
@@ -93,6 +107,60 @@ describe('makePhotoUploadWorkflow', () => {
         uploaded_by: 'user-1',
       });
     }),
+  );
+
+  it.effect(
+    'returns an existing source-key photo without writing storage',
+    () =>
+      Effect.gen(function* () {
+        const storage = makeInMemoryStorageAdapter();
+        const repository = makeRepository({
+          findByProductSourceHash: () =>
+            Effect.succeed(makePhoto({ id: 'existing-photo' })),
+        });
+        const workflow = makePhotoUploadWorkflow({
+          repository,
+          storage,
+          makeObjectId: () => 'object-1',
+        });
+
+        const result = yield* workflow.uploadPhoto(
+          'product-1',
+          makeUpload(),
+          'user-1',
+          { sourceKey: 'lnk.sortly.co/photo-1' },
+        );
+
+        expect(result).toMatchObject({ id: 'existing-photo' });
+        expect(storage.store.size).toBe(0);
+      }),
+  );
+
+  it.effect(
+    'deletes the uploaded object when another insert wins the race',
+    () =>
+      Effect.gen(function* () {
+        const storage = makeInMemoryStorageAdapter();
+        const repository = makeRepository({
+          createIdempotent: () =>
+            Effect.succeed(existing(makePhoto({ id: 'existing-photo' }))),
+        });
+        const workflow = makePhotoUploadWorkflow({
+          repository,
+          storage,
+          makeObjectId: () => 'object-1',
+        });
+
+        const result = yield* workflow.uploadPhoto(
+          'product-1',
+          makeUpload(),
+          'user-1',
+          { sourceKey: 'lnk.sortly.co/photo-1' },
+        );
+
+        expect(result).toMatchObject({ id: 'existing-photo' });
+        expect(storage.store.size).toBe(0);
+      }),
   );
 
   it.effect(

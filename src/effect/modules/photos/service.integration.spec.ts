@@ -261,6 +261,36 @@ describe('PhotosService Integration', () => {
       expect(second.display_order).toBe(1);
     });
 
+    it('deduplicates concurrent uploads from the same external source', async () => {
+      const [first, second] = await withSharedDbRetry(async () => {
+        const { product } = await seedPhotoPrereqs();
+        return run(
+          Effect.flatMap(PhotosService, (svc) =>
+            Effect.all(
+              [
+                svc.uploadPhoto(product.id, makeUpload(), undefined, {
+                  sourceKey: 'lnk.sortly.co/v2/downloads/photo/photo-1',
+                }),
+                svc.uploadPhoto(product.id, makeUpload(), undefined, {
+                  sourceKey: 'lnk.sortly.co/v2/downloads/photo/photo-1',
+                }),
+              ],
+              { concurrency: 'unbounded' },
+            ),
+          ),
+        );
+      });
+
+      expect(second.id).toBe(first.id);
+      expect(storage.store.size).toBe(1);
+      const rows = await db
+        .select()
+        .from(photos)
+        .where(eq(photos.id, first.id));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.source_hash).toHaveLength(64);
+    });
+
     it('rejects invalid mime type and writes no object', async () => {
       const { product } = await seedPhotoPrereqs();
       const before = storage.store.size;

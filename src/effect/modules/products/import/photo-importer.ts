@@ -2,19 +2,13 @@ import { Effect } from 'effect';
 import type { PhotoResponseDto } from '@stocket/types/photos';
 import { PhotosService } from '../../photos/service';
 import type { UploadedFile } from '../../photos/types';
+import { getPhotoExtension } from '../../photos/photos.utils';
 import { toError } from '../../../platform/effect/to-error';
 import { makeServiceTracer } from '../../../platform/observability/service-tracer';
-import { isSupportedSortlyPhotoUrl } from './utils/csv';
+import { isSupportedSortlyPhotoUrl, sortlyPhotoSourceKey } from './utils/csv';
 
 const MAX_REMOTE_PHOTO_SIZE = 10 * 1024 * 1024;
 const PHOTO_FETCH_TIMEOUT_MS = 15_000;
-
-const MIME_EXT_MAP: Record<string, string> = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-  'image/gif': '.gif',
-};
 
 const normalizeContentType = (value: string | null): string =>
   value?.split(';')[0]?.trim().toLowerCase() ?? '';
@@ -22,8 +16,7 @@ const normalizeContentType = (value: string | null): string =>
 const makeSortlyPhotoFilename = (
   photoIndex: number,
   mimetype: string,
-): string =>
-  `sortly-photo-${photoIndex + 1}${MIME_EXT_MAP[mimetype] ?? '.bin'}`;
+): string => `sortly-photo-${photoIndex + 1}${getPhotoExtension(mimetype)}`;
 
 const readRemotePhoto = (url: string, photoIndex: number) =>
   Effect.tryPromise({
@@ -93,8 +86,19 @@ export class ProductImportPhotoImporter extends Effect.Service<ProductImportPhot
         userId: string,
       ): Effect.Effect<PhotoResponseDto, unknown> =>
         Effect.gen(function* () {
+          const sourceKey = sortlyPhotoSourceKey(url);
+          if (sourceKey !== null) {
+            const existing = yield* photosService.findBySourceKey(
+              productId,
+              sourceKey,
+            );
+            if (existing !== null) return existing;
+          }
+
           const file = yield* readRemotePhoto(url, photoIndex);
-          return yield* photosService.uploadPhoto(productId, file, userId);
+          return yield* photosService.uploadPhoto(productId, file, userId, {
+            sourceKey,
+          });
         }).pipe(trace.span('importSortlyPhoto', { attributes: { productId } }));
 
       return { importSortlyPhoto };
