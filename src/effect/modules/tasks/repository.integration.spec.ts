@@ -22,7 +22,7 @@ const makeRepositoryLayer = (tenantId: string) => {
     Layer.succeed(DrizzleDatabase, getTestDb()),
     Layer.succeed(CurrentRequestContext, context),
   );
-  return TasksRepository.Default.pipe(Layer.provide(platformLayer));
+  return TasksRepository.Default.pipe(Layer.provideMerge(platformLayer));
 };
 
 const enqueue = (
