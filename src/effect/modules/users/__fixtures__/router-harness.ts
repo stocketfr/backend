@@ -7,12 +7,11 @@
  * tag here because the mocked service never reads it — `provideService`
  * is a no-op when the underlying effect doesn't require the tag.
  */
-import { type Effect } from 'effect';
 import type { Permission, Resource } from '@stocket/types/auth';
-import type { AuditWriteParams } from '../../../platform/audit/index';
 import {
   makeRouterServiceLayer,
   makeRouterTestHarness,
+  type RouterAuditLog,
 } from '../../../testing/router-harness';
 import { usersRouter } from '../router';
 import { UsersService } from '../service';
@@ -20,16 +19,12 @@ import { UsersService } from '../service';
 export interface UsersRouterHarnessOptions {
   readonly service: Record<string, unknown>;
   readonly permissions?: Partial<Record<Resource, Permission[]>>;
-  readonly auditLog?: (
-    params: AuditWriteParams,
-  ) => Effect.Effect<void, never, unknown>;
+  readonly auditLog?: RouterAuditLog;
 }
 
 export interface UsersRouterHarness {
   readonly handler: (request: Request) => Promise<Response>;
-  readonly auditSpy: (
-    params: AuditWriteParams,
-  ) => Effect.Effect<void, never, unknown>;
+  readonly auditSpy: RouterAuditLog;
 }
 
 export const makeUsersRouterHarness = (

@@ -9,11 +9,11 @@
 import { Effect } from 'effect';
 import type { Permission, Resource } from '@stocket/types/auth';
 import { FeatureKey } from '@stocket/types/features';
-import type { AuditWriteParams } from '../../../platform/audit/index';
 import {
   type makeFakeSession,
   makeRouterServiceLayer,
   makeRouterTestHarness,
+  type RouterAuditLog,
 } from '../../../testing/router-harness';
 import { ProductImportService } from '../import/service';
 import { FeatureNotEnabled } from '../../features/features.errors';
@@ -29,17 +29,13 @@ export interface ProductsRouterHarnessOptions {
   readonly importService?: Record<string, unknown>;
   readonly permissions?: Partial<Record<Resource, Permission[]>>;
   readonly session?: ReturnType<typeof makeFakeSession> | null;
-  readonly auditLog?: (
-    params: AuditWriteParams,
-  ) => Effect.Effect<void, never, unknown>;
+  readonly auditLog?: RouterAuditLog;
   readonly smartImportFeatureEnabled?: boolean;
 }
 
 export interface ProductsRouterHarness {
   readonly handler: (request: Request) => Promise<Response>;
-  readonly auditSpy: (
-    params: AuditWriteParams,
-  ) => Effect.Effect<void, never, unknown>;
+  readonly auditSpy: RouterAuditLog;
 }
 
 export const makeProductsRouterHarness = (

@@ -1,4 +1,4 @@
-import { HttpApp, HttpRouter } from '@effect/platform';
+import { HttpApp, HttpRouter, type HttpServerRequest } from '@effect/platform';
 import type { Permission, Resource } from '@stocket/types/auth';
 import { type Context, Effect, Layer } from 'effect';
 import { AuditLogWriter, type AuditWriteParams } from '../platform/audit/index';
@@ -14,7 +14,11 @@ export const FAKE_USER_ID = '00000000-0000-4000-a000-000000000001';
 
 export type RouterAuditLog = (
   params: AuditWriteParams,
-) => Effect.Effect<void, never, unknown>;
+) => Effect.Effect<
+  void,
+  never,
+  BetterAuthService | HttpServerRequest.HttpServerRequest
+>;
 
 export interface RouterTestHarnessOptions {
   readonly router: HttpRouter.HttpRouter<unknown, unknown>;

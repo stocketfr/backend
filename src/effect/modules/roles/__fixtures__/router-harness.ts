@@ -12,12 +12,11 @@
  * without it, `PermissionDenied` / `SessionUnauthorized` failures escape
  * as 500s instead of being mapped to 403 / 401.
  */
-import { type Effect } from 'effect';
 import type { Permission, Resource } from '@stocket/types/auth';
-import type { AuditWriteParams } from '../../../platform/audit/index';
 import {
   makeRouterServiceLayer,
   makeRouterTestHarness,
+  type RouterAuditLog,
 } from '../../../testing/router-harness';
 import { rolesRouter } from '../router';
 import { RolesService } from '../service';
@@ -31,16 +30,12 @@ export interface RolesRouterHarnessOptions {
    * this is *called* — the underlying effect is fire-and-forget per
    * `backend/CLAUDE.md`, so coupling to its success is discouraged.
    */
-  readonly auditLog?: (
-    params: AuditWriteParams,
-  ) => Effect.Effect<void, never, unknown>;
+  readonly auditLog?: RouterAuditLog;
 }
 
 export interface RolesRouterHarness {
   readonly handler: (request: Request) => Promise<Response>;
-  readonly auditSpy: (
-    params: AuditWriteParams,
-  ) => Effect.Effect<void, never, unknown>;
+  readonly auditSpy: RouterAuditLog;
 }
 
 export const makeRolesRouterHarness = (

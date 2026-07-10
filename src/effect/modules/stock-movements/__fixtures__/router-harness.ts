@@ -6,12 +6,11 @@
  * wraps the router with `catchAllCause(respondCause)` so guard/session
  * failures surface as 401/403 instead of 500.
  */
-import { type Effect } from 'effect';
 import type { Permission, Resource } from '@stocket/types/auth';
-import type { AuditWriteParams } from '../../../platform/audit/index';
 import {
   makeRouterServiceLayer,
   makeRouterTestHarness,
+  type RouterAuditLog,
 } from '../../../testing/router-harness';
 import { stockMovementsRouter } from '../router';
 import { StockMovementsService } from '../service';
@@ -19,16 +18,12 @@ import { StockMovementsService } from '../service';
 export interface StockMovementsRouterHarnessOptions {
   readonly service: Record<string, unknown>;
   readonly permissions?: Partial<Record<Resource, Permission[]>>;
-  readonly auditLog?: (
-    params: AuditWriteParams,
-  ) => Effect.Effect<void, never, unknown>;
+  readonly auditLog?: RouterAuditLog;
 }
 
 export interface StockMovementsRouterHarness {
   readonly handler: (request: Request) => Promise<Response>;
-  readonly auditSpy: (
-    params: AuditWriteParams,
-  ) => Effect.Effect<void, never, unknown>;
+  readonly auditSpy: RouterAuditLog;
 }
 
 export const makeStockMovementsRouterHarness = (
