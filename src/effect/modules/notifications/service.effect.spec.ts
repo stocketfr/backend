@@ -74,10 +74,7 @@ const makeDefaultRepo = () =>
     findAudience: vi.fn(() => Effect.succeed([candidate({})])),
   }) satisfies Partial<NotificationsRepository>;
 
-const makeRepo = makeMockServiceLayer(
-  NotificationsRepository,
-  makeDefaultRepo,
-);
+const makeRepo = makeMockServiceLayer(NotificationsRepository, makeDefaultRepo);
 
 const serviceHarness = makeServiceTestHarness(
   NotificationsService,
@@ -142,29 +139,36 @@ describe('NotificationsService', () => {
   });
 
   describe('runScan', () => {
-    it.effect('alerts opted-in staff, skipping opt-outs and missing emails', () => {
-      mockSend.mockResolvedValue({ id: 'provider-1' });
-      const repo = makeRepo({
-        findAudience: vi.fn(() =>
-          Effect.succeed([
-            candidate({ userId: 'in', email: 'in@test', emailEnabled: null }),
-            candidate({ userId: 'out', email: 'out@test', emailEnabled: false }),
-            candidate({ userId: 'noemail', email: null, emailEnabled: null }),
-          ]),
-        ),
-      });
-      return serviceHarness.effect(repo.layer, (svc) =>
-        Effect.gen(function* () {
-          yield* svc.runScan;
-          // 1 low-stock item × 1 eligible recipient ('in')
-          expect(repo.service.recordPending).toHaveBeenCalledTimes(1);
-          const arg = repo.service.recordPending.mock.calls[0]![0];
-          expect(arg.userId).toBe('in');
-          expect(arg.category).toBe(NotificationCategory.INVENTORY_ALERTS);
-          expect(arg.channel).toBe(NotificationChannel.EMAIL);
-        }),
-      );
-    });
+    it.effect(
+      'alerts opted-in staff, skipping opt-outs and missing emails',
+      () => {
+        mockSend.mockResolvedValue({ id: 'provider-1' });
+        const repo = makeRepo({
+          findAudience: vi.fn(() =>
+            Effect.succeed([
+              candidate({ userId: 'in', email: 'in@test', emailEnabled: null }),
+              candidate({
+                userId: 'out',
+                email: 'out@test',
+                emailEnabled: false,
+              }),
+              candidate({ userId: 'noemail', email: null, emailEnabled: null }),
+            ]),
+          ),
+        });
+        return serviceHarness.effect(repo.layer, (svc) =>
+          Effect.gen(function* () {
+            yield* svc.runScan;
+            // 1 low-stock item × 1 eligible recipient ('in')
+            expect(repo.service.recordPending).toHaveBeenCalledTimes(1);
+            const arg = repo.service.recordPending.mock.calls[0]![0];
+            expect(arg.userId).toBe('in');
+            expect(arg.category).toBe(NotificationCategory.INVENTORY_ALERTS);
+            expect(arg.channel).toBe(NotificationChannel.EMAIL);
+          }),
+        );
+      },
+    );
 
     it.effect('does nothing when there are no low-stock items', () => {
       const repo = makeRepo({ findLowStock: vi.fn(() => Effect.succeed([])) });

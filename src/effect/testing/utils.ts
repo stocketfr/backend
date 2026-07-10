@@ -60,6 +60,8 @@ export const makeMockServiceLayer =
  *
  * It wires a module-under-test layer to a collaborator layer and yields the
  * concrete service to the test body, avoiding per-spec run/provide helpers.
+ * Use `layer(...)` with `@effect/vitest`'s native layer API for shared
+ * fixtures, or `effect(...)` to build and release mutable mocks per test.
  */
 export const makeServiceTestHarness = <I, S extends object, BuildError, RIn>(
   tag: Context.Tag<I, S>,

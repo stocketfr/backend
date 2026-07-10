@@ -211,6 +211,8 @@ describe('MyService', () => {
 
 `makeMockServiceLayer` builds on `makeTestLayer`, so any method you don't list explicitly **dies loudly** when called, with a message naming the missing method. It also returns the mock service object next to the layer so assertions can inspect `vi.fn` calls without rebuilding local run helpers.
 
+Use `layer(...)` / `it.layer(...)` from `@effect/vitest` for layer-backed fixtures that are intentionally shared across a test group. The service harness is for mutable mocks that should be rebuilt and released around one test body; use its `layer(...)` method with the native API when sharing is intentional.
+
 Don't rewrite working `*.spec.ts` files just to migrate to `it.effect`. Use it for new code.
 
 ---
