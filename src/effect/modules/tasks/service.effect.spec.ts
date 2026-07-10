@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@effect/vitest';
-import { Effect } from 'effect';
+import { Effect, Layer } from 'effect';
 import { TaskStatus } from '@stocket/types/tasks';
 import { toRepositoryPaginatedResult } from '@stocket/types/common';
 import {
@@ -9,6 +9,7 @@ import {
 import { TasksRepository } from './repository';
 import { TasksService } from './service';
 import { makeTaskRow, TASK_ACTOR_ID, TASK_ID } from './__fixtures__/task';
+import { TaskTerminalObserver } from './terminal-observer';
 
 const serviceHarness = makeServiceTestHarness(
   TasksService,
@@ -77,6 +78,34 @@ describe('TasksService', () => {
           service.findOne(TASK_ID, 'another-user'),
         );
         expect(error).toMatchObject({ _tag: 'TaskNotFound', taskId: TASK_ID });
+      }),
+    );
+  });
+
+  it.effect('notifies an observer after queued cancellation settles', () => {
+    const original = makeTaskRow({ payload: { blobKey: 'input.csv' } });
+    const canceled = makeTaskRow({
+      status: TaskStatus.CANCELED,
+      payload: null,
+      completed_at: new Date(),
+    });
+    const onSettled = vi.fn(() => Effect.void);
+    const dependencies = Layer.mergeAll(
+      makeTestLayer(TasksRepository)({
+        findByIdForActor: () => Effect.succeed(original),
+        requestCancellation: () => Effect.succeed(canceled),
+      }),
+      Layer.succeed(TaskTerminalObserver, { onSettled }),
+    );
+
+    return serviceHarness.effect(dependencies, (service) =>
+      Effect.gen(function* () {
+        yield* service.cancel(TASK_ID, TASK_ACTOR_ID);
+
+        expect(onSettled).toHaveBeenCalledWith({
+          task: canceled,
+          originalPayload: { blobKey: 'input.csv' },
+        });
       }),
     );
   });
