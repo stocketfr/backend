@@ -324,19 +324,9 @@ const formatStructuredLogLine = ({
 };
 
 const extractLogRecord = (message: unknown): LogRecord | undefined => {
-  if (isUnknownRecord(message)) {
-    return message;
-  }
-
-  if (
-    Array.isArray(message) &&
-    message.length === 1 &&
-    isUnknownRecord(message[0])
-  ) {
-    return message[0];
-  }
-
-  return undefined;
+  const candidate =
+    Array.isArray(message) && message.length === 1 ? message[0] : message;
+  return isUnknownRecord(candidate) ? candidate : undefined;
 };
 
 const annotationsToRecord = (
@@ -346,24 +336,34 @@ const annotationsToRecord = (
 const makeJsonReplacer = () => {
   const seen = new WeakSet<object>();
 
-  return (_key: string, value: unknown): unknown => {
-    if (value instanceof Error) {
+  return function (
+    this: Record<string, unknown>,
+    key: string,
+    value: unknown,
+  ): unknown {
+    // JSON.stringify runs toJSON before the replacer, so inspect the holder to
+    // retain the identity of Effect's Data.TaggedError values.
+    const originalValue = key === '' ? value : this[key];
+
+    if (originalValue instanceof Error) {
+      if (seen.has(originalValue)) {
+        return '[Circular]';
+      }
+      seen.add(originalValue);
+
       return {
-        kind: value.name,
-        message: value.message,
+        ...(isUnknownRecord(value) ? value : {}),
+        kind: originalValue.name,
+        message: originalValue.message,
+        ...(originalValue.stack ? { stack: originalValue.stack } : {}),
+        ...(originalValue.cause !== undefined
+          ? { cause: originalValue.cause }
+          : {}),
       };
     }
 
     if (typeof value === 'bigint') {
       return `${value}n`;
-    }
-
-    if (typeof value === 'symbol') {
-      return value.toString();
-    }
-
-    if (typeof value === 'function') {
-      return `[function ${value.name || 'anonymous'}]`;
     }
 
     if (value !== null && typeof value === 'object') {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Data } from 'effect';
 
 import { formatLogLine } from './console-logging';
 
@@ -12,6 +13,14 @@ const requestLog = {
   durationMs: 17,
   userAgent: 'node',
 };
+
+class TestInfrastructureError extends Data.TaggedError(
+  'TestInfrastructureError',
+)<{
+  readonly action: string;
+  readonly cause: Error;
+  readonly message: string;
+}> {}
 
 describe('formatLogLine', () => {
   it('keeps the compact text format for local logs', () => {
@@ -48,7 +57,12 @@ describe('formatLogLine', () => {
     });
   });
 
-  it('serializes errors without dropping their name and message', () => {
+  it('serializes typed errors and their causes for Datadog', () => {
+    const error = new TestInfrastructureError({
+      action: 'loadInventory',
+      cause: new TypeError('connection refused'),
+      message: 'database unavailable',
+    });
     const line = formatLogLine(
       {
         date: new Date('2026-07-10T10:20:30.456Z'),
@@ -57,7 +71,7 @@ describe('formatLogLine', () => {
           messageKey: 'http.serverError',
           statusCode: 500,
           path: '/api/v1/inventory',
-          error: new TypeError('database unavailable'),
+          error,
         },
       },
       'json',
@@ -67,8 +81,17 @@ describe('formatLogLine', () => {
       status: 'error',
       messageKey: 'http.serverError',
       error: {
-        kind: 'TypeError',
+        kind: 'TestInfrastructureError',
         message: 'database unavailable',
+        action: 'loadInventory',
+        stack: expect.stringContaining(
+          'TestInfrastructureError: database unavailable',
+        ),
+        cause: {
+          kind: 'TypeError',
+          message: 'connection refused',
+          stack: expect.stringContaining('TypeError: connection refused'),
+        },
       },
     });
   });
