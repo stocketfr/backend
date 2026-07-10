@@ -6,6 +6,7 @@ import {
   type TenantScope,
 } from '../../platform/tenancy/tenant-query';
 import { DrizzleDatabase } from '../../platform/db/drizzle';
+import { insertOrGet } from '../../platform/db/insert-or-get';
 import { photos, products } from '../../platform/db/schema';
 import { PhotosInfrastructureError } from './photos.errors';
 
@@ -111,36 +112,37 @@ export class PhotosRepository extends Effect.Service<PhotosRepository>()(
           return yield* tryAsync('create idempotent photo', async () => {
             await assertProductBelongsToTenant(tenantScope, data.product_id);
 
-            const [inserted] = await db
-              .insert(photos)
-              .values(data)
-              .onConflictDoNothing({
-                target: [photos.product_id, photos.source_hash],
-                where: sql`${photos.source_hash} is not null`,
-              })
-              .returning();
-            if (inserted !== undefined) {
-              return { photo: inserted, created: true } as const;
-            }
-
-            const [existing] = await db
-              .select()
-              .from(photos)
-              .where(
-                and(
-                  eq(photos.product_id, data.product_id),
-                  eq(photos.source_hash, data.source_hash),
-                  tenantOwnsProduct(tenantScope),
+            return insertOrGet({
+              insert: async () => {
+                const [inserted] = await db
+                  .insert(photos)
+                  .values(data)
+                  .onConflictDoNothing({
+                    target: [photos.product_id, photos.source_hash],
+                    where: sql`${photos.source_hash} is not null`,
+                  })
+                  .returning();
+                return inserted;
+              },
+              getExisting: async () => {
+                const [found] = await db
+                  .select()
+                  .from(photos)
+                  .where(
+                    and(
+                      eq(photos.product_id, data.product_id),
+                      eq(photos.source_hash, data.source_hash),
+                      tenantOwnsProduct(tenantScope),
+                    ),
+                  )
+                  .limit(1);
+                return found;
+              },
+              unresolvedConflictError: () =>
+                new Error(
+                  'Photo source conflict did not resolve to an existing photo',
                 ),
-              )
-              .limit(1);
-            if (existing === undefined) {
-              throw new Error(
-                'Photo source conflict did not resolve to an existing photo',
-              );
-            }
-
-            return { photo: existing, created: false } as const;
+            });
           });
         });
 

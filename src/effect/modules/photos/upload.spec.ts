@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@effect/vitest';
 import { Effect } from 'effect';
+import { created, existing } from '../../platform/effect/create-or-reuse';
 import { makeInMemoryStorageAdapter } from '../../platform/storage';
 import { PhotosInfrastructureError } from './photos.errors';
 import { makePhotoUploadWorkflow, type PhotoUploadRepository } from './upload';
@@ -43,14 +44,15 @@ const makeRepository = (
       }),
     ),
   createIdempotent: (values) =>
-    Effect.succeed({
-      photo: makePhoto({
-        ...values,
-        id: 'photo-created',
-        created_at: now,
-      }),
-      created: true,
-    }),
+    Effect.succeed(
+      created(
+        makePhoto({
+          ...values,
+          id: 'photo-created',
+          created_at: now,
+        }),
+      ),
+    ),
   findByProductSourceHash: () => Effect.succeed(null),
   ...overrides,
 });
@@ -141,10 +143,7 @@ describe('makePhotoUploadWorkflow', () => {
         const storage = makeInMemoryStorageAdapter();
         const repository = makeRepository({
           createIdempotent: () =>
-            Effect.succeed({
-              photo: makePhoto({ id: 'existing-photo' }),
-              created: false,
-            }),
+            Effect.succeed(existing(makePhoto({ id: 'existing-photo' }))),
         });
         const workflow = makePhotoUploadWorkflow({
           repository,

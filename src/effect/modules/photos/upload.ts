@@ -3,6 +3,11 @@ import type { PhotoResponseDto } from '@stocket/types/photos';
 import type { StorageAdapter } from '../../platform/storage';
 import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import {
+  created,
+  retainOnCreate,
+  type CreateOrReuseResult,
+} from '../../platform/effect/create-or-reuse';
+import {
   InvalidPhotoMimeType,
   PhotoTooLarge,
   type PhotosInfrastructureError,
@@ -37,7 +42,7 @@ export interface PhotoUploadRepository {
   readonly createIdempotent: (
     values: IdempotentPhotoCreateValues,
   ) => Effect.Effect<
-    { readonly photo: PhotoEntity; readonly created: boolean },
+    CreateOrReuseResult<PhotoEntity>,
     PhotosInfrastructureError | TenantNotResolved
   >;
   readonly findByProductSourceHash: (
@@ -141,19 +146,15 @@ export const makePhotoUploadWorkflow = ({
           sourceHash,
         });
         if (sourceHash === null) {
-          return yield* repository.create(values);
+          return yield* repository.create(values).pipe(Effect.map(created));
         }
 
-        const result = yield* repository.createIdempotent({
+        return yield* repository.createIdempotent({
           ...values,
           source_hash: sourceHash,
         });
-        if (!result.created) {
-          yield* Effect.ignore(storage.deleteObject(objectKey));
-        }
-        return result.photo;
-      }).pipe(
-        Effect.tapError(() => Effect.ignore(storage.deleteObject(objectKey))),
+      }).pipe((claim) =>
+        retainOnCreate(claim, storage.deleteObject(objectKey)),
       );
 
       return toPhotoResponseDto(photo);

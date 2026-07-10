@@ -1,4 +1,5 @@
 import { Effect, Layer } from 'effect';
+import { created } from '../../platform/effect/create-or-reuse';
 import { PhotosService } from './service';
 import { PhotosRepository } from './repository';
 import type { photos } from '../../platform/db/schema';
@@ -83,14 +84,15 @@ const makeMockRepository = (
     vi.fn().mockReturnValue(Effect.succeed(null));
   const createIdempotent: MockPhotosRepository['createIdempotent'] = vi.fn(
     (data) =>
-      Effect.succeed({
-        photo: makePhotoEntity({
-          ...data,
-          id: 'photo-1',
-          created_at: new Date('2026-01-01'),
-        }),
-        created: true,
-      }),
+      Effect.succeed(
+        created(
+          makePhotoEntity({
+            ...data,
+            id: 'photo-1',
+            created_at: new Date('2026-01-01'),
+          }),
+        ),
+      ),
   );
 
   return {
