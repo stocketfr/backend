@@ -133,12 +133,20 @@ export const frCatalog: Record<MessageKey, string> = {
     "Impossible d'importer un stock au niveau emplacement lorsqu'un stock par zone existe deja pour ce produit et cet emplacement.",
   'products.importAreaLocationRequired':
     'Un emplacement par defaut est requis pour importer du stock par zone.',
+  'products.importBlobCleanupFailed':
+    "Impossible de supprimer le fichier source de la tache d'import {taskId} : {error}",
+  'products.importCancelled': "L'import de produits a ete annule.",
   'products.importCsvParseFailed':
     "Impossible d'analyser le fichier CSV televerse.",
   'products.importPlanParseFailed':
     "Impossible d'analyser le plan d'import produits televerse.",
   'products.importReadUploadFailed':
     "La lecture du fichier d'import produits televerse a echoue.",
+  'products.importProgressCompleted': "L'import de produits est termine.",
+  'products.importProgressQueued': "L'import de produits est en attente.",
+  'products.importProgressRowsProcessed':
+    '{processedRows} lignes importees sur {totalRows}.',
+  'products.importProgressStarting': "L'import de produits demarre.",
   'products.importUnsupportedFormat':
     'En-tetes CSV dimport produits non pris en charge.',
   'products.infrastructureFailed': "L'operation sur le produit a echoue.",

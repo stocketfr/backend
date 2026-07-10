@@ -116,11 +116,19 @@ export const enCatalog = {
     'Cannot import location-level inventory while area-scoped inventory exists for this product and location.',
   'products.importAreaLocationRequired':
     'A default location is required to import area-scoped inventory.',
+  'products.importBlobCleanupFailed':
+    'Could not remove the input file for product import task {taskId}: {error}',
+  'products.importCancelled': 'Product import was canceled.',
   'products.importCsvParseFailed': 'Could not parse the uploaded CSV file.',
   'products.importPlanParseFailed':
     'Could not parse the uploaded product import plan.',
   'products.importReadUploadFailed':
     'Failed to read the uploaded product import file.',
+  'products.importProgressCompleted': 'Product import completed.',
+  'products.importProgressQueued': 'Product import is queued.',
+  'products.importProgressRowsProcessed':
+    'Imported {processedRows} of {totalRows} rows.',
+  'products.importProgressStarting': 'Product import is starting.',
   'products.importUnsupportedFormat': 'Unsupported product import CSV headers.',
   'products.infrastructureFailed': 'Product operation failed.',
   'products.notDeleted': 'Product is not deleted.',

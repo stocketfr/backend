@@ -41,6 +41,10 @@ export class ProductImportPlanParseFailed extends BadRequestError(
   readonly cause?: unknown;
 }> {}
 
+export class ProductImportCancelled extends BadRequestError(
+  'ProductImportCancelled',
+)<{}> {}
+
 export class ProductsInfrastructureError extends InternalError(
   'ProductInfrastructureError',
 )<{

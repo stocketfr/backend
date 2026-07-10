@@ -1,16 +1,30 @@
 import { readFile } from 'node:fs/promises';
-import { HttpRouter, HttpServerRequest, Multipart } from '@effect/platform';
-import { Effect, Schema } from 'effect';
-import { tenantRoute } from '../../../platform/http/tenant-route';
+import {
+  Headers,
+  HttpRouter,
+  HttpServerRequest,
+  Multipart,
+} from '@effect/platform';
+import { Effect, Option, Schema } from 'effect';
+import { respondJsonOk } from '../../../platform/http/errors';
+import {
+  tenantRoute,
+  tenantRouteContext,
+} from '../../../platform/http/tenant-route';
 import { requireProductImportAccess } from '../access';
 import {
   ProductImportPlanParseFailed,
   ProductsInfrastructureError,
 } from '../products.errors';
 import { ProductImportService } from './service';
+import { ProductImportBackgroundService } from './background/service';
 import { ProductImportPlanSchema, ProductImportTypes } from './types';
 
 const ProductImportTypeSchema = Schema.Literal(...ProductImportTypes);
+const ProductImportIdempotencyKeySchema = Schema.Trim.pipe(
+  Schema.nonEmptyString(),
+  Schema.maxLength(200),
+);
 const ProductImportUploadSchema = Schema.Struct({
   file: Multipart.SingleFileSchema,
   import_type: Schema.optionalWith(ProductImportTypeSchema, {
@@ -40,6 +54,13 @@ const parseProductImportPlan = (plan: string | undefined) =>
   });
 
 const readProductImportUpload = Effect.gen(function* () {
+  const request = yield* HttpServerRequest.HttpServerRequest;
+  const idempotencyKeyHeader = Headers.get(request.headers, 'idempotency-key');
+  const idempotencyKey = Option.isSome(idempotencyKeyHeader)
+    ? yield* Schema.decodeUnknown(ProductImportIdempotencyKeySchema)(
+        idempotencyKeyHeader.value,
+      )
+    : undefined;
   const upload = yield* HttpServerRequest.schemaBodyMultipart(
     ProductImportUploadSchema,
   );
@@ -54,41 +75,57 @@ const readProductImportUpload = Effect.gen(function* () {
   });
 
   return {
-    content: buffer.toString('utf8'),
+    bytes: buffer,
     importType: upload.import_type,
     approvedPlan: yield* parseProductImportPlan(upload.plan),
+    idempotencyKey,
   };
 });
 
 export const productImportRouter = HttpRouter.empty.pipe(
   HttpRouter.post(
     '/import',
-    tenantRoute({
+    tenantRouteContext({
       guard: requireProductImportAccess,
       decode: readProductImportUpload,
       session: 'required',
-      handler: ({ input: { content, importType, approvedPlan }, session }) =>
-        Effect.flatMap(ProductImportService, (productImportService) =>
+    }).pipe(
+      Effect.flatMap(
+        ({
+          input: { bytes, importType, approvedPlan, idempotencyKey },
+          session,
+        }) =>
           session
-            ? productImportService.importFromCsvContent({
-                content,
-                importType,
-                approvedPlan,
-                userId: session.user.id,
-              })
+            ? Effect.flatMap(
+                ProductImportBackgroundService,
+                (backgroundImport) =>
+                  backgroundImport.enqueue({
+                    bytes,
+                    importType,
+                    approvedPlan,
+                    ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+                    userId: session.user.id,
+                  }),
+              )
             : Effect.dieMessage('Required session missing for product import'),
-        ),
-    }),
+      ),
+      Effect.flatMap((task) =>
+        respondJsonOk(task, {
+          status: 202,
+          headers: { Location: `/api/v1/tasks/${task.id}` },
+        }),
+      ),
+    ),
   ),
   HttpRouter.post(
     '/import/preview',
     tenantRoute({
       guard: requireProductImportAccess,
       decode: readProductImportUpload,
-      handler: ({ input: { content, importType } }) =>
+      handler: ({ input: { bytes, importType } }) =>
         Effect.flatMap(ProductImportService, (productImportService) =>
           productImportService.previewCsvContent({
-            content,
+            content: bytes.toString('utf8'),
             importType,
           }),
         ),
@@ -99,10 +136,10 @@ export const productImportRouter = HttpRouter.empty.pipe(
     tenantRoute({
       guard: requireProductImportAccess,
       decode: readProductImportUpload,
-      handler: ({ input: { content, importType } }) =>
+      handler: ({ input: { bytes, importType } }) =>
         Effect.flatMap(ProductImportService, (productImportService) =>
           productImportService.proposeImportPlan({
-            content,
+            content: bytes.toString('utf8'),
             importType,
           }),
         ),

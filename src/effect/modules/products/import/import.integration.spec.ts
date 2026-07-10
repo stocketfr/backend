@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
+import { Effect, Layer } from 'effect';
 import { afterEach, vi } from 'vitest';
 import { Permission, Resource } from '@stocket/types/auth';
 import { EntitlementSource, PlanKey } from '@stocket/types/features';
 import {
   areas,
+  backgroundTasks,
   inventory,
   locations,
   members,
@@ -24,9 +26,13 @@ import {
   DEFAULT_TENANT_NAME,
   DEFAULT_TENANT_SLUG,
 } from '../../../platform/tenancy/tenant-constants';
-import { makeTestHttpAppHandler } from '../../../testing/app-harness';
+import {
+  makeTestApplicationLayer,
+  makeTestHttpAppHandler,
+} from '../../../testing/app-harness';
 import {
   getTestDb,
+  makeTestDrizzleLayer,
   seedArea,
   seedBetterAuthUser,
   seedCategory,
@@ -41,6 +47,7 @@ import type {
   ProductImportApprovedPlanDto,
   ProductImportPlan,
 } from './types';
+import { ProductImportService } from './service';
 
 let db: DrizzleDb;
 
@@ -203,10 +210,36 @@ async function postImport(
       }),
     );
     const body = await response.json();
-    return { status: response.status, body };
+    return {
+      status: response.status,
+      body,
+      location: response.headers.get('location'),
+    };
   } finally {
     await dispose();
   }
+}
+
+async function importCsv(
+  csv: string,
+  approvedPlan?: ProductImportPlan,
+) {
+  await seedBetterAuthUser(db, { id: TEST_USER_ID });
+  return Effect.runPromise(
+    Effect.flatMap(ProductImportService, (service) =>
+      service.importFromCsvContent({
+        content: csv,
+        approvedPlan,
+        userId: TEST_USER_ID,
+      }),
+    ).pipe(
+      Effect.provide(
+        makeTestApplicationLayer().pipe(
+          Layer.provide(makeTestDrizzleLayer()),
+        ),
+      ),
+    ),
+  );
 }
 
 const findProductBySku = async (sku: string, tenantId = DEFAULT_TENANT_ID) => {
@@ -290,15 +323,40 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('POST /api/v1/products/import integration', () => {
+describe('product import integration', () => {
+  it('queues an uploaded CSV through POST /api/v1/products/import', async () => {
+    const response = await postImport(`sku,name
+QUEUE-001,Queued Product
+`);
+
+    expect(response.status).toBe(202);
+    expect(response.location).toMatch(/^\/api\/v1\/tasks\/[0-9a-f-]+$/);
+
+    const [task] = await db.select().from(backgroundTasks).limit(1);
+    expect(task).toMatchObject({
+      tenant_id: DEFAULT_TENANT_ID,
+      type: 'product-import',
+      status: 'queued',
+      created_by: TEST_USER_ID,
+    });
+    expect(response.body).toMatchObject({ id: task!.id, status: 'queued' });
+    expect(task!.payload).toMatchObject({
+      blobKey: expect.stringMatching(
+        new RegExp(
+          `^background-tasks/product-import/${DEFAULT_TENANT_ID}/[0-9a-f-]+\\.csv$`,
+        ),
+      ),
+      importType: 'auto',
+    });
+  });
+
   it('imports normalized CSV into products, categories, locations, and inventory', async () => {
-    const response =
-      await postImport(`sku,name,category_path,reorder_point,quantity,location,unit,standard_price,barcode,description,notes,is_active,is_perishable,expiry_date
+    const result =
+      await importCsv(`sku,name,category_path,reorder_point,quantity,location,unit,standard_price,barcode,description,notes,is_active,is_perishable,expiry_date
 IMP-001,Imported Gin,Beverages / Spirits,4,9,Main Warehouse,bottle,12.50,123456,Juniper gin,Top shelf,true,false,
 `);
 
-    expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
+    expect(result).toMatchObject({
       categoriesCreated: 2,
       locationsCreated: 1,
       productsCreated: 1,
@@ -345,16 +403,14 @@ IMP-001,Imported Gin,Beverages / Spirits,4,9,Main Warehouse,bottle,12.50,123456,
     expect(stock).toMatchObject({ quantity: 9 });
   });
 
-  it('imports Sortly item CSV through the same API path', async () => {
-    const response = await postImport(
+  it('imports Sortly item CSV', async () => {
+    const result = await importCsv(
       `Entry Type,Entry Name,SID,Primary Folder,Subfolder-level1,Quantity,Location,Unit,Min Level,Price,Barcode/QR1-Data,Barcode/QR2-Data,Notes,Expiry Date
 Item,Imported Tonic,SORT-001,Drinks,Mixers,12,Bar,can,2,1.50,,QR2,Sortly notes,28/08/2025 01:26PM
 `,
-      'sortly.csv',
     );
 
-    expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
+    expect(result).toMatchObject({
       categoriesCreated: 2,
       locationsCreated: 1,
       productsCreated: 1,
@@ -402,15 +458,13 @@ Item,Imported Tonic,SORT-001,Drinks,Mixers,12,Bar,can,2,1.50,,QR2,Sortly notes,2
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const response = await postImport(
+    const result = await importCsv(
       `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location,Photo1
 Item,Imported Tonic Photo,SORT-PHOTO-001,Drinks,12,Bar,https://lnk.sortly.co/v2/downloads/photo/photo-1
 `,
-      'sortly.csv',
     );
 
-    expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
+    expect(result).toMatchObject({
       productsCreated: 1,
       inventoryRecordsCreated: 1,
       photosCreated: 1,
@@ -457,16 +511,14 @@ Item,Imported Tonic Photo,SORT-PHOTO-001,Drinks,12,Bar,https://lnk.sortly.co/v2/
         },
       ],
     } satisfies ProductImportApprovedPlanDto;
-    const response = await postImport(
+    const result = await importCsv(
       `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location
 Item,Imported Shelf Product,SORT-AREA-001,Drinks,12,Bay I  - Shelf 3 - Bin A
 `,
-      'sortly.csv',
       approvedPlan,
     );
 
-    expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
+    expect(result).toMatchObject({
       locationsCreated: 1,
       areasCreated: 3,
       productsCreated: 1,
@@ -531,17 +583,15 @@ Item,Imported Shelf Product,SORT-AREA-001,Drinks,12,Bay I  - Shelf 3 - Bin A
       locationMappings: [],
       warnings: [],
     } satisfies ProductImportAiProposalDto;
-    const response = await postImport(
+    const result = await importCsv(
       `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location,Min Level
 Item,Service Gloves Black,SORT-DUP-001,Accessories,6,Warehouse,2
 Item,Service Gloves White,SORT-DUP-001,Accessories,12,Warehouse,2
 `,
-      'sortly.csv',
       aiProposalPlan,
     );
 
-    expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
+    expect(result).toMatchObject({
       productsCreated: 2,
       inventoryRecordsCreated: 2,
       rowsSkipped: 0,
@@ -576,12 +626,11 @@ Item,Service Gloves White,SORT-DUP-001,Accessories,12,Warehouse,2
       name: 'Other Tenant Product',
     });
 
-    const response = await postImport(`sku,name,category_path,quantity,location
+    const result = await importCsv(`sku,name,category_path,quantity,location
 SHARED-SKU,Default Tenant Product,Default Category,3,Default Location
 `);
 
-    expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
+    expect(result).toMatchObject({
       productsCreated: 1,
       productsUpdated: 0,
       rowsSkipped: 0,
@@ -614,20 +663,19 @@ SHARED-SKU,Default Tenant Product,Default Category,3,Default Location
       productSku: 'AREA-SKU',
     });
 
-    const response =
-      await postImport(`sku,name,category_path,reorder_point,quantity,location
+    const result =
+      await importCsv(`sku,name,category_path,reorder_point,quantity,location
 AREA-SKU,Area Product,Area Category,10,8,Area Location
 `);
 
-    expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
+    expect(result).toMatchObject({
       productsCreated: 0,
       productsUpdated: 0,
       inventoryRecordsCreated: 0,
       rowsSkipped: 1,
     });
-    expect(response.body.errors).toHaveLength(1);
-    expect(response.body.errors[0]).toMatchObject({
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({
       row: 2,
       error: AREA_SCOPED_IMPORT_ERROR,
     });
@@ -646,20 +694,19 @@ AREA-SKU,Area Product,Area Category,10,8,Area Location
       rootQuantity: 4,
     });
 
-    const response =
-      await postImport(`sku,name,category_path,reorder_point,quantity,location
+    const result =
+      await importCsv(`sku,name,category_path,reorder_point,quantity,location
 MIXED-AREA-SKU,Mixed Area Product,Mixed Area Category,10,8,Mixed Area Location
 `);
 
-    expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
+    expect(result).toMatchObject({
       productsCreated: 0,
       productsUpdated: 0,
       inventoryRecordsUpdated: 0,
       rowsSkipped: 1,
     });
-    expect(response.body.errors).toHaveLength(1);
-    expect(response.body.errors[0]).toMatchObject({
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({
       row: 2,
       error: AREA_SCOPED_IMPORT_ERROR,
     });

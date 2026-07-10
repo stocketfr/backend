@@ -4,7 +4,7 @@ import { Effect } from 'effect';
 import {
   APPLICATION_NODE_ENVS,
   isApplicationNodeEnv,
-  makeTaskWorkerApplicationLayer,
+  makeProductImportTaskWorkerApplicationLayer,
 } from './application/layers';
 import { TaskWorkerService } from './modules/tasks/worker/service';
 import { runtimeLoggingLayer } from './platform/observability/console-logging';
@@ -18,7 +18,7 @@ if (!isApplicationNodeEnv(nodeEnv)) {
 process.env.NODE_ENV = nodeEnv;
 
 const main = Effect.flatMap(TaskWorkerService, (worker) => worker.runLoop).pipe(
-  Effect.provide(makeTaskWorkerApplicationLayer()),
+  Effect.provide(makeProductImportTaskWorkerApplicationLayer()),
   Effect.provide(runtimeLoggingLayer),
 );
 

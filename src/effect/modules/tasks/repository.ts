@@ -7,10 +7,11 @@ import {
   toRepositoryPaginatedResult,
 } from '@stocket/types/common';
 import { makeTenantCrud } from '../../platform/db/tenant-crud';
+import { insertOrGet } from '../../platform/db/insert-or-get';
 import { backgroundTasks } from '../../platform/db/schema';
 import { TenantQuery } from '../../platform/tenancy/tenant-query';
 import { TasksInfrastructureError } from './tasks.errors';
-import type { EnqueueTaskOptions } from './types';
+import type { EnqueueTaskOptions, TaskEnqueueRecordResult } from './types';
 
 const buildTaskFilters = (query: TaskQueryDto, actorId: string): SQL[] => {
   const filters: SQL[] = [eq(backgroundTasks.created_by, actorId)];
@@ -59,25 +60,36 @@ export class TasksRepository extends Effect.Service<TasksRepository>()(
                     eq(backgroundTasks.idempotency_key, options.idempotencyKey),
                   );
 
-            return yield* tryAsync('enqueue background task', async () => {
-              const [created] = await db
-                .insert(backgroundTasks)
-                .values(values)
-                .onConflictDoNothing()
-                .returning();
-              if (created !== undefined) return created;
-
-              if (existingWhere !== null) {
-                const [existing] = await db
-                  .select()
-                  .from(backgroundTasks)
-                  .where(existingWhere)
-                  .limit(1);
-                if (existing !== undefined) return existing;
-              }
-
-              throw new Error('Background task insert returned no row');
-            });
+            return yield* tryAsync(
+              'enqueue background task',
+              async (): Promise<TaskEnqueueRecordResult> => {
+                const result = await insertOrGet({
+                  insert: async () => {
+                    const [inserted] = await db
+                      .insert(backgroundTasks)
+                      .values(values)
+                      .onConflictDoNothing()
+                      .returning();
+                    return inserted;
+                  },
+                  getExisting: async () => {
+                    if (existingWhere === null) return undefined;
+                    const [found] = await db
+                      .select()
+                      .from(backgroundTasks)
+                      .where(existingWhere)
+                      .limit(1);
+                    return found;
+                  },
+                  unresolvedConflictError: () =>
+                    new Error('Background task insert returned no row'),
+                });
+                return {
+                  task: result.value,
+                  disposition: result.disposition,
+                };
+              },
+            );
           });
 
         const findAllPaginatedForActor = (

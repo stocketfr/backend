@@ -48,13 +48,15 @@ describe('TasksRepository integration', () => {
     const first = await enqueue(layer, ACTOR_ID);
     const second = await enqueue(layer, ACTOR_ID);
 
-    expect(second.id).toBe(first.id);
+    expect(first.disposition).toBe('created');
+    expect(second.disposition).toBe('existing');
+    expect(second.task.id).toBe(first.task.id);
   });
 
   it('keeps task visibility scoped to both tenant and creator', async () => {
     const tenantLayer = makeRepositoryLayer(randomUUID());
     const otherTenantLayer = makeRepositoryLayer(randomUUID());
-    const task = await enqueue(tenantLayer, ACTOR_ID);
+    const { task } = await enqueue(tenantLayer, ACTOR_ID);
 
     const otherActorResult = await runTest(
       Effect.flatMap(TasksRepository, (repository) =>
@@ -75,7 +77,7 @@ describe('TasksRepository integration', () => {
 
   it('cancels queued work atomically and clears its payload', async () => {
     const layer = makeRepositoryLayer(randomUUID());
-    const task = await enqueue(layer, ACTOR_ID);
+    const { task } = await enqueue(layer, ACTOR_ID);
 
     const canceled = await runTest(
       Effect.flatMap(TasksRepository, (repository) =>

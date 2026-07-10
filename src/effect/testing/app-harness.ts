@@ -14,6 +14,7 @@ import { InventoryService } from '../modules/inventory/service';
 import { LocationsService } from '../modules/locations/service';
 import { OrdersService } from '../modules/orders/service';
 import { PhotosService } from '../modules/photos/service';
+import { ProductImportBackgroundService } from '../modules/products/import/background/service';
 import { ProductImportService } from '../modules/products/import/service';
 import { ProductsService } from '../modules/products/service';
 import { RolesService } from '../modules/roles/service';
@@ -101,6 +102,9 @@ export const makeTestApplicationLayer = (options: TestHttpAppOptions = {}) => {
   const productImportApplicationLayer = ProductImportService.Default.pipe(
     Layer.provide(platformLayer),
   );
+  const productImportBackgroundApplicationLayer = withPlatform(
+    ProductImportBackgroundService.Default,
+  );
   const workflowServicesLayer = Layer.mergeAll(
     StockMovementsService.Default.pipe(
       Layer.provide(
@@ -147,6 +151,7 @@ export const makeTestApplicationLayer = (options: TestHttpAppOptions = {}) => {
     areasApplicationLayer,
     productsApplicationLayer,
     productImportApplicationLayer,
+    productImportBackgroundApplicationLayer,
     workflowServicesLayer,
   );
 };

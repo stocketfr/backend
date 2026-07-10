@@ -3,7 +3,6 @@ import { toPaginatedResponse } from '@stocket/types/common';
 import type {
   PaginatedTasksResponseDto,
   TaskQueryDto,
-  TaskResponseDto,
 } from '@stocket/types/tasks';
 import { fromNullOr } from '../../platform/effect/from-null-or';
 import { getOptionalRequestContext } from '../../platform/http/request-context';
@@ -21,7 +20,7 @@ import {
   type TasksInfrastructureError,
 } from './tasks.errors';
 import { isTerminalTaskStatus } from './tasks.utils';
-import type { EnqueueTaskOptions } from './types';
+import type { EnqueueTaskOptions, TaskEnqueueResult } from './types';
 import { TaskTerminalObserver } from './terminal-observer';
 
 const currentLocale: Effect.Effect<SupportedLocale> = Effect.map(
@@ -48,12 +47,15 @@ export class TasksService extends Effect.Service<TasksService>()(
       const enqueue = (
         options: EnqueueTaskOptions,
       ): Effect.Effect<
-        TaskResponseDto,
+        TaskEnqueueResult,
         TasksInfrastructureError | TenantNotResolved
       > =>
         Effect.gen(function* () {
-          const task = yield* repository.enqueue(options);
-          return toTaskResponseDto(task, yield* currentLocale);
+          const result = yield* repository.enqueue(options);
+          return {
+            task: toTaskResponseDto(result.task, yield* currentLocale),
+            disposition: result.disposition,
+          };
         }).pipe(trace.span('enqueue'));
 
       const findAllPaginated = (

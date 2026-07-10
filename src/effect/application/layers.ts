@@ -22,6 +22,9 @@ import { NotificationsService } from '../modules/notifications/service';
 import { OrdersService } from '../modules/orders/service';
 import { PhotosService } from '../modules/photos/service';
 import { ProductImportService } from '../modules/products/import/service';
+import { ProductImportBackgroundService } from '../modules/products/import/background/service';
+import { productImportTaskRegistryLayer } from '../modules/products/import/background/handler';
+import { productImportTaskTerminalObserverLayer } from '../modules/products/import/background/terminal-observer';
 import { ProductsService } from '../modules/products/service';
 import type { RolesInfrastructureError } from '../modules/roles/roles.errors';
 import { RolesService } from '../modules/roles/service';
@@ -29,11 +32,9 @@ import { StockMovementsService } from '../modules/stock-movements/service';
 import { SuperAdminService } from '../modules/superadmin/service';
 import { SuppliersService } from '../modules/suppliers/service';
 import { TasksService } from '../modules/tasks/service';
+import { TasksRepository } from '../modules/tasks/repository';
 import { TaskWorkerRepository } from '../modules/tasks/worker/repository';
-import {
-  emptyTaskRegistryLayer,
-  type TaskRegistry,
-} from '../modules/tasks/worker/registry';
+import { type TaskRegistry } from '../modules/tasks/worker/registry';
 import { TaskWorkerService } from '../modules/tasks/worker/service';
 import { UsersService } from '../modules/users/service';
 import { betterAuthLayer } from '../platform/auth/better-auth';
@@ -103,8 +104,8 @@ export const makeHttpServerLayer = (port: number) =>
     ),
   );
 
-export const makeTaskWorkerApplicationLayer = (
-  registryLayer: Layer.Layer<TaskRegistry> = emptyTaskRegistryLayer,
+export const makeTaskWorkerApplicationLayer = <E, R>(
+  registryLayer: Layer.Layer<TaskRegistry, E, R>,
 ) => {
   const workerDependencies = Layer.mergeAll(
     TaskWorkerRepository.Default.pipe(Layer.provide(databasePlatformLayer)),
@@ -119,6 +120,30 @@ export const makeTaskWorkerApplicationLayer = (
       Layer.provide(workerDependencies),
     ),
   );
+};
+
+export const makeProductImportTaskWorkerApplicationLayer = () => {
+  const productImportWorkerPlatformLayer = Layer.mergeAll(
+    databasePlatformLayer,
+    storageLayer,
+  );
+  const featuresWorkerLayer = FeaturesService.Default.pipe(
+    Layer.provide(productImportWorkerPlatformLayer),
+  );
+  const productImportWorkerLayer = ProductImportService.Default.pipe(
+    Layer.provide(productImportWorkerPlatformLayer),
+  );
+  const registryLayer = productImportTaskRegistryLayer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        productImportWorkerPlatformLayer,
+        featuresWorkerLayer,
+        productImportWorkerLayer,
+      ),
+    ),
+  );
+
+  return makeTaskWorkerApplicationLayer(registryLayer);
 };
 
 export const makeApplicationLayer = (options: ApplicationLayerOptions) => {
@@ -145,6 +170,17 @@ export const makeApplicationLayer = (options: ApplicationLayerOptions) => {
   const notificationsApplicationLayer = withPlatform(
     NotificationsService.Default,
   );
+  const taskTerminalObserverLayer = productImportTaskTerminalObserverLayer.pipe(
+    Layer.provide(platformLayer),
+  );
+  const tasksApplicationLayer = TasksService.DefaultWithoutDependencies.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        withPlatform(TasksRepository.Default),
+        taskTerminalObserverLayer,
+      ),
+    ),
+  );
 
   const foundationalServicesLayer = Layer.mergeAll(
     withPlatform(HealthService.Default),
@@ -155,7 +191,7 @@ export const makeApplicationLayer = (options: ApplicationLayerOptions) => {
     withPlatform(ClientsService.Default),
     withPlatform(SuppliersService.Default),
     withPlatform(PhotosService.Default),
-    withPlatform(TasksService.Default),
+    tasksApplicationLayer,
     notificationsApplicationLayer,
   );
 
@@ -170,6 +206,9 @@ export const makeApplicationLayer = (options: ApplicationLayerOptions) => {
   );
   const productImportApplicationLayer = ProductImportService.Default.pipe(
     Layer.provide(platformLayer),
+  );
+  const productImportBackgroundApplicationLayer = withPlatform(
+    ProductImportBackgroundService.Default,
   );
   const workflowServicesLayer = Layer.mergeAll(
     StockMovementsService.Default.pipe(
@@ -228,6 +267,7 @@ export const makeApplicationLayer = (options: ApplicationLayerOptions) => {
     areasApplicationLayer,
     productsApplicationLayer,
     productImportApplicationLayer,
+    productImportBackgroundApplicationLayer,
     workflowServicesLayer,
   );
 };

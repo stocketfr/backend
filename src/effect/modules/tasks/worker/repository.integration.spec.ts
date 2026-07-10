@@ -32,7 +32,7 @@ const enqueueTask = async () => {
     ),
   );
 
-  return runTest(
+  const result = await runTest(
     Effect.flatMap(TasksRepository, (repository) =>
       repository.enqueue({
         type: 'test-task',
@@ -42,6 +42,7 @@ const enqueueTask = async () => {
     ),
     taskLayer,
   );
+  return result.task;
 };
 
 describe('TaskWorkerRepository integration', () => {

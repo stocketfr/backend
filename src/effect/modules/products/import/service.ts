@@ -5,9 +5,11 @@ import type {
   ImportProductRow,
   ImportProductsFromCsvOptions,
   ProductImportAiProposalDto,
+  ProductImportProgress,
   ProductImportPreviewDto,
   ProductImportResultDto,
 } from './types';
+import { PRODUCT_IMPORT_PROGRESS_MESSAGES } from './types';
 import {
   deriveConflictingDuplicateSkuRows,
   findConflictingDuplicateSkuRows,
@@ -21,9 +23,13 @@ import { makeProductImportPreview } from './utils/preview';
 import { normalizeProductImportRecords } from './utils/csv';
 import { parseDate } from './utils/value-parsers';
 import type {
+  ProductImportCancelled,
   ProductImportCsvParseFailed,
   ProductImportUnsupportedFormat,
+  ProductsInfrastructureError,
 } from '../products.errors';
+import { ProductImportCancelled as ProductImportCancelledError } from '../products.errors';
+import type { TenantNotResolved } from '../../../platform/tenancy/tenant-context';
 import { makeServiceTracer } from '../../../platform/observability/service-tracer';
 import { ProductImportLlmProposer } from './llm-proposer';
 import { ProductImportPhotoImporter } from './photo-importer';
@@ -31,6 +37,8 @@ import { ProductImportRepository } from './repository';
 import { getSkuConflictPolicy } from './plan';
 import { parseAndDetectProductImportFormat } from './parser';
 import { importProductRow } from './row/import';
+
+const PROGRESS_ROW_REPORT_INTERVAL = 25;
 
 export class ProductImportService extends Effect.Service<ProductImportService>()(
   '@stocket/effect/products/ProductImportService',
@@ -45,16 +53,37 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
         layer: 'service',
       });
 
-      const importFromCsvContent = ({
+      const importFromCsvContent = <E>({
         content,
         importType = 'auto',
         approvedPlan,
         userId,
-      }: ImportProductsFromCsvOptions): Effect.Effect<
+        hooks,
+      }: ImportProductsFromCsvOptions<E>): Effect.Effect<
         ProductImportResultDto,
-        ProductImportCsvParseFailed | ProductImportUnsupportedFormat
+        | E
+        | ProductImportCancelled
+        | ProductImportCsvParseFailed
+        | ProductImportUnsupportedFormat
+        | ProductsInfrastructureError
+        | TenantNotResolved
       > =>
         Effect.gen(function* () {
+          const ensureNotCanceled =
+            hooks?.isCancellationRequested === undefined
+              ? Effect.void
+              : hooks.isCancellationRequested.pipe(
+                  Effect.filterOrFail(
+                    (canceled) => !canceled,
+                    () =>
+                      new ProductImportCancelledError({
+                        messageKey: 'products.importCancelled',
+                      }),
+                  ),
+                  Effect.asVoid,
+                );
+          yield* ensureNotCanceled;
+
           const { parsed, format } = yield* parseAndDetectProductImportFormat({
             content,
             importType,
@@ -62,6 +91,38 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
 
           const result = makeEmptyProductImportResult();
           const rows = normalizeProductImportRecords(parsed.records, format);
+          let processedRows = 0;
+          let failedRows = 0;
+          const reportProgress = (
+            messageKey: ProductImportProgress['messageKey'],
+            force = false,
+          ) =>
+            hooks?.onProgress === undefined
+              ? Effect.void
+              : hooks.onProgress({
+                  total: rows.length,
+                  processed: processedRows,
+                  failed: failedRows,
+                  messageKey,
+                  force,
+                });
+          const reportRowProgress = () =>
+            processedRows === rows.length ||
+            processedRows % PROGRESS_ROW_REPORT_INTERVAL === 0
+              ? reportProgress(PRODUCT_IMPORT_PROGRESS_MESSAGES.rowsProcessed)
+              : Effect.void;
+          const skipFailedRow = (sourceRow: number, error: string) =>
+            Effect.gen(function* () {
+              pushRowError(result, sourceRow, error);
+              processedRows += 1;
+              failedRows += 1;
+              yield* reportRowProgress();
+            });
+
+          yield* reportProgress(
+            PRODUCT_IMPORT_PROGRESS_MESSAGES.starting,
+            true,
+          );
           const duplicateConflictRows = findConflictingDuplicateSkuRows(rows, {
             includeReorderPoint: format === 'normalized-products',
           });
@@ -80,13 +141,13 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           };
 
           for (const originalRow of rows) {
+            yield* ensureNotCanceled;
             const derivedSku = derivedSkusByRow.get(originalRow.sourceRow);
             const row = derivedSku
               ? { ...originalRow, sku: derivedSku }
               : originalRow;
             if (!row.sku || !row.name) {
-              pushRowError(
-                result,
+              yield* skipFailedRow(
                 row.sourceRow,
                 'Cannot import product without sku and name',
               );
@@ -94,8 +155,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
             }
 
             if (duplicateConflictRows.has(row.sourceRow) && !derivedSku) {
-              pushRowError(
-                result,
+              yield* skipFailedRow(
                 row.sourceRow,
                 `Conflicting duplicate SKU "${row.sku}" has different product fields`,
               );
@@ -104,14 +164,14 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
 
             const expiryDate = parseDate(row.expiry_date);
             if (row.expiry_date.trim() !== '' && expiryDate === null) {
-              pushRowError(
-                result,
+              yield* skipFailedRow(
                 row.sourceRow,
                 `Invalid expiry_date "${row.expiry_date}"`,
               );
               continue;
             }
 
+            let coreRowFailed = false;
             yield* importProductRow({
               repository,
               photoImporter,
@@ -122,14 +182,30 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
               userId,
               approvedPlan,
             }).pipe(
-              Effect.catchAll((error) =>
-                Effect.sync(() => {
-                  pushRowError(result, row.sourceRow, formatImportError(error));
-                }),
-              ),
+              Effect.catchTags({
+                TenantNotResolved: (error) => Effect.fail(error),
+                ProductInfrastructureError: (error) =>
+                  error.cause === undefined
+                    ? Effect.sync(() => {
+                        coreRowFailed = true;
+                        pushRowError(
+                          result,
+                          row.sourceRow,
+                          formatImportError(error),
+                        );
+                      })
+                    : Effect.fail(error),
+              }),
             );
+            processedRows += 1;
+            if (coreRowFailed) failedRows += 1;
+            yield* reportRowProgress();
           }
 
+          yield* reportProgress(
+            PRODUCT_IMPORT_PROGRESS_MESSAGES.completed,
+            true,
+          );
           return result;
         }).pipe(trace.span('importFromCsvContent'));
 

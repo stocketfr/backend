@@ -11,6 +11,7 @@ import { FeaturesService } from '../../../features/service';
 import { ProductImportUnsupportedFormat } from '../../products.errors';
 import { productImportRouter } from '../router';
 import { ProductImportService } from '../service';
+import { ProductImportBackgroundService } from '../background/service';
 
 export {
   FAKE_USER_ID,
@@ -19,6 +20,7 @@ export {
 
 export interface ProductImportRouterHarnessOptions {
   readonly importService?: Record<string, unknown>;
+  readonly backgroundService?: Record<string, unknown>;
   readonly permissions?: Partial<Record<Resource, Permission[]>>;
   readonly session?: ReturnType<typeof makeFakeSession> | null;
   readonly smartImportFeatureEnabled?: boolean;
@@ -50,6 +52,12 @@ export const makeProductImportRouterHarness = (
         ),
     },
   );
+  const backgroundServiceLayer = makeRouterServiceLayer(
+    ProductImportBackgroundService,
+    opts.backgroundService ?? {
+      enqueue: () => Effect.dieMessage('Unexpected product import enqueue'),
+    },
+  );
   const featuresLayer = makeRouterServiceLayer(FeaturesService, {
     requireFeature: (featureKey: FeatureKey) =>
       featureKey === FeatureKey.SMART_IMPORT &&
@@ -65,7 +73,7 @@ export const makeProductImportRouterHarness = (
 
   return makeRouterTestHarness({
     router: productImportRouter,
-    layers: [importServiceLayer, featuresLayer],
+    layers: [importServiceLayer, backgroundServiceLayer, featuresLayer],
     permissions: opts.permissions,
     roleNames: [],
     session: opts.session,
