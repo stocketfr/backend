@@ -12,7 +12,6 @@ import {
   uniqueIndex,
   index,
   primaryKey,
-  check,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
@@ -25,7 +24,6 @@ import {
 import { LocationType } from '@stocket/types/locations';
 import { OrderStatus } from '@stocket/types/orders';
 import { StockMovementReason } from '@stocket/types/stock-movements';
-import { TaskStatus, type TaskProgressMessageArgs } from '@stocket/types/tasks';
 import { DEFAULT_TENANT_ID } from '../tenancy/tenant-constants';
 
 // ── pgEnums ──────────────────────────────────────────────────────────────
@@ -953,118 +951,5 @@ export const notifications = pgTable(
     uniqueIndex('notifications_dedupe_key_unique')
       .on(table.dedupe_key)
       .where(sql`dedupe_key is not null`),
-  ],
-);
-
-export const backgroundTasks = pgTable(
-  'background_tasks',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    tenant_id: uuid('tenant_id').default(DEFAULT_TENANT_ID).notNull(),
-    type: varchar('type', { length: 100 }).notNull(),
-    status: varchar('status', {
-      length: 20,
-      enum: [
-        TaskStatus.QUEUED,
-        TaskStatus.RUNNING,
-        TaskStatus.SUCCEEDED,
-        TaskStatus.FAILED,
-        TaskStatus.CANCELED,
-      ],
-    })
-      .notNull()
-      .default(TaskStatus.QUEUED),
-    payload: jsonb('payload').$type<unknown>(),
-    result: jsonb('result').$type<unknown>(),
-    error: text('error'),
-    created_by: text('created_by').notNull(),
-    idempotency_key: varchar('idempotency_key', { length: 200 }),
-    attempt_count: integer('attempt_count').notNull().default(0),
-    max_attempts: integer('max_attempts').notNull().default(3),
-    run_after: timestamp('run_after', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    lease_owner: text('lease_owner'),
-    lease_token: uuid('lease_token'),
-    lease_expires_at: timestamp('lease_expires_at', { withTimezone: true }),
-    progress_total: integer('progress_total'),
-    progress_processed: integer('progress_processed').notNull().default(0),
-    progress_failed: integer('progress_failed').notNull().default(0),
-    progress_message_key: varchar('progress_message_key', { length: 200 }),
-    progress_message_args: jsonb(
-      'progress_message_args',
-    ).$type<TaskProgressMessageArgs>(),
-    cancel_requested_at: timestamp('cancel_requested_at', {
-      withTimezone: true,
-    }),
-    started_at: timestamp('started_at', { withTimezone: true }),
-    completed_at: timestamp('completed_at', { withTimezone: true }),
-    created_at: timestamp('created_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updated_at: timestamp('updated_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => [
-    check(
-      'background_tasks_status_check',
-      sql`${table.status} IN (
-        ${TaskStatus.QUEUED},
-        ${TaskStatus.RUNNING},
-        ${TaskStatus.SUCCEEDED},
-        ${TaskStatus.FAILED},
-        ${TaskStatus.CANCELED}
-      )`,
-    ),
-    check(
-      'background_tasks_attempts_check',
-      sql`${table.attempt_count} >= 0 AND ${table.max_attempts} > 0`,
-    ),
-    check(
-      'background_tasks_progress_check',
-      sql`${table.progress_processed} >= 0
-        AND ${table.progress_failed} >= 0
-        AND (${table.progress_total} IS NULL OR ${table.progress_total} >= 0)`,
-    ),
-    check(
-      'background_tasks_payload_check',
-      sql`${table.status} NOT IN (${TaskStatus.QUEUED}, ${TaskStatus.RUNNING})
-        OR ${table.payload} IS NOT NULL`,
-    ),
-    check(
-      'background_tasks_lease_check',
-      sql`(
-        ${table.status} = ${TaskStatus.RUNNING}
-        AND ${table.lease_owner} IS NOT NULL
-        AND ${table.lease_token} IS NOT NULL
-        AND ${table.lease_expires_at} IS NOT NULL
-      ) OR (
-        ${table.status} <> ${TaskStatus.RUNNING}
-        AND ${table.lease_owner} IS NULL
-        AND ${table.lease_token} IS NULL
-        AND ${table.lease_expires_at} IS NULL
-      )`,
-    ),
-    uniqueIndex('background_tasks_tenant_creator_type_idempotency_unique')
-      .on(table.tenant_id, table.created_by, table.type, table.idempotency_key)
-      .where(sql`${table.idempotency_key} IS NOT NULL`),
-    index('background_tasks_tenant_creator_created_idx').on(
-      table.tenant_id,
-      table.created_by,
-      table.created_at,
-    ),
-    index('background_tasks_tenant_type_status_created_idx').on(
-      table.tenant_id,
-      table.type,
-      table.status,
-      table.created_at,
-    ),
-    index('background_tasks_queued_claim_idx')
-      .on(table.run_after, table.created_at)
-      .where(sql`${table.status} = ${TaskStatus.QUEUED}`),
-    index('background_tasks_expired_running_idx')
-      .on(table.lease_expires_at)
-      .where(sql`${table.status} = ${TaskStatus.RUNNING}`),
   ],
 );

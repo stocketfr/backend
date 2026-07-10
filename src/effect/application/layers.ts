@@ -28,7 +28,6 @@ import { RolesService } from '../modules/roles/service';
 import { StockMovementsService } from '../modules/stock-movements/service';
 import { SuperAdminService } from '../modules/superadmin/service';
 import { SuppliersService } from '../modules/suppliers/service';
-import { TasksService } from '../modules/tasks/service';
 import { UsersService } from '../modules/users/service';
 import { betterAuthLayer } from '../platform/auth/better-auth';
 import { PermissionProvider } from '../platform/auth/permission-provider';
@@ -123,7 +122,6 @@ export const makeApplicationLayer = (options: ApplicationLayerOptions) => {
     withPlatform(ClientsService.Default),
     withPlatform(SuppliersService.Default),
     withPlatform(PhotosService.Default),
-    withPlatform(TasksService.Default),
     notificationsApplicationLayer,
   );
 

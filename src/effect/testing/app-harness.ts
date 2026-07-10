@@ -20,7 +20,6 @@ import { RolesService } from '../modules/roles/service';
 import { StockMovementsService } from '../modules/stock-movements/service';
 import { SuperAdminService } from '../modules/superadmin/service';
 import { SuppliersService } from '../modules/suppliers/service';
-import { TasksService } from '../modules/tasks/service';
 import { UsersService } from '../modules/users/service';
 import { auditLayer } from '../platform/audit/index';
 import { BetterAuthHeaders } from '../platform/auth/better-auth';
@@ -86,7 +85,6 @@ export const makeTestApplicationLayer = (options: TestHttpAppOptions = {}) => {
     withPlatform(ClientsService.Default),
     withPlatform(SuppliersService.Default),
     withPlatform(PhotosService.Default),
-    withPlatform(TasksService.Default),
   );
 
   const locationsApplicationLayer = withPlatform(LocationsService.Default);
