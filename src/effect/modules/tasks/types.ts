@@ -1,6 +1,7 @@
 import type {
   TaskProgressMessageArgs,
   TaskQueryDto,
+  TaskResponseDto,
 } from '@stocket/types/tasks';
 import type { AnyMessageKey } from '../../platform/observability/messages';
 import type { backgroundTasks } from '../../platform/db/schema';
@@ -19,6 +20,18 @@ export interface EnqueueTaskOptions {
     readonly messageKey?: AnyMessageKey;
     readonly messageArgs?: TaskProgressMessageArgs;
   };
+}
+
+export type TaskEnqueueDisposition = 'created' | 'existing';
+
+export interface TaskEnqueueRecordResult {
+  readonly task: TaskRow;
+  readonly disposition: TaskEnqueueDisposition;
+}
+
+export interface TaskEnqueueResult {
+  readonly task: TaskResponseDto;
+  readonly disposition: TaskEnqueueDisposition;
 }
 
 export interface ActorTaskQuery extends TaskQueryDto {

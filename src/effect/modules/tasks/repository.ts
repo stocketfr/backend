@@ -10,7 +10,7 @@ import { makeTenantCrud } from '../../platform/db/tenant-crud';
 import { backgroundTasks } from '../../platform/db/schema';
 import { TenantQuery } from '../../platform/tenancy/tenant-query';
 import { TasksInfrastructureError } from './tasks.errors';
-import type { EnqueueTaskOptions } from './types';
+import type { EnqueueTaskOptions, TaskEnqueueRecordResult } from './types';
 
 const buildTaskFilters = (query: TaskQueryDto, actorId: string): SQL[] => {
   const filters: SQL[] = [eq(backgroundTasks.created_by, actorId)];
@@ -59,25 +59,32 @@ export class TasksRepository extends Effect.Service<TasksRepository>()(
                     eq(backgroundTasks.idempotency_key, options.idempotencyKey),
                   );
 
-            return yield* tryAsync('enqueue background task', async () => {
-              const [created] = await db
-                .insert(backgroundTasks)
-                .values(values)
-                .onConflictDoNothing()
-                .returning();
-              if (created !== undefined) return created;
+            return yield* tryAsync(
+              'enqueue background task',
+              async (): Promise<TaskEnqueueRecordResult> => {
+                const [created] = await db
+                  .insert(backgroundTasks)
+                  .values(values)
+                  .onConflictDoNothing()
+                  .returning();
+                if (created !== undefined) {
+                  return { task: created, disposition: 'created' };
+                }
 
-              if (existingWhere !== null) {
-                const [existing] = await db
-                  .select()
-                  .from(backgroundTasks)
-                  .where(existingWhere)
-                  .limit(1);
-                if (existing !== undefined) return existing;
-              }
+                if (existingWhere !== null) {
+                  const [existing] = await db
+                    .select()
+                    .from(backgroundTasks)
+                    .where(existingWhere)
+                    .limit(1);
+                  if (existing !== undefined) {
+                    return { task: existing, disposition: 'existing' };
+                  }
+                }
 
-              throw new Error('Background task insert returned no row');
-            });
+                throw new Error('Background task insert returned no row');
+              },
+            );
           });
 
         const findAllPaginatedForActor = (

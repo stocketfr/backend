@@ -40,11 +40,12 @@ export class ProductImportBackgroundService extends Effect.Service<ProductImport
             contentType: 'text/csv; charset=utf-8',
           });
 
-          return yield* tasks
+          const result = yield* tasks
             .enqueue({
               type: PRODUCT_IMPORT_TASK_TYPE,
               payload,
               createdBy: options.userId,
+              idempotencyKey: options.idempotencyKey,
               maxAttempts: 3,
               progress: {
                 messageKey: PRODUCT_IMPORT_PROGRESS_MESSAGES.queued,
@@ -55,6 +56,12 @@ export class ProductImportBackgroundService extends Effect.Service<ProductImport
                 storage.deleteObject(blobKey).pipe(Effect.ignore),
               ),
             );
+
+          if (result.disposition === 'existing') {
+            yield* storage.deleteObject(blobKey).pipe(Effect.ignore);
+          }
+
+          return result.task;
         }).pipe(trace.span('enqueue'));
 
       return { enqueue };

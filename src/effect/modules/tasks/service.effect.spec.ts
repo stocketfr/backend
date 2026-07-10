@@ -17,6 +17,30 @@ const serviceHarness = makeServiceTestHarness(
 );
 
 describe('TasksService', () => {
+  it.effect('preserves the enqueue disposition while mapping the task', () => {
+    const repositoryLayer = makeTestLayer(TasksRepository)({
+      enqueue: () =>
+        Effect.succeed({
+          task: makeTaskRow(),
+          disposition: 'existing',
+        }),
+    });
+
+    return serviceHarness.effect(repositoryLayer, (service) =>
+      Effect.gen(function* () {
+        const result = yield* service.enqueue({
+          type: 'test-task',
+          payload: { value: 'test' },
+          createdBy: TASK_ACTOR_ID,
+          idempotencyKey: 'request-1',
+        });
+
+        expect(result.disposition).toBe('existing');
+        expect(result.task.id).toBe(TASK_ID);
+      }),
+    );
+  });
+
   it.effect('scopes paginated reads to the requesting actor', () => {
     const findAllPaginatedForActor = vi.fn(() =>
       Effect.succeed(toRepositoryPaginatedResult([makeTaskRow()], 1, 1, 20)),

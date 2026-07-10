@@ -13,6 +13,7 @@ export interface EnqueueProductImportOptions {
   readonly bytes: Uint8Array;
   readonly importType: ProductImportType;
   readonly approvedPlan?: ProductImportPlan;
+  readonly idempotencyKey?: string;
   readonly userId: string;
 }
 
