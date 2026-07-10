@@ -22,6 +22,7 @@ import {
 } from './tasks.errors';
 import { isTerminalTaskStatus } from './tasks.utils';
 import type { EnqueueTaskOptions } from './types';
+import { TaskTerminalObserver } from './terminal-observer';
 
 const currentLocale: Effect.Effect<SupportedLocale> = Effect.map(
   getOptionalRequestContext,
@@ -36,6 +37,8 @@ export class TasksService extends Effect.Service<TasksService>()(
   {
     effect: Effect.gen(function* () {
       const repository = yield* TasksRepository;
+      const terminalObserver =
+        yield* Effect.serviceOption(TaskTerminalObserver);
       const trace = makeServiceTracer({
         serviceName: 'TasksService',
         module: 'tasks',
@@ -110,6 +113,17 @@ export class TasksService extends Effect.Service<TasksService>()(
                 messageKey: 'tasks.terminalConflict',
               }),
           );
+          if (
+            isTerminalTaskStatus(canceled.status) &&
+            Option.isSome(terminalObserver)
+          ) {
+            yield* terminalObserver.value
+              .onSettled({
+                task: canceled,
+                originalPayload: existing.payload,
+              })
+              .pipe(Effect.catchAllCause(() => Effect.void));
+          }
           return toTaskResponseDto(canceled, yield* currentLocale);
         }).pipe(trace.span('cancel', { attributes: { id, userId: actorId } }));
 
