@@ -1,4 +1,5 @@
 import { Effect, Layer } from 'effect';
+import { afterEach, describe, expect, it, vi } from '@effect/vitest';
 import { makeTestLayer } from '../../../testing/utils';
 import { PhotosService } from '../../photos/service';
 import { ProductImportPhotoImporter } from './photo-importer';

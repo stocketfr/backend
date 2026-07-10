@@ -1,6 +1,11 @@
-import { Effect, Exit } from 'effect';
+import { Deferred, Effect, Exit, Fiber } from 'effect';
 import { describe, expect, it, vi } from '@effect/vitest';
-import { created, existing, retainOnCreate } from '../effect/create-or-reuse';
+import {
+  created,
+  existing,
+  retainOnCreate,
+  type CreateOrReuseResult,
+} from '../effect/create-or-reuse';
 
 describe('create-or-reuse', () => {
   it.effect(
@@ -59,5 +64,40 @@ describe('create-or-reuse', () => {
       expect(Exit.isInterrupted(exit)).toBe(true);
       expect(cleanup).toHaveBeenCalledOnce();
     }),
+  );
+
+  it.effect(
+    'waits for a non-cancellable claim before handling interruption',
+    () =>
+      Effect.gen(function* () {
+        const claimStarted = yield* Deferred.make<void>();
+        let resolveClaim: (
+          result: CreateOrReuseResult<string>,
+        ) => void = () => undefined;
+        const claimPromise = new Promise<CreateOrReuseResult<string>>(
+          (resolve) => {
+            resolveClaim = resolve;
+          },
+        );
+        const cleanup = vi.fn(() => Effect.void);
+        const claim = Deferred.succeed(claimStarted, undefined).pipe(
+          Effect.zipRight(Effect.promise(() => claimPromise)),
+        );
+        const fiber = yield* Effect.fork(
+          retainOnCreate(claim, Effect.suspend(cleanup)),
+        );
+
+        yield* Deferred.await(claimStarted);
+        const interruptFiber = yield* Effect.fork(Fiber.interrupt(fiber));
+        yield* Effect.yieldNow();
+
+        expect(cleanup).not.toHaveBeenCalled();
+
+        resolveClaim(created('new-row'));
+        const exit = yield* Fiber.join(interruptFiber);
+
+        expect(Exit.isInterrupted(exit)).toBe(true);
+        expect(cleanup).not.toHaveBeenCalled();
+      }),
   );
 });
