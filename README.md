@@ -32,7 +32,8 @@ scripts. The checked-in `env.template` file documents the expected keys.
 ```text
 src/
 ├── effect/
-│   ├── main.ts            # Node entrypoint and layer wiring
+│   ├── main.ts            # HTTP API entrypoint
+│   ├── task-worker.ts     # Background task worker entrypoint
 │   ├── http/              # HTTP app, middleware, logging, security headers
 │   ├── modules/           # Routers, services, repositories, schemas, errors
 │   └── platform/          # Drizzle, Better Auth, request/session/audit helpers
@@ -55,8 +56,10 @@ Most business features live under `src/effect/modules/<feature>/` with the patte
 ```bash
 pnpm install             # Install the workspace
 pnpm start               # Run the API
+pnpm start:worker        # Run the background task worker
 pnpm build               # Production build
 pnpm start:prod          # Run production build
+pnpm start:prod:worker   # Run the production background worker
 pnpm test                # Unit tests (Vitest)
 pnpm test:integration    # Integration tests
 pnpm lint                # Oxlint
@@ -64,6 +67,12 @@ pnpm type-check          # TypeScript check
 SUPERADMIN_PASSWORD=<password> pnpm start:workspace # Fresh DBs get admin@stocket.fr
 pnpm tenant:seed:workspace # Seed local tenant + tenant-admin@stocket.fr / admin1234
 ```
+
+The API and task worker are separate processes built from the same image. Run
+at least one worker process anywhere task-producing features are enabled. The
+worker uses PostgreSQL leases, so multiple worker replicas can safely claim
+work concurrently; tuning variables and defaults are documented in
+`env.template`.
 
 ## Shared Types
 
