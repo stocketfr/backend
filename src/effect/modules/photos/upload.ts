@@ -3,18 +3,30 @@ import type { PhotoResponseDto } from '@stocket/types/photos';
 import type { StorageAdapter } from '../../platform/storage';
 import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import {
+  created,
+  retainOnCreate,
+  type CreateOrReuseResult,
+} from '../../platform/effect/create-or-reuse';
+import {
   InvalidPhotoMimeType,
   PhotoTooLarge,
   type PhotosInfrastructureError,
 } from './photos.errors';
 import {
+  hashPhotoSourceKey,
   makePhotoObjectKey,
   matchesMagicBytes,
   toPhotoCreateValues,
 } from './photos.utils';
 import { toPhotoResponseDto } from './mappers';
 import { mapPhotoStorageWriteError } from './storage-errors';
-import type { PhotoCreateValues, PhotoEntity, UploadedFile } from './types';
+import type {
+  IdempotentPhotoCreateValues,
+  PhotoCreateValues,
+  PhotoEntity,
+  PhotoUploadOptions,
+  UploadedFile,
+} from './types';
 import { ALLOWED_PHOTO_MIME_TYPES, MAX_PHOTO_FILE_SIZE } from './types';
 
 export interface PhotoUploadRepository {
@@ -25,6 +37,19 @@ export interface PhotoUploadRepository {
     values: PhotoCreateValues,
   ) => Effect.Effect<
     PhotoEntity,
+    PhotosInfrastructureError | TenantNotResolved
+  >;
+  readonly createIdempotent: (
+    values: IdempotentPhotoCreateValues,
+  ) => Effect.Effect<
+    CreateOrReuseResult<PhotoEntity>,
+    PhotosInfrastructureError | TenantNotResolved
+  >;
+  readonly findByProductSourceHash: (
+    productId: string,
+    sourceHash: string,
+  ) => Effect.Effect<
+    PhotoEntity | null,
     PhotosInfrastructureError | TenantNotResolved
   >;
 }
@@ -78,6 +103,7 @@ export const makePhotoUploadWorkflow = ({
     productId: string,
     file: UploadedFile,
     userId?: string,
+    options: PhotoUploadOptions = {},
   ): Effect.Effect<
     PhotoResponseDto,
     | InvalidPhotoMimeType
@@ -87,6 +113,17 @@ export const makePhotoUploadWorkflow = ({
   > =>
     Effect.gen(function* () {
       yield* validateUploadedPhoto(file);
+
+      const sourceKey = options.sourceKey?.trim() || null;
+      const sourceHash =
+        sourceKey === null ? null : hashPhotoSourceKey(sourceKey);
+      if (sourceHash !== null) {
+        const existing = yield* repository.findByProductSourceHash(
+          productId,
+          sourceHash,
+        );
+        if (existing !== null) return toPhotoResponseDto(existing);
+      }
 
       const objectKey = makePhotoObjectKey(
         productId,
@@ -100,17 +137,24 @@ export const makePhotoUploadWorkflow = ({
 
       const photo = yield* Effect.gen(function* () {
         const existingCount = yield* repository.countByProductId(productId);
-        return yield* repository.create(
-          toPhotoCreateValues({
-            productId,
-            file,
-            objectKey,
-            displayOrder: existingCount,
-            userId,
-          }),
-        );
-      }).pipe(
-        Effect.tapError(() => Effect.ignore(storage.deleteObject(objectKey))),
+        const values = toPhotoCreateValues({
+          productId,
+          file,
+          objectKey,
+          displayOrder: existingCount,
+          userId,
+          sourceHash,
+        });
+        if (sourceHash === null) {
+          return yield* repository.create(values).pipe(Effect.map(created));
+        }
+
+        return yield* repository.createIdempotent({
+          ...values,
+          source_hash: sourceHash,
+        });
+      }).pipe((claim) =>
+        retainOnCreate(claim, storage.deleteObject(objectKey)),
       );
 
       return toPhotoResponseDto(photo);

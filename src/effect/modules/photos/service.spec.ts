@@ -1,4 +1,5 @@
 import { Effect, Layer } from 'effect';
+import { created } from '../../platform/effect/create-or-reuse';
 import { PhotosService } from './service';
 import { PhotosRepository } from './repository';
 import type { photos } from '../../platform/db/schema';
@@ -15,7 +16,13 @@ type PhotoEntity = typeof photos.$inferSelect;
 type CreatePhotoInput = Parameters<PhotosRepository['create']>[0];
 type MockPhotosRepository = Pick<
   PhotosRepository,
-  'findByProductId' | 'findById' | 'create' | 'delete' | 'countByProductId'
+  | 'findByProductId'
+  | 'findById'
+  | 'findByProductSourceHash'
+  | 'create'
+  | 'createIdempotent'
+  | 'delete'
+  | 'countByProductId'
 >;
 
 const JPEG_HEADER = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
@@ -35,6 +42,7 @@ const makePhotoEntity = (
   storage_path: 'products/prod-1/photos/test.jpg',
   display_order: 0,
   uploaded_by: null,
+  source_hash: null,
   created_at: new Date('2026-01-01'),
   ...overrides,
 });
@@ -72,11 +80,27 @@ const makeMockRepository = (
   const countByProductId: MockPhotosRepository['countByProductId'] = vi
     .fn()
     .mockReturnValue(Effect.succeed(0));
+  const findByProductSourceHash: MockPhotosRepository['findByProductSourceHash'] =
+    vi.fn().mockReturnValue(Effect.succeed(null));
+  const createIdempotent: MockPhotosRepository['createIdempotent'] = vi.fn(
+    (data) =>
+      Effect.succeed(
+        created(
+          makePhotoEntity({
+            ...data,
+            id: 'photo-1',
+            created_at: new Date('2026-01-01'),
+          }),
+        ),
+      ),
+  );
 
   return {
     findByProductId,
     findById,
+    findByProductSourceHash,
     create,
+    createIdempotent,
     delete: deletePhoto,
     countByProductId,
     ...overrides,
@@ -234,6 +258,27 @@ describe('Effect PhotosService', () => {
       const result = await run(service.findByProductId('prod-1'));
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({ id: 'photo-1' });
+    });
+  });
+
+  describe('findBySourceKey', () => {
+    it('hashes the source key and maps an existing photo', async () => {
+      const findByProductSourceHash = vi.fn(() =>
+        Effect.succeed(makePhotoEntity({ id: 'source-photo' })),
+      );
+      const { service } = await buildService(
+        makeMockRepository({ findByProductSourceHash }),
+      );
+
+      const result = await run(
+        service.findBySourceKey('prod-1', 'lnk.sortly.co/photo-1'),
+      );
+
+      expect(result).toMatchObject({ id: 'source-photo' });
+      expect(findByProductSourceHash).toHaveBeenCalledWith(
+        'prod-1',
+        expect.stringMatching(/^[a-f0-9]{64}$/),
+      );
     });
   });
 

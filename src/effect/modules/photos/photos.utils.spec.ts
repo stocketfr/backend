@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@effect/vitest';
 import {
   getPhotoExtension,
+  hashPhotoSourceKey,
   makePhotoObjectKey,
   matchesMagicBytes,
   toPhotoCreateValues,
@@ -31,6 +32,13 @@ describe('photo utils', () => {
     );
   });
 
+  it('hashes normalized source keys without retaining the source URL', () => {
+    expect(hashPhotoSourceKey(' sortly.example/photo-1 ')).toBe(
+      hashPhotoSourceKey('sortly.example/photo-1'),
+    );
+    expect(hashPhotoSourceKey('sortly.example/photo-1')).toHaveLength(64);
+  });
+
   it('maps upload state to photo create values', () => {
     const values = toPhotoCreateValues({
       productId: 'product-1',
@@ -53,6 +61,7 @@ describe('photo utils', () => {
       storage_path: 'products/product-1/photos/object-1.jpg',
       display_order: 2,
       uploaded_by: 'user-1',
+      source_hash: null,
     });
   });
 });

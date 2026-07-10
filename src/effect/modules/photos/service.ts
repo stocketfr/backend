@@ -14,7 +14,12 @@ import {
 } from './photos.errors';
 import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
 import { PhotosRepository } from './repository';
-import type { PhotoFileResult, UploadedFile } from './types';
+import type {
+  PhotoFileResult,
+  PhotoUploadOptions,
+  UploadedFile,
+} from './types';
+import { hashPhotoSourceKey } from './photos.utils';
 import { makePhotoUploadWorkflow } from './upload';
 import {
   mapPhotoStorageDeleteError,
@@ -49,6 +54,7 @@ export class PhotosService extends Effect.Service<PhotosService>()(
         productId: string,
         file: UploadedFile,
         userId?: string,
+        options?: PhotoUploadOptions,
       ): Effect.Effect<
         PhotoResponseDto,
         | InvalidPhotoMimeType
@@ -57,8 +63,18 @@ export class PhotosService extends Effect.Service<PhotosService>()(
         | TenantNotResolved
       > =>
         photoUploadWorkflow
-          .uploadPhoto(productId, file, userId)
+          .uploadPhoto(productId, file, userId, options)
           .pipe(trace.span('uploadPhoto', { attributes: { productId } }));
+
+      const findBySourceKey = (productId: string, sourceKey: string) =>
+        repository
+          .findByProductSourceHash(productId, hashPhotoSourceKey(sourceKey))
+          .pipe(
+            Effect.map((photo) =>
+              photo === null ? null : toPhotoResponseDto(photo),
+            ),
+            trace.span('findBySourceKey', { attributes: { productId } }),
+          );
 
       const findByProductId = (
         productId: string,
@@ -118,7 +134,13 @@ export class PhotosService extends Effect.Service<PhotosService>()(
           yield* repository.delete(id);
         }).pipe(trace.span('deletePhoto', { attributes: { id } }));
 
-      return { uploadPhoto, findByProductId, getFile, deletePhoto };
+      return {
+        uploadPhoto,
+        findBySourceKey,
+        findByProductId,
+        getFile,
+        deletePhoto,
+      };
     }),
     dependencies: [PhotosRepository.Default],
   },

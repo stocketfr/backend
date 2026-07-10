@@ -11,6 +11,7 @@ import type { ProductImportExecutionHooks, ProductImportPlan } from './types';
 import {
   detectProductImportFormat,
   normalizeProductImportRecords,
+  sortlyPhotoSourceKey,
 } from './utils/csv';
 import { makeProductImportProposal } from './utils/proposal';
 import { parseDate, parseProductImportNumber } from './utils/value-parsers';
@@ -473,6 +474,20 @@ describe('ProductImportService', () => {
     expect(expiry?.getDate()).toBe(28);
     expect(expiry?.getHours()).toBe(13);
     expect(expiry?.getMinutes()).toBe(26);
+  });
+
+  it('normalizes Sortly photo sources independently of signed query parameters', () => {
+    expect(
+      sortlyPhotoSourceKey(
+        'https://LNK.SORTLY.CO/v2/downloads/photo/photo-1/?token=first',
+      ),
+    ).toBe('lnk.sortly.co/v2/downloads/photo/photo-1');
+    expect(
+      sortlyPhotoSourceKey(
+        'https://lnk.sortly.co/v2/downloads/photo/photo-1?token=second',
+      ),
+    ).toBe('lnk.sortly.co/v2/downloads/photo/photo-1');
+    expect(sortlyPhotoSourceKey('https://example.com/photo-1')).toBeNull();
   });
 
   it('filters Sortly folder rows instead of reporting them as import errors', () => {
