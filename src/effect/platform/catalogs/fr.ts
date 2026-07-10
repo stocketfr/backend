@@ -181,6 +181,10 @@ export const frCatalog: Record<MessageKey, string> = {
   'suppliers.deleted': 'Fournisseur supprime avec succes.',
   'suppliers.notFound': 'Fournisseur introuvable.',
   'suppliers.repositoryFailed': "L'operation sur le fournisseur a echoue.",
+  'tasks.notFound': 'Tache en arriere-plan introuvable.',
+  'tasks.repositoryFailed':
+    "L'operation sur la tache en arriere-plan a echoue.",
+  'tasks.terminalConflict': 'La tache en arriere-plan est deja terminee.',
   'users.infrastructureFailed': "L'operation sur l'utilisateur a echoue.",
   'users.notFound': 'Utilisateur introuvable.',
   'users.repositoryFailed': "L'operation sur l'utilisateur a echoue.",
