@@ -9,6 +9,10 @@ class MissingEntity {
   constructor(readonly id: string) {}
 }
 
+class LookupFailure {
+  constructor(readonly action: string) {}
+}
+
 const fail = <A, E>(effect: Effect.Effect<A, E>) =>
   Effect.runPromise(Effect.flip(effect));
 
@@ -26,6 +30,18 @@ describe('existence helpers', () => {
     expect(error).toBeInstanceOf(MissingEntity);
     expect(error.id).toBe('missing');
     expect(existsById).toHaveBeenCalledWith('existing');
+  });
+
+  it('preserves errors from the single-id lookup', async () => {
+    const lookupFailure = new LookupFailure('exists');
+    const ensureExistsById = makeEnsureExistsById(
+      () => Effect.fail(lookupFailure),
+      (id) => new MissingEntity(id),
+    );
+
+    const error = await fail(ensureExistsById('entity-1'));
+
+    expect(error).toBe(lookupFailure);
   });
 
   it('ensures ids exist with one batched lookup and fails on the first missing id', async () => {

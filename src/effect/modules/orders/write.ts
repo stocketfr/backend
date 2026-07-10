@@ -4,6 +4,7 @@ import {
   hasDefinedPatchValues,
   pickDefined,
 } from '../../platform/effect/pick-defined';
+import { makeEnsureExistsById } from '../../platform/effect/existence';
 import { ProductNotFound } from '../products/products.errors';
 import type { OrdersRepository } from './repository';
 import {
@@ -83,30 +84,30 @@ export const makeOrderWriteWorkflows = <
         `${generateOrderPrefix(new Date())}-${String(sequence).padStart(5, '0')}`,
     );
 
+  const ensureClientExists = makeEnsureExistsById(
+    clientExists,
+    (clientId) =>
+      new ClientNotFound({
+        clientId,
+        messageKey: 'orders.clientNotFound',
+      }),
+  );
+
+  const ensureProductExists = makeEnsureExistsById(
+    productExists,
+    (productId) =>
+      new ProductNotFound({
+        productId,
+        messageKey: 'orders.productNotFound',
+      }),
+  );
+
   const create = (dto: CreateOrderDto, userId: string) =>
     Effect.gen(function* () {
-      const foundClient = yield* clientExists(dto.client_id);
-      if (!foundClient) {
-        return yield* Effect.fail(
-          new ClientNotFound({
-            clientId: dto.client_id,
-            messageKey: 'orders.clientNotFound',
-          }),
-        );
-      }
+      yield* ensureClientExists(dto.client_id);
 
       yield* Effect.forEach(dto.items, (item) =>
-        Effect.gen(function* () {
-          const foundProduct = yield* productExists(item.product_id);
-          if (!foundProduct) {
-            return yield* Effect.fail(
-              new ProductNotFound({
-                productId: item.product_id,
-                messageKey: 'orders.productNotFound',
-              }),
-            );
-          }
-        }),
+        ensureProductExists(item.product_id),
       );
 
       const total_amount = dto.items.reduce(

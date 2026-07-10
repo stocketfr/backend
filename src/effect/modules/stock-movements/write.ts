@@ -1,5 +1,6 @@
 import { Effect } from 'effect';
 import type { TenantNotResolved } from '../../platform/tenancy/tenant-context';
+import { makeEnsureExistsById } from '../../platform/effect/existence';
 import {
   InvalidDestinationLocation,
   InvalidSourceLocation,
@@ -53,11 +54,6 @@ interface StockMovementWriteWorkflowOptions<
   ) => Effect.Effect<boolean, LocationError, LocationContext>;
 }
 
-const ensureExisting = <ExistsError, Context, MissingError>(
-  exists: Effect.Effect<boolean, ExistsError, Context>,
-  makeError: () => MissingError,
-) => exists.pipe(Effect.filterOrFail(Boolean, makeError), Effect.asVoid);
-
 const makeStockMovementNotFound = (id: string) =>
   new StockMovementNotFound({
     id,
@@ -93,51 +89,59 @@ export const makeStockMovementWriteWorkflows = <
   LocationError,
   LocationContext
 >) => {
+  const ensureProductExists = makeEnsureExistsById(
+    productExists,
+    (productId) =>
+      new InvalidStockMovementProduct({
+        productId,
+        messageKey: 'stockMovements.productNotFound',
+      }),
+  );
+
+  const ensureSourceLocationExists = makeEnsureExistsById(
+    locationExists,
+    (locationId) =>
+      new InvalidSourceLocation({
+        locationId,
+        messageKey: 'stockMovements.sourceLocationNotFound',
+      }),
+  );
+
+  const ensureDestinationLocationExists = makeEnsureExistsById(
+    locationExists,
+    (locationId) =>
+      new InvalidDestinationLocation({
+        locationId,
+        messageKey: 'stockMovements.destinationLocationNotFound',
+      }),
+  );
+
+  const ensureOrderExists = makeEnsureExistsById(
+    repository.orderExistsById,
+    (orderId) =>
+      new InvalidStockMovementOrder({
+        orderId,
+        messageKey: 'stockMovements.orderNotFound',
+      }),
+  );
+
   const create = (dto: CreateStockMovementDto, userId: string) =>
     Effect.gen(function* () {
-      yield* ensureExisting(
-        productExists(dto.product_id),
-        () =>
-          new InvalidStockMovementProduct({
-            productId: dto.product_id,
-            messageKey: 'stockMovements.productNotFound',
-          }),
-      );
+      yield* ensureProductExists(dto.product_id);
 
       const sourceLocationId = dto.from_location_id;
       if (sourceLocationId) {
-        yield* ensureExisting(
-          locationExists(sourceLocationId),
-          () =>
-            new InvalidSourceLocation({
-              locationId: sourceLocationId,
-              messageKey: 'stockMovements.sourceLocationNotFound',
-            }),
-        );
+        yield* ensureSourceLocationExists(sourceLocationId);
       }
 
       const destinationLocationId = dto.to_location_id;
       if (destinationLocationId) {
-        yield* ensureExisting(
-          locationExists(destinationLocationId),
-          () =>
-            new InvalidDestinationLocation({
-              locationId: destinationLocationId,
-              messageKey: 'stockMovements.destinationLocationNotFound',
-            }),
-        );
+        yield* ensureDestinationLocationExists(destinationLocationId);
       }
 
       const orderId = dto.order_id;
       if (orderId) {
-        yield* ensureExisting(
-          repository.orderExistsById(orderId),
-          () =>
-            new InvalidStockMovementOrder({
-              orderId,
-              messageKey: 'stockMovements.orderNotFound',
-            }),
-        );
+        yield* ensureOrderExists(orderId);
       }
 
       const stockMovement = yield* repository.create(
