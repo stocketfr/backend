@@ -23,6 +23,7 @@ export type TraceModule =
   | 'superadmin'
   | 'stock-movements'
   | 'suppliers'
+  | 'tasks'
   | 'users';
 export type TraceLayer = 'service';
 export type TraceEntityType = 'user' | 'order' | 'tenant';

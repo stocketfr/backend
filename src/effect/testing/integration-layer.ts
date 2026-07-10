@@ -59,7 +59,7 @@ export async function truncateAll(): Promise<void> {
   const testDb = getTestDb();
   await testDb.execute(sql`
     TRUNCATE TABLE
-	      audit_logs, stock_movements, order_items, orders,
+	      background_tasks, audit_logs, stock_movements, order_items, orders,
 	      inventory, photos, supplier_products, products,
 	      areas, locations, categories, suppliers, clients,
 	      branding_settings, notification_preferences, notifications,
