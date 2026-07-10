@@ -59,6 +59,7 @@ export interface PhotoCreateValues {
   readonly storage_path: string;
   readonly display_order: number;
   readonly uploaded_by: string | null;
+  readonly source_hash: string | null;
 }
 
 export interface PhotoCreateValuesOptions {
@@ -67,4 +68,13 @@ export interface PhotoCreateValuesOptions {
   readonly objectKey: string;
   readonly displayOrder: number;
   readonly userId?: string;
+  readonly sourceHash?: string | null;
+}
+
+export type IdempotentPhotoCreateValues = PhotoCreateValues & {
+  readonly source_hash: string;
+};
+
+export interface PhotoUploadOptions {
+  readonly sourceKey?: string | null;
 }

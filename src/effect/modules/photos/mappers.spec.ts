@@ -13,6 +13,7 @@ const photo = {
   storage_path: 'products/product-1/photos/label.jpg',
   display_order: 2,
   uploaded_by: '00000000-0000-4000-8000-000000000003',
+  source_hash: null,
   created_at: createdAt,
 } satisfies PhotoEntity;
 

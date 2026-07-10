@@ -8,13 +8,20 @@ import {
   type PhotosInfrastructureError,
 } from './photos.errors';
 import {
+  hashPhotoSourceKey,
   makePhotoObjectKey,
   matchesMagicBytes,
   toPhotoCreateValues,
 } from './photos.utils';
 import { toPhotoResponseDto } from './mappers';
 import { mapPhotoStorageWriteError } from './storage-errors';
-import type { PhotoCreateValues, PhotoEntity, UploadedFile } from './types';
+import type {
+  IdempotentPhotoCreateValues,
+  PhotoCreateValues,
+  PhotoEntity,
+  PhotoUploadOptions,
+  UploadedFile,
+} from './types';
 import { ALLOWED_PHOTO_MIME_TYPES, MAX_PHOTO_FILE_SIZE } from './types';
 
 export interface PhotoUploadRepository {
@@ -25,6 +32,19 @@ export interface PhotoUploadRepository {
     values: PhotoCreateValues,
   ) => Effect.Effect<
     PhotoEntity,
+    PhotosInfrastructureError | TenantNotResolved
+  >;
+  readonly createIdempotent: (
+    values: IdempotentPhotoCreateValues,
+  ) => Effect.Effect<
+    { readonly photo: PhotoEntity; readonly created: boolean },
+    PhotosInfrastructureError | TenantNotResolved
+  >;
+  readonly findByProductSourceHash: (
+    productId: string,
+    sourceHash: string,
+  ) => Effect.Effect<
+    PhotoEntity | null,
     PhotosInfrastructureError | TenantNotResolved
   >;
 }
@@ -78,6 +98,7 @@ export const makePhotoUploadWorkflow = ({
     productId: string,
     file: UploadedFile,
     userId?: string,
+    options: PhotoUploadOptions = {},
   ): Effect.Effect<
     PhotoResponseDto,
     | InvalidPhotoMimeType
@@ -87,6 +108,17 @@ export const makePhotoUploadWorkflow = ({
   > =>
     Effect.gen(function* () {
       yield* validateUploadedPhoto(file);
+
+      const sourceKey = options.sourceKey?.trim() || null;
+      const sourceHash =
+        sourceKey === null ? null : hashPhotoSourceKey(sourceKey);
+      if (sourceHash !== null) {
+        const existing = yield* repository.findByProductSourceHash(
+          productId,
+          sourceHash,
+        );
+        if (existing !== null) return toPhotoResponseDto(existing);
+      }
 
       const objectKey = makePhotoObjectKey(
         productId,
@@ -100,15 +132,26 @@ export const makePhotoUploadWorkflow = ({
 
       const photo = yield* Effect.gen(function* () {
         const existingCount = yield* repository.countByProductId(productId);
-        return yield* repository.create(
-          toPhotoCreateValues({
-            productId,
-            file,
-            objectKey,
-            displayOrder: existingCount,
-            userId,
-          }),
-        );
+        const values = toPhotoCreateValues({
+          productId,
+          file,
+          objectKey,
+          displayOrder: existingCount,
+          userId,
+          sourceHash,
+        });
+        if (sourceHash === null) {
+          return yield* repository.create(values);
+        }
+
+        const result = yield* repository.createIdempotent({
+          ...values,
+          source_hash: sourceHash,
+        });
+        if (!result.created) {
+          yield* Effect.ignore(storage.deleteObject(objectKey));
+        }
+        return result.photo;
       }).pipe(
         Effect.tapError(() => Effect.ignore(storage.deleteObject(objectKey))),
       );
