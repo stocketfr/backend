@@ -7,6 +7,7 @@ import {
   toRepositoryPaginatedResult,
 } from '@stocket/types/common';
 import { makeTenantCrud } from '../../platform/db/tenant-crud';
+import { insertOrGet } from '../../platform/db/insert-or-get';
 import { backgroundTasks } from '../../platform/db/schema';
 import { TenantQuery } from '../../platform/tenancy/tenant-query';
 import { TasksInfrastructureError } from './tasks.errors';
@@ -62,27 +63,31 @@ export class TasksRepository extends Effect.Service<TasksRepository>()(
             return yield* tryAsync(
               'enqueue background task',
               async (): Promise<TaskEnqueueRecordResult> => {
-                const [created] = await db
-                  .insert(backgroundTasks)
-                  .values(values)
-                  .onConflictDoNothing()
-                  .returning();
-                if (created !== undefined) {
-                  return { task: created, disposition: 'created' };
-                }
-
-                if (existingWhere !== null) {
-                  const [existing] = await db
-                    .select()
-                    .from(backgroundTasks)
-                    .where(existingWhere)
-                    .limit(1);
-                  if (existing !== undefined) {
-                    return { task: existing, disposition: 'existing' };
-                  }
-                }
-
-                throw new Error('Background task insert returned no row');
+                const result = await insertOrGet({
+                  insert: async () => {
+                    const [inserted] = await db
+                      .insert(backgroundTasks)
+                      .values(values)
+                      .onConflictDoNothing()
+                      .returning();
+                    return inserted;
+                  },
+                  getExisting: async () => {
+                    if (existingWhere === null) return undefined;
+                    const [found] = await db
+                      .select()
+                      .from(backgroundTasks)
+                      .where(existingWhere)
+                      .limit(1);
+                    return found;
+                  },
+                  unresolvedConflictError: () =>
+                    new Error('Background task insert returned no row'),
+                });
+                return {
+                  task: result.value,
+                  disposition: result.disposition,
+                };
               },
             );
           });
