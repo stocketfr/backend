@@ -26,6 +26,7 @@ interface RepositoryState {
   canceled: number;
   failed: Array<{ readonly error: string; readonly retryable: boolean }>;
   progress: number;
+  progressActive: boolean;
   events: string[];
 }
 
@@ -38,6 +39,7 @@ const makeRepository = () => {
     canceled: 0,
     failed: [],
     progress: 0,
+    progressActive: true,
     events: [],
   };
   const runningRow = makeTaskRow({
@@ -68,7 +70,7 @@ const makeRepository = () => {
     reportProgress: () =>
       Effect.sync(() => {
         state.progress += 1;
-        return true;
+        return state.progressActive;
       }),
     getLeaseState: () =>
       Effect.succeed({ active: true, cancelRequested: false }),
@@ -133,6 +135,22 @@ describe('TaskWorkerService', () => {
     expect(state.completed).toBe(1);
     expect(state.failed).toEqual([]);
     expect(state.events).toEqual(['settlement:succeeded', 'hook:succeeded']);
+  });
+
+  it('does not settle a task after progress reporting loses the lease', async () => {
+    const { repository, state } = makeRepository();
+    state.progressActive = false;
+    const handler: TaskHandler = {
+      type: 'test-task',
+      run: (_task, context) =>
+        context.reportProgress({ processed: 1, force: true }),
+    };
+
+    await expect(runWithHandler(handler, repository)).resolves.toBe(true);
+    expect(state.progress).toBe(1);
+    expect(state.completed).toBe(0);
+    expect(state.failed).toEqual([]);
+    expect(state.events).toEqual([]);
   });
 
   it('does not retry an invalid payload', async () => {

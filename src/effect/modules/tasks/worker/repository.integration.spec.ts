@@ -90,8 +90,14 @@ describe('TaskWorkerRepository integration', () => {
       ),
       workerLayer,
     );
-    expect(staleHeartbeat).toBe(false);
-    expect(activeHeartbeat).toBe(true);
+    expect(staleHeartbeat).toEqual({
+      active: false,
+      cancelRequested: false,
+    });
+    expect(activeHeartbeat).toEqual({
+      active: true,
+      cancelRequested: false,
+    });
   });
 
   it('honors a cancellation that races with successful completion', async () => {

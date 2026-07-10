@@ -1,89 +1,31 @@
-# Effect Source Setup
+# Effect Source Bootstrap
 
-This setup task is required when `./.repos/effect` is missing from the root of the repository where this skill is used.
+Keep a local Effect source checkout at `./.repos/effect` in every repository where this skill is used.
 
-## Prompt
+## Automatic Setup
 
-The local Effect source checkout was not found at `./.repos/effect`.
-
-Choose one of these setup options before continuing:
-
-1. Add `https://github.com/Effect-TS/effect-smol` as a git subtree with squashed history at `./.repos/effect`
-2. Add `https://github.com/Effect-TS/effect-smol` as a git submodule at `./.repos/effect`
-3. Use `git clone` into `./.repos/effect`, ignore it via `.gitignore`, and add a prepare script that bootstraps it when missing
-
-## Supported Options
-
-### 1. Git Subtree
-
-Use this when the repository should vendor the Effect source directly while keeping history compact.
-
-- Repo path: `./.repos/effect`
-- Source: `https://github.com/Effect-TS/effect-smol`
-- Preferred shape: subtree with squashed history
-
-### 2. Git Submodule
-
-Use this when the repository should track the Effect source explicitly as a separate Git dependency.
-
-- Repo path: `./.repos/effect`
-- Source: `https://github.com/Effect-TS/effect-smol`
-- Preferred shape: standard Git submodule
-
-### 3. Local Clone + Gitignore + Prepare Task
-
-Use this when the repository should avoid vendoring or submodule management, but still provide a reproducible local setup.
-
-- Repo path: `./.repos/effect`
-- Source: `https://github.com/Effect-TS/effect-smol`
-- Add `.repos/effect` to the repository `.gitignore`
-- Add a `prepare` task that clones the repo automatically when the directory is missing
-
-#### Concrete Shape
-
-Use this exact shape for the setup. Do not invent a different script.
-
-`package.json`:
-
-```json
-{
-  "scripts": {
-    "prepare": "./scripts/prepare-effect.sh"
-  }
-}
-```
-
-`.gitignore`:
-
-```gitignore
-.repos/effect
-```
-
-`scripts/prepare-effect.sh`:
+When the checkout is missing, run the bundled script from the skill directory:
 
 ```sh
-#!/usr/bin/env sh
-
-set -eu
-
-repo_dir=".repos/effect"
-repo_url="https://github.com/Effect-TS/effect-smol"
-
-if [ -d "$repo_dir/.git" ]; then
-  exit 0
-fi
-
-mkdir -p ".repos"
-git clone "$repo_url" "$repo_dir"
+./scripts/ensure-effect-source.sh /path/to/project
 ```
 
-#### Notes
+The script:
 
-- This keeps `./.repos/effect` available for local research without forcing it into version control
-- The script is only responsible for ensuring the checkout exists; it does not update or reset an existing clone
-- If you choose this option, the setup task should add this exact script, wire it via `prepare`, and add `.repos/effect` to `.gitignore`
+1. Reads the installed Effect version from `node_modules`, `pnpm-workspace.yaml`, `package.json`, or `pnpm-lock.yaml`.
+2. For Effect v4, clones the v4 source from `https://github.com/Effect-TS/effect-smol.git`.
+3. For Effect v3, clones `https://github.com/Effect-TS/effect.git` at the exact `effect@<version>` tag when available, falling back to its v3 `main` branch.
+4. Defaults to Effect v4 when it cannot detect a version.
 
-## Guidance
+Do not prompt the user merely because the checkout is missing. The clone is local research infrastructure and should remain ignored by version control.
 
-- Do not continue with Effect-specific work until one of the setup options is chosen.
-- Prefer the option that matches the host repository's dependency management style.
+## Manual Fallback
+
+If the script cannot run, inspect the project's installed Effect major and clone the corresponding source:
+
+```sh
+mkdir -p .repos
+git clone --depth 1 https://github.com/Effect-TS/effect-smol.git .repos/effect
+```
+
+Use `Effect-TS/effect` instead for a v3 project. Never substitute v4 source when researching an existing v3 codebase.
