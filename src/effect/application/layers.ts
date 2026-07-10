@@ -44,13 +44,15 @@ import {
 import {
   APPLICATION_NODE_ENVS,
   isApplicationNodeEnv,
-  makeStartupLayer,
+  parseApplicationPort,
   type ApplicationNodeEnv,
-} from './startup';
+} from './environment';
+import { makeStartupLayer } from './startup';
 
 export {
   APPLICATION_NODE_ENVS,
   isApplicationNodeEnv,
+  parseApplicationPort,
   type ApplicationNodeEnv,
 };
 
@@ -95,7 +97,7 @@ export const makeApplicationLayer = (options: ApplicationLayerOptions) => {
       getPermissionsForUser,
     })),
   ).pipe(Layer.provide(rolesApplicationLayer));
-  const authApplicationLayer = AuthService.Default.pipe(
+  const authApplicationLayer = AuthService.DefaultWithoutDependencies.pipe(
     Layer.provide(
       Layer.mergeAll(rolesApplicationLayer, featuresApplicationLayer),
     ),

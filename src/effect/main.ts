@@ -6,6 +6,7 @@ import {
   isApplicationNodeEnv,
   makeApplicationLayer,
   makeHttpServerLayer,
+  parseApplicationPort,
   type ApplicationRuntimeError,
 } from './application/layers';
 import { runtimeLoggingLayer } from './platform/observability/console-logging';
@@ -18,21 +19,15 @@ if (!isApplicationNodeEnv(nodeEnv)) {
 }
 process.env.NODE_ENV = nodeEnv;
 
-const port = Number(readRequiredEnv('PORT'));
-if (!Number.isInteger(port) || port <= 0) {
-  throw new Error('PORT must be a positive integer');
-}
+const port = parseApplicationPort(readRequiredEnv('PORT'));
 
 const applicationLayer = makeApplicationLayer({
   nodeEnv,
   runBetterAuthMigrations: process.env.RUN_BETTER_AUTH_MIGRATIONS === 'true',
 });
 
-const main = Layer.launch(makeHttpServerLayer(port)).pipe(
-  Effect.provide(applicationLayer),
-  Effect.provide(runtimeLoggingLayer),
-);
+const main: Effect.Effect<never, ApplicationRuntimeError, never> = Layer.launch(
+  makeHttpServerLayer(port),
+).pipe(Effect.provide(applicationLayer), Effect.provide(runtimeLoggingLayer));
 
-NodeRuntime.runMain(
-  main as Effect.Effect<never, ApplicationRuntimeError, never>,
-);
+NodeRuntime.runMain(main);

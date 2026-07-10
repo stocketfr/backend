@@ -19,13 +19,12 @@
  * at the test-file level (see `router.spec.ts`).
  */
 import { HttpRouter } from '@effect/platform';
-import { type Effect } from 'effect';
 import type { Permission, Resource } from '@stocket/types/auth';
-import type { AuditWriteParams } from '../../../platform/audit/index';
 import {
   type makeFakeSession,
   makeRouterServiceLayer,
   makeRouterTestHarness,
+  type RouterAuditLog,
 } from '../../../testing/router-harness';
 import { photosRouter, productPhotosRouter } from '../router';
 import { PhotosService } from '../service';
@@ -36,16 +35,12 @@ export interface PhotosRouterHarnessOptions {
   readonly service: Record<string, unknown>;
   readonly permissions?: Partial<Record<Resource, Permission[]>>;
   readonly session?: ReturnType<typeof makeFakeSession> | null;
-  readonly auditLog?: (
-    params: AuditWriteParams,
-  ) => Effect.Effect<void, never, unknown>;
+  readonly auditLog?: RouterAuditLog;
 }
 
 export interface PhotosRouterHarness {
   readonly handler: (request: Request) => Promise<Response>;
-  readonly auditSpy: (
-    params: AuditWriteParams,
-  ) => Effect.Effect<void, never, unknown>;
+  readonly auditSpy: RouterAuditLog;
 }
 
 export const makePhotosRouterHarness = (

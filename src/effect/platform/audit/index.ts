@@ -1,9 +1,11 @@
+import type { HttpServerRequest } from '@effect/platform';
 import { Context, Effect, Layer } from 'effect';
 import {
   type AuditAction,
   type AuditEntityType,
 } from '@stocket/types/audit-logs';
 import { DrizzleDatabase } from '../db/drizzle';
+import type { BetterAuthService } from '../auth/better-auth';
 import { auditLogs } from '../db/schema';
 import type { LogPayload } from '../observability/messages';
 import { getOptionalSession } from '../http/session';
@@ -19,7 +21,11 @@ export interface AuditWriteParams {
 export interface AuditLogWriter {
   readonly log: (
     params: AuditWriteParams,
-  ) => Effect.Effect<void, never, unknown>;
+  ) => Effect.Effect<
+    void,
+    never,
+    BetterAuthService | HttpServerRequest.HttpServerRequest
+  >;
 }
 
 export const AuditLogWriter = Context.GenericTag<AuditLogWriter>(

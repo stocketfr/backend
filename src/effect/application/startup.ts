@@ -14,22 +14,8 @@ import { BetterAuth } from '../platform/auth/better-auth';
 import { RolesService } from '../modules/roles/service';
 import { NotificationsService } from '../modules/notifications/service';
 import { auditLayer } from '../platform/audit/index';
-
-export const APPLICATION_NODE_ENVS = [
-  'development',
-  'staging',
-  'production',
-] as const;
-
-export type ApplicationNodeEnv = (typeof APPLICATION_NODE_ENVS)[number];
-
-const applicationNodeEnvSet: ReadonlySet<string> = new Set(
-  APPLICATION_NODE_ENVS,
-);
-
-export const isApplicationNodeEnv = (
-  value: string,
-): value is ApplicationNodeEnv => applicationNodeEnvSet.has(value);
+import { makeTryAsync } from '../platform/effect/try-async';
+import type { ApplicationNodeEnv } from './environment';
 
 export interface StartupOptions {
   readonly nodeEnv: ApplicationNodeEnv;
@@ -42,30 +28,27 @@ export const shouldRunStartupMigrations = ({
 }: StartupOptions): boolean =>
   nodeEnv !== 'production' || runBetterAuthMigrations;
 
+const tryStartupMigration = makeTryAsync(
+  (_action, cause) =>
+    new DrizzleInitializationError({
+      messageKey: 'drizzle.migrationsFailed',
+      cause,
+    }),
+);
+
 const runCommittedSqlMigrations = Effect.gen(function* () {
   const db = yield* DrizzleDatabase;
-  return yield* Effect.tryPromise({
-    try: async () => applyCommittedSqlMigrations(db),
-    catch: (cause) =>
-      new DrizzleInitializationError({
-        messageKey: 'drizzle.migrationsFailed',
-        cause,
-      }),
-  });
+  return yield* tryStartupMigration('apply committed SQL migrations', () =>
+    applyCommittedSqlMigrations(db),
+  );
 });
 
 const runFreshDatabaseDataMigrationsEffect = (freshSchemaCreated: boolean) =>
   Effect.gen(function* () {
     const db = yield* DrizzleDatabase;
-    yield* Effect.tryPromise({
-      try: async () =>
-        runFreshDatabaseDataMigrations(db, { freshSchemaCreated }),
-      catch: (cause) =>
-        new DrizzleInitializationError({
-          messageKey: 'drizzle.migrationsFailed',
-          cause,
-        }),
-    });
+    yield* tryStartupMigration('run fresh database data migrations', () =>
+      runFreshDatabaseDataMigrations(db, { freshSchemaCreated }),
+    );
   });
 
 const prepareFreshDatabaseDataMigrationsEffect = (
@@ -73,31 +56,18 @@ const prepareFreshDatabaseDataMigrationsEffect = (
 ) =>
   Effect.gen(function* () {
     const db = yield* DrizzleDatabase;
-    yield* Effect.tryPromise({
-      try: async () =>
-        prepareFreshDatabaseDataMigrations(db, { freshSchemaCreated }),
-      catch: (cause) =>
-        new DrizzleInitializationError({
-          messageKey: 'drizzle.migrationsFailed',
-          cause,
-        }),
-    });
+    yield* tryStartupMigration('prepare fresh database data migrations', () =>
+      prepareFreshDatabaseDataMigrations(db, { freshSchemaCreated }),
+    );
   });
 
 const runBetterAuthMigrations = Effect.gen(function* () {
   const betterAuth = yield* BetterAuth;
   const db = yield* DrizzleDatabase;
-  yield* Effect.tryPromise({
-    try: async () => {
-      const ctx = await betterAuth.auth.$context;
-      await ctx.runMigrations();
-      await repairBetterAuthSchema(db);
-    },
-    catch: (cause) =>
-      new DrizzleInitializationError({
-        messageKey: 'drizzle.migrationsFailed',
-        cause,
-      }),
+  yield* tryStartupMigration('run Better Auth migrations', async () => {
+    const ctx = await betterAuth.auth.$context;
+    await ctx.runMigrations();
+    await repairBetterAuthSchema(db);
   });
 });
 
@@ -108,16 +78,9 @@ const makeDevelopmentTenantDomainCleanup = (nodeEnv: ApplicationNodeEnv) =>
     }
 
     const db = yield* DrizzleDatabase;
-    yield* Effect.tryPromise({
-      try: async () => {
-        await normalizeDevelopmentTenantDomains(db);
-      },
-      catch: (cause) =>
-        new DrizzleInitializationError({
-          messageKey: 'drizzle.migrationsFailed',
-          cause,
-        }),
-    });
+    yield* tryStartupMigration('normalize development tenant domains', () =>
+      normalizeDevelopmentTenantDomains(db),
+    );
   });
 
 const makeStartupMigrations = (options: StartupOptions) =>
@@ -135,7 +98,7 @@ const makeStartupMigrations = (options: StartupOptions) =>
 
 const launchNotificationsScan = Effect.gen(function* () {
   const notifications = yield* NotificationsService;
-  yield* Effect.forkDaemon(
+  yield* Effect.forkScoped(
     Effect.repeat(notifications.runScan, notifications.scanInterval),
   );
 });
@@ -149,4 +112,4 @@ const makeStartupEffect = (options: StartupOptions) =>
   });
 
 export const makeStartupLayer = (options: StartupOptions) =>
-  Layer.mergeAll(auditLayer, Layer.effectDiscard(makeStartupEffect(options)));
+  Layer.mergeAll(auditLayer, Layer.scopedDiscard(makeStartupEffect(options)));
