@@ -9,9 +9,9 @@ Expert guidance for programming with the Effect library, covering error handling
 
 ## Prerequisite
 
-Before doing any other Effect-related work, check that `./.repos/effect` exists at the root of the repository where the skill is being used.
+Before doing any other Effect-related work, ensure `./.repos/effect` exists at the root of the repository where the skill is being used.
 
-If it does not exist, stop and prompt the user with the setup task documented in `./references/setup.md`.
+If it is missing, run `./scripts/ensure-effect-source.sh` from this skill, passing the target repository root. Do not stop to ask the user. The script detects an installed Effect major when possible, clones the matching source line, and defaults to Effect v4 (`Effect-TS/effect-smol`) when no version is detectable. Read `./references/setup.md` for the exact behavior and manual fallback.
 
 ## Research Strategy
 
@@ -94,13 +94,15 @@ Apply these core principles when writing Effect code.
 
 When installing Effect packages in a user repository:
 
-- use `effect@beta`
+- preserve the existing Effect major unless the user explicitly requests an upgrade
+- use `effect@beta` (Effect v4) for new repositories
 - keep all `@effect/*` packages on aligned versions
 - install only the packages needed for the user's runtime and actual task
 
 ### Version Rules
 
-- `effect` should be installed as `effect@beta`
+- existing repositories should remain on their installed Effect major unless an upgrade is in scope
+- new repositories should install `effect@beta`
 - if you install any `@effect/*` package, make sure all `@effect/*` packages use matching versions
 - do not mix unrelated `@effect/*` versions in the same project
 
@@ -119,7 +121,8 @@ Install additional `@effect/*` packages only when the user task actually needs t
 
 ### Practical Rule
 
-- start with `effect@beta`
+- for new repositories, start with `effect@beta`
+- for existing repositories, match the installed Effect major and consult the corresponding source clone under `./.repos/effect`
 - add `@effect/*` packages as needed by runtime and features
 - keep the full installed Effect package set version-aligned
 
