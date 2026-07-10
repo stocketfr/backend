@@ -74,6 +74,12 @@ worker uses PostgreSQL leases, so multiple worker replicas can safely claim
 work concurrently; tuning variables and defaults are documented in
 `env.template`.
 
+`POST /api/v1/products/import` stores the uploaded CSV under the
+`background-tasks/product-import/` object prefix and responds with `202` plus a
+`Location` header for the task. Terminal tasks delete their input object after
+database settlement. Configure an object-storage lifecycle rule for that prefix
+as a fallback for crashes between object upload/enqueue or settlement/cleanup.
+
 ## Shared Types
 
 Shared API contracts are linked into this workspace as `@stocket/types` from `../packages/types`.

@@ -7,7 +7,7 @@ import type {
 } from '@stocket/types/products';
 import { makeTestLayer } from '../../../testing/utils';
 import { ProductImportRepository } from './repository';
-import type { ProductImportPlan } from './types';
+import type { ProductImportExecutionHooks, ProductImportPlan } from './types';
 import {
   detectProductImportFormat,
   normalizeProductImportRecords,
@@ -309,6 +309,7 @@ const runImportWithState = async (
   setup?: (state: ReturnType<typeof makeInMemoryRepository>) => void,
   approvedPlan?: ProductImportPlan,
   photoImporter = makePhotoImporter(),
+  hooks?: ProductImportExecutionHooks,
 ) => {
   const state = makeInMemoryRepository();
   const llmProposer = makeLlmProposer();
@@ -329,6 +330,7 @@ const runImportWithState = async (
         importType,
         approvedPlan,
         userId: TEST_USER_ID,
+        hooks,
       }),
     ).pipe(Effect.provide(layer)),
   );
@@ -930,6 +932,7 @@ Item,Imported Tonic,SORT-1,Drinks,12,Bar,https://example.test/photo.jpg
     const photoImporter = makePhotoImporter({
       importSortlyPhoto: vi.fn(() => Effect.fail(new Error('network down'))),
     });
+    const progress: unknown[] = [];
     const { result } = await runImportWithState(
       `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location,Photo1
 Item,Imported Tonic,SORT-1,Drinks,12,Bar,https://lnk.sortly.co/v2/downloads/photo/photo-1
@@ -938,6 +941,12 @@ Item,Imported Tonic,SORT-1,Drinks,12,Bar,https://lnk.sortly.co/v2/downloads/phot
       undefined,
       undefined,
       photoImporter,
+      {
+        onProgress: (event) =>
+          Effect.sync(() => {
+            progress.push(event);
+          }),
+      },
     );
 
     expect(result.rowsSkipped).toBe(0);
@@ -952,6 +961,42 @@ Item,Imported Tonic,SORT-1,Drinks,12,Bar,https://lnk.sortly.co/v2/downloads/phot
           'Photo import failed for "https://lnk.sortly.co/v2/downloads/photo/photo-1": network down',
       },
     ]);
+    expect(progress).toEqual([
+      {
+        total: 1,
+        processed: 0,
+        failed: 0,
+        messageKey: 'products.importProgressStarting',
+        force: true,
+      },
+      {
+        total: 1,
+        processed: 1,
+        failed: 0,
+        messageKey: 'products.importProgressRowsProcessed',
+        force: false,
+      },
+      {
+        total: 1,
+        processed: 1,
+        failed: 0,
+        messageKey: 'products.importProgressCompleted',
+        force: true,
+      },
+    ]);
+  });
+
+  it('stops before parsing when cancellation is already requested', async () => {
+    await expect(
+      runImportWithState(
+        'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
+        'auto',
+        undefined,
+        undefined,
+        makePhotoImporter(),
+        { isCancellationRequested: Effect.succeed(true) },
+      ),
+    ).rejects.toBeDefined();
   });
 
   it('previews Sortly folders, duplicate SID conflicts, photos, and area-like storage', async () => {

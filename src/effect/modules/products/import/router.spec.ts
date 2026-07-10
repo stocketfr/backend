@@ -33,18 +33,29 @@ vi.mock('node:fs/promises', async () => {
   };
 });
 
-const importResult = () => ({
-  categoriesCreated: 1,
-  locationsCreated: 1,
-  areasCreated: 0,
-  productsCreated: 1,
-  productsUpdated: 0,
-  inventoryRecordsCreated: 1,
-  inventoryRecordsUpdated: 0,
-  photosCreated: 0,
-  photosSkipped: 0,
-  rowsSkipped: 0,
-  errors: [],
+const queuedTask = () => ({
+  id: '10000000-0000-4000-8000-000000000001',
+  type: 'product-import',
+  status: 'queued',
+  result: null,
+  error: null,
+  attempt_count: 0,
+  max_attempts: 3,
+  run_after: new Date('2026-07-10T10:00:00.000Z'),
+  progress: {
+    total: null,
+    processed: 0,
+    failed: 0,
+    percent: null,
+    message: 'Product import is queued.',
+    message_key: 'products.importProgressQueued',
+    message_args: null,
+  },
+  cancel_requested_at: null,
+  started_at: null,
+  completed_at: null,
+  created_at: new Date('2026-07-10T10:00:00.000Z'),
+  updated_at: new Date('2026-07-10T10:00:00.000Z'),
 });
 
 const importPreview = () => ({
@@ -107,9 +118,6 @@ describe('productImportRouter', () => {
   describe('POST /import', () => {
     it('rejects without PRODUCTS:write permission', async () => {
       const { handler } = makeProductImportRouterHarness({
-        importService: {
-          importFromCsvContent: () => Effect.succeed(importResult()),
-        },
         permissions: readOnly,
       });
 
@@ -125,9 +133,9 @@ describe('productImportRouter', () => {
     });
 
     it('rejects when SmartImport is disabled', async () => {
-      const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
+      const enqueue = vi.fn(() => Effect.succeed(queuedTask()));
       const { handler } = makeProductImportRouterHarness({
-        importService: { importFromCsvContent },
+        backgroundService: { enqueue },
         permissions: writeAll,
         smartImportFeatureEnabled: false,
       });
@@ -144,13 +152,13 @@ describe('productImportRouter', () => {
         messageKey: 'features.notEnabled',
       });
       expect(mockMultipart).not.toHaveBeenCalled();
-      expect(importFromCsvContent).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
     });
 
     it('rejects without LOCATIONS and INVENTORY write permissions', async () => {
-      const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
+      const enqueue = vi.fn(() => Effect.succeed(queuedTask()));
       const { handler } = makeProductImportRouterHarness({
-        importService: { importFromCsvContent },
+        backgroundService: { enqueue },
         permissions: productsWriteOnly,
       });
 
@@ -163,7 +171,7 @@ describe('productImportRouter', () => {
 
       expect(response.status).toBe(403);
       expect(mockMultipart).not.toHaveBeenCalled();
-      expect(importFromCsvContent).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
     });
 
     it('returns 400 when the multipart body is malformed', async () => {
@@ -173,9 +181,9 @@ describe('productImportRouter', () => {
         Schema.Struct({ file: Schema.String }),
       )({}).pipe(Effect.flip, Effect.runSync);
       mockMultipart.mockReturnValue(Effect.fail(multipartError));
-      const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
+      const enqueue = vi.fn(() => Effect.succeed(queuedTask()));
       const { handler } = makeProductImportRouterHarness({
-        importService: { importFromCsvContent },
+        backgroundService: { enqueue },
         permissions: writeAll,
       });
 
@@ -187,7 +195,7 @@ describe('productImportRouter', () => {
       );
 
       expect(response.status).toBe(400);
-      expect(importFromCsvContent).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
     });
 
     it('returns 500 when reading the uploaded file fails', async () => {
@@ -198,9 +206,9 @@ describe('productImportRouter', () => {
         }),
       );
       mockReadFile.mockRejectedValueOnce(new Error('disk read failed'));
-      const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
+      const enqueue = vi.fn(() => Effect.succeed(queuedTask()));
       const { handler } = makeProductImportRouterHarness({
-        importService: { importFromCsvContent },
+        backgroundService: { enqueue },
         permissions: writeAll,
       });
 
@@ -216,19 +224,19 @@ describe('productImportRouter', () => {
         statusCode: 500,
         messageKey: 'products.importReadUploadFailed',
       });
-      expect(importFromCsvContent).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
     });
 
-    it('calls the import service and returns ProductImportResultDto', async () => {
+    it('stores the upload asynchronously and returns the queued task', async () => {
       mockMultipart.mockReturnValue(
         Effect.succeed({
           file: makePersistedFile(),
           import_type: 'auto',
         }),
       );
-      const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
+      const enqueue = vi.fn(() => Effect.succeed(queuedTask()));
       const { handler } = makeProductImportRouterHarness({
-        importService: { importFromCsvContent },
+        backgroundService: { enqueue },
         permissions: writeAll,
       });
 
@@ -239,11 +247,18 @@ describe('productImportRouter', () => {
         }),
       );
 
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual(importResult());
+      expect(response.status).toBe(202);
+      expect(response.headers.get('location')).toBe(
+        '/api/v1/tasks/10000000-0000-4000-8000-000000000001',
+      );
+      await expect(response.json()).resolves.toMatchObject({
+        id: '10000000-0000-4000-8000-000000000001',
+        type: 'product-import',
+        status: 'queued',
+      });
       expect(mockReadFile).toHaveBeenCalledWith('/tmp/products-import.csv');
-      expect(importFromCsvContent).toHaveBeenCalledWith({
-        content: 'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
+      expect(enqueue).toHaveBeenCalledWith({
+        bytes: Buffer.from('sku,name,category_path\nSKU-1,Whisky,Spirits\n'),
         importType: 'auto',
         approvedPlan: undefined,
         userId: '00000000-0000-4000-a000-000000000001',
@@ -271,9 +286,9 @@ describe('productImportRouter', () => {
           plan: JSON.stringify(approvedPlan),
         }),
       );
-      const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
+      const enqueue = vi.fn(() => Effect.succeed(queuedTask()));
       const { handler } = makeProductImportRouterHarness({
-        importService: { importFromCsvContent },
+        backgroundService: { enqueue },
         permissions: writeAll,
       });
 
@@ -284,9 +299,9 @@ describe('productImportRouter', () => {
         }),
       );
 
-      expect(response.status).toBe(200);
-      expect(importFromCsvContent).toHaveBeenCalledWith({
-        content: 'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
+      expect(response.status).toBe(202);
+      expect(enqueue).toHaveBeenCalledWith({
+        bytes: Buffer.from('sku,name,category_path\nSKU-1,Whisky,Spirits\n'),
         importType: 'sortly-items',
         approvedPlan,
         userId: '00000000-0000-4000-a000-000000000001',
@@ -313,9 +328,9 @@ describe('productImportRouter', () => {
           plan: JSON.stringify(aiProposalPlan),
         }),
       );
-      const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
+      const enqueue = vi.fn(() => Effect.succeed(queuedTask()));
       const { handler } = makeProductImportRouterHarness({
-        importService: { importFromCsvContent },
+        backgroundService: { enqueue },
         permissions: writeAll,
       });
 
@@ -326,9 +341,9 @@ describe('productImportRouter', () => {
         }),
       );
 
-      expect(response.status).toBe(200);
-      expect(importFromCsvContent).toHaveBeenCalledWith({
-        content: 'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
+      expect(response.status).toBe(202);
+      expect(enqueue).toHaveBeenCalledWith({
+        bytes: Buffer.from('sku,name,category_path\nSKU-1,Whisky,Spirits\n'),
         importType: 'sortly-items',
         approvedPlan: aiProposalPlan,
         userId: '00000000-0000-4000-a000-000000000001',
@@ -343,9 +358,9 @@ describe('productImportRouter', () => {
           plan: '{not-json',
         }),
       );
-      const importFromCsvContent = vi.fn(() => Effect.succeed(importResult()));
+      const enqueue = vi.fn(() => Effect.succeed(queuedTask()));
       const { handler } = makeProductImportRouterHarness({
-        importService: { importFromCsvContent },
+        backgroundService: { enqueue },
         permissions: writeAll,
       });
 
@@ -361,7 +376,7 @@ describe('productImportRouter', () => {
         statusCode: 400,
         messageKey: 'products.importPlanParseFailed',
       });
-      expect(importFromCsvContent).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
     });
 
     it('returns 400 when import plan mapping fields are malformed', async () => {
@@ -398,11 +413,9 @@ describe('productImportRouter', () => {
             plan: JSON.stringify(malformedPlan),
           }),
         );
-        const importFromCsvContent = vi.fn(() =>
-          Effect.succeed(importResult()),
-        );
+        const enqueue = vi.fn(() => Effect.succeed(queuedTask()));
         const { handler } = makeProductImportRouterHarness({
-          importService: { importFromCsvContent },
+          backgroundService: { enqueue },
           permissions: writeAll,
         });
 
@@ -418,7 +431,7 @@ describe('productImportRouter', () => {
           statusCode: 400,
           messageKey: 'products.importPlanParseFailed',
         });
-        expect(importFromCsvContent).not.toHaveBeenCalled();
+        expect(enqueue).not.toHaveBeenCalled();
       }
     });
   });

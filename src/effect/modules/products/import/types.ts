@@ -1,4 +1,5 @@
-import { Schema } from 'effect';
+import { Schema, type Effect } from 'effect';
+import type { MessageKey } from '../../../platform/catalogs';
 import type {
   ProductImportAiProposalDto,
   ProductImportApprovedPlanDto,
@@ -35,6 +36,16 @@ export const ProductImportTypes = [
   'normalized-products',
   'sortly-items',
 ] as const;
+
+export const PRODUCT_IMPORT_PROGRESS_MESSAGES = {
+  queued: 'products.importProgressQueued',
+  starting: 'products.importProgressStarting',
+  rowsProcessed: 'products.importProgressRowsProcessed',
+  completed: 'products.importProgressCompleted',
+} as const satisfies Record<string, MessageKey>;
+
+export type ProductImportProgressMessageKey =
+  (typeof PRODUCT_IMPORT_PROGRESS_MESSAGES)[keyof typeof PRODUCT_IMPORT_PROGRESS_MESSAGES];
 
 const ProductImportFormatSchema = Schema.Literal(
   'normalized-products',
@@ -178,16 +189,32 @@ export interface ImportCaches {
   readonly photoUrlsByProduct: Map<string, Set<string>>;
 }
 
-export interface ImportProductsFromCsvOptions {
+export interface ImportProductsFromCsvOptions<E = never> {
   readonly content: string;
   readonly importType?: ProductImportType;
   readonly approvedPlan?: ProductImportPlan;
   readonly userId: string;
+  readonly hooks?: ProductImportExecutionHooks<E>;
 }
 
 export interface AnalyzeProductsFromCsvOptions {
   readonly content: string;
   readonly importType?: ProductImportType;
+}
+
+export interface ProductImportProgress {
+  readonly total: number;
+  readonly processed: number;
+  readonly failed: number;
+  readonly messageKey: ProductImportProgressMessageKey;
+  readonly force?: boolean;
+}
+
+export interface ProductImportExecutionHooks<E = never> {
+  readonly onProgress?: (
+    progress: ProductImportProgress,
+  ) => Effect.Effect<void, E>;
+  readonly isCancellationRequested?: Effect.Effect<boolean, E>;
 }
 
 export interface ProductImportValues {

@@ -142,12 +142,20 @@ export const deCatalog: Record<MessageKey, string> = {
     'Standortbestand kann nicht importiert werden, solange fuer dieses Produkt und diesen Standort bereichsbezogener Bestand existiert.',
   'products.importAreaLocationRequired':
     'Ein Standardstandort ist fuer den Import von bereichsbezogenem Bestand erforderlich.',
+  'products.importBlobCleanupFailed':
+    'Die Eingabedatei fuer Produktimport-Task {taskId} konnte nicht entfernt werden: {error}',
+  'products.importCancelled': 'Der Produktimport wurde abgebrochen.',
   'products.importCsvParseFailed':
     'Die hochgeladene CSV-Datei konnte nicht geparst werden.',
   'products.importPlanParseFailed':
     'Der hochgeladene Produktimportplan konnte nicht geparst werden.',
   'products.importReadUploadFailed':
     'Die hochgeladene Produktimportdatei konnte nicht gelesen werden.',
+  'products.importProgressCompleted': 'Der Produktimport ist abgeschlossen.',
+  'products.importProgressQueued': 'Der Produktimport wartet auf Ausfuehrung.',
+  'products.importProgressRowsProcessed':
+    '{processedRows} von {totalRows} Zeilen importiert.',
+  'products.importProgressStarting': 'Der Produktimport wird gestartet.',
   'products.importUnsupportedFormat':
     'Nicht unterstuetzte CSV-Kopfzeilen fuer den Produktimport.',
   'products.infrastructureFailed': 'Der Produktvorgang ist fehlgeschlagen.',
