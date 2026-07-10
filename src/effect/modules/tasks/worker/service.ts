@@ -117,7 +117,9 @@ export const makeTaskWorker = ({
 
             const active = yield* repository.reportProgress(task, patch);
             if (!active) {
-              return yield* new TaskLeaseLost({ taskId: task.row.id });
+              return yield* Effect.fail(
+                new TaskLeaseLost({ taskId: task.row.id }),
+              );
             }
             yield* Ref.set(lastProgressAt, now);
           }),
