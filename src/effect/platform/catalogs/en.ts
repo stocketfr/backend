@@ -159,9 +159,23 @@ export const enCatalog = {
   'suppliers.deleted': 'Supplier deleted successfully.',
   'suppliers.notFound': 'Supplier not found.',
   'suppliers.repositoryFailed': 'Supplier operation failed.',
+  'tasks.executionDefect':
+    'Background task {taskId} ({taskType}) encountered an unexpected defect on worker {workerId}: {error}',
+  'tasks.leaseLost':
+    'Worker {workerId} lost the lease for background task {taskId} ({taskType}).',
   'tasks.notFound': 'Background task not found.',
+  'tasks.recovered':
+    'Worker {workerId} recovered {taskCount} background task(s) with expired leases.',
+  'tasks.recoveryFailed':
+    'Background task recovery failed on worker {workerId}: {error}',
   'tasks.repositoryFailed': 'Background task operation failed.',
+  'tasks.settled':
+    'Background task {taskId} ({taskType}) settled as {status} on worker {workerId}.',
+  'tasks.settlementFailed':
+    'Background task {taskId} ({taskType}) could not be settled by worker {workerId}: {error}',
   'tasks.terminalConflict': 'The background task has already finished.',
+  'tasks.workerFailed': 'Background task worker {workerId} failed: {error}',
+  'tasks.workerStarted': 'Background task worker {workerId} started.',
   'users.infrastructureFailed': 'User operation failed.',
   'users.notFound': 'User not found.',
   'users.repositoryFailed': 'User operation failed.',

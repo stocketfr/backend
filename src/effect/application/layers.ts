@@ -29,15 +29,25 @@ import { StockMovementsService } from '../modules/stock-movements/service';
 import { SuperAdminService } from '../modules/superadmin/service';
 import { SuppliersService } from '../modules/suppliers/service';
 import { TasksService } from '../modules/tasks/service';
+import { TaskWorkerRepository } from '../modules/tasks/worker/repository';
+import {
+  emptyTaskRegistryLayer,
+  type TaskRegistry,
+} from '../modules/tasks/worker/registry';
+import { TaskWorkerService } from '../modules/tasks/worker/service';
 import { UsersService } from '../modules/users/service';
 import { betterAuthLayer } from '../platform/auth/better-auth';
 import { PermissionProvider } from '../platform/auth/permission-provider';
 import { AppConfig } from '../platform/config/app-config';
+import { TaskWorkerConfig } from '../platform/config/task-worker-config';
 import {
   type DrizzleInitializationError,
   drizzleLayer,
 } from '../platform/db/drizzle';
-import { TracingLive } from '../platform/observability/tracing';
+import {
+  makeTracingLayer,
+  TracingLive,
+} from '../platform/observability/tracing';
 import {
   type StorageConfigurationError,
   storageLayer,
@@ -68,9 +78,13 @@ export interface ApplicationLayerOptions {
   readonly runBetterAuthMigrations: boolean;
 }
 
-export const platformLayer = Layer.mergeAll(
+export const databasePlatformLayer = Layer.mergeAll(
   AppConfig.Default,
   drizzleLayer,
+);
+
+export const platformLayer = Layer.mergeAll(
+  databasePlatformLayer,
   betterAuthLayer,
   storageLayer,
 );
@@ -88,6 +102,24 @@ export const makeHttpServerLayer = (port: number) =>
       ),
     ),
   );
+
+export const makeTaskWorkerApplicationLayer = (
+  registryLayer: Layer.Layer<TaskRegistry> = emptyTaskRegistryLayer,
+) => {
+  const workerDependencies = Layer.mergeAll(
+    TaskWorkerRepository.Default.pipe(Layer.provide(databasePlatformLayer)),
+    TaskWorkerConfig.Default,
+    registryLayer,
+  );
+
+  return Layer.mergeAll(
+    databasePlatformLayer,
+    makeTracingLayer('stocket-task-worker'),
+    TaskWorkerService.DefaultWithoutDependencies.pipe(
+      Layer.provide(workerDependencies),
+    ),
+  );
+};
 
 export const makeApplicationLayer = (options: ApplicationLayerOptions) => {
   const rolesApplicationLayer = withPlatform(RolesService.Default);

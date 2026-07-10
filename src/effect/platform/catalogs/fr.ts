@@ -181,10 +181,26 @@ export const frCatalog: Record<MessageKey, string> = {
   'suppliers.deleted': 'Fournisseur supprime avec succes.',
   'suppliers.notFound': 'Fournisseur introuvable.',
   'suppliers.repositoryFailed': "L'operation sur le fournisseur a echoue.",
+  'tasks.executionDefect':
+    'La tache en arriere-plan {taskId} ({taskType}) a rencontre une erreur inattendue sur le worker {workerId} : {error}',
+  'tasks.leaseLost':
+    'Le worker {workerId} a perdu le bail de la tache en arriere-plan {taskId} ({taskType}).',
   'tasks.notFound': 'Tache en arriere-plan introuvable.',
+  'tasks.recovered':
+    'Le worker {workerId} a recupere {taskCount} tache(s) en arriere-plan dont le bail avait expire.',
+  'tasks.recoveryFailed':
+    'La recuperation des taches en arriere-plan a echoue sur le worker {workerId} : {error}',
   'tasks.repositoryFailed':
     "L'operation sur la tache en arriere-plan a echoue.",
+  'tasks.settled':
+    'La tache en arriere-plan {taskId} ({taskType}) est terminee avec le statut {status} sur le worker {workerId}.',
+  'tasks.settlementFailed':
+    "La tache en arriere-plan {taskId} ({taskType}) n'a pas pu etre finalisee par le worker {workerId} : {error}",
   'tasks.terminalConflict': 'La tache en arriere-plan est deja terminee.',
+  'tasks.workerFailed':
+    'Le worker de taches en arriere-plan {workerId} a echoue : {error}',
+  'tasks.workerStarted':
+    'Le worker de taches en arriere-plan {workerId} a demarre.',
   'users.infrastructureFailed': "L'operation sur l'utilisateur a echoue.",
   'users.notFound': 'Utilisateur introuvable.',
   'users.repositoryFailed': "L'operation sur l'utilisateur a echoue.",

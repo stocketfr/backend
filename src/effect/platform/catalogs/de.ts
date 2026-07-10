@@ -193,9 +193,24 @@ export const deCatalog: Record<MessageKey, string> = {
   'suppliers.deleted': 'Lieferant erfolgreich geloescht.',
   'suppliers.notFound': 'Lieferant nicht gefunden.',
   'suppliers.repositoryFailed': 'Der Lieferantenvorgang ist fehlgeschlagen.',
+  'tasks.executionDefect':
+    'Hintergrundtask {taskId} ({taskType}) hatte auf Worker {workerId} einen unerwarteten Fehler: {error}',
+  'tasks.leaseLost':
+    'Worker {workerId} hat den Lease fuer Hintergrundtask {taskId} ({taskType}) verloren.',
   'tasks.notFound': 'Hintergrundtask nicht gefunden.',
+  'tasks.recovered':
+    'Worker {workerId} hat {taskCount} Hintergrundtask(s) mit abgelaufenem Lease wiederhergestellt.',
+  'tasks.recoveryFailed':
+    'Die Wiederherstellung von Hintergrundtasks ist auf Worker {workerId} fehlgeschlagen: {error}',
   'tasks.repositoryFailed': 'Der Hintergrundtask-Vorgang ist fehlgeschlagen.',
+  'tasks.settled':
+    'Hintergrundtask {taskId} ({taskType}) wurde auf Worker {workerId} mit Status {status} abgeschlossen.',
+  'tasks.settlementFailed':
+    'Hintergrundtask {taskId} ({taskType}) konnte von Worker {workerId} nicht abgeschlossen werden: {error}',
   'tasks.terminalConflict': 'Der Hintergrundtask ist bereits abgeschlossen.',
+  'tasks.workerFailed':
+    'Hintergrundtask-Worker {workerId} ist fehlgeschlagen: {error}',
+  'tasks.workerStarted': 'Hintergrundtask-Worker {workerId} wurde gestartet.',
   'users.infrastructureFailed': 'Der Benutzervorgang ist fehlgeschlagen.',
   'users.notFound': 'Benutzer nicht gefunden.',
   'users.repositoryFailed': 'Der Benutzervorgang ist fehlgeschlagen.',

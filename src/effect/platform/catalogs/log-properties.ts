@@ -12,9 +12,14 @@ export interface LogProperties {
   readonly method: string;
   readonly path: string;
   readonly requestId: string;
+  readonly status: string;
   readonly statusCode: number;
+  readonly taskCount: number;
+  readonly taskId: string;
+  readonly taskType: string;
   readonly template: string;
   readonly tenantId: string;
   readonly to: string;
   readonly userAgent: string;
+  readonly workerId: string;
 }
