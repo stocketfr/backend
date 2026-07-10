@@ -138,8 +138,12 @@ export const frCatalog: Record<MessageKey, string> = {
   'products.importCancelled': "L'import de produits a ete annule.",
   'products.importCsvParseFailed':
     "Impossible d'analyser le fichier CSV televerse.",
+  'products.importGuidanceParseFailed':
+    "Impossible d'analyser les instructions d'import produits.",
   'products.importPlanParseFailed':
     "Impossible d'analyser le plan d'import produits televerse.",
+  'products.importProposalInvalid':
+    "La proposition d'import produits contient des decisions invalides ou obsoletes.",
   'products.importReadUploadFailed':
     "La lecture du fichier d'import produits televerse a echoue.",
   'products.importProgressCompleted': "L'import de produits est termine.",

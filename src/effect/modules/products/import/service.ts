@@ -4,7 +4,6 @@ import type {
   ImportCaches,
   ImportProductRow,
   ImportProductsFromCsvOptions,
-  ProductImportAiProposalDto,
   ProductImportProgress,
   ProductImportPreviewDto,
   ProductImportResultDto,
@@ -37,6 +36,9 @@ import { ProductImportRepository } from './repository';
 import { getSkuConflictPolicy } from './plan';
 import { parseAndDetectProductImportFormat } from './parser';
 import { importProductRow } from './row/import';
+import { ProductImportPlanningContext } from './planning-context';
+import { validateProductImportGuidance } from './guidance';
+import { makeProductImportProposal } from './utils/proposal';
 
 const PROGRESS_ROW_REPORT_INTERVAL = 25;
 
@@ -47,6 +49,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
       const repository = yield* ProductImportRepository;
       const llmProposer = yield* ProductImportLlmProposer;
       const photoImporter = yield* ProductImportPhotoImporter;
+      const planningContext = yield* ProductImportPlanningContext;
       const trace = makeServiceTracer({
         serviceName: 'ProductImportService',
         module: 'products',
@@ -221,17 +224,19 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           return makeProductImportPreview(parsed.records, format);
         }).pipe(trace.span('previewCsvContent'));
 
-      const proposeImportPlan = (
-        options: AnalyzeProductsFromCsvOptions,
-      ): Effect.Effect<
-        ProductImportAiProposalDto,
-        ProductImportCsvParseFailed | ProductImportUnsupportedFormat
-      > =>
+      const proposeImportPlan = (options: AnalyzeProductsFromCsvOptions) =>
         Effect.gen(function* () {
           const { parsed, format } =
             yield* parseAndDetectProductImportFormat(options);
           const preview = makeProductImportPreview(parsed.records, format);
-          return yield* llmProposer.propose(preview);
+          const context = yield* planningContext.load();
+          const baseline = makeProductImportProposal(preview, context);
+          const guidance = yield* validateProductImportGuidance(
+            options.guidance,
+            baseline,
+            context,
+          );
+          return yield* llmProposer.propose(preview, context, guidance);
         }).pipe(trace.span('proposeImportPlan'));
 
       return {
@@ -244,6 +249,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
       ProductImportRepository.Default,
       ProductImportLlmProposer.Default,
       ProductImportPhotoImporter.Default,
+      ProductImportPlanningContext.Default,
     ],
   },
 ) {}

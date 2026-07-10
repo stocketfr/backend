@@ -2,13 +2,18 @@ import { Schema, type Effect } from 'effect';
 import type { MessageKey } from '../../../platform/catalogs';
 import type {
   ProductImportAiProposalDto,
+  ProductImportAiProposalV2Dto,
   ProductImportApprovedPlanDto,
+  ProductImportApprovedPlanV2Dto,
   ProductImportDuplicateSkuConflictDto,
   ProductImportErrorDto,
   ProductImportInventoryPreviewDto,
   ProductImportLocationMappingDto,
+  ProductImportPlanDto,
   ProductImportPreviewDto,
+  ProductImportProposalGuidanceDto,
   ProductImportResultDto,
+  ProductImportTargetContextDto,
   ProductImportWarningDto,
 } from '@stocket/types/products';
 import type {
@@ -21,13 +26,18 @@ import type { ProductRow } from '../types';
 
 export type {
   ProductImportAiProposalDto,
+  ProductImportAiProposalV2Dto,
   ProductImportApprovedPlanDto,
+  ProductImportApprovedPlanV2Dto,
   ProductImportDuplicateSkuConflictDto,
   ProductImportErrorDto,
   ProductImportInventoryPreviewDto,
   ProductImportLocationMappingDto,
+  ProductImportPlanDto,
   ProductImportPreviewDto,
+  ProductImportProposalGuidanceDto,
   ProductImportResultDto,
+  ProductImportTargetContextDto,
   ProductImportWarningDto,
 };
 
@@ -57,6 +67,22 @@ const ProductImportSkuConflictPolicySchema = Schema.Literal(
   'derive-sku',
 );
 
+const ProductImportDecisionMetadataFields = {
+  mappingKey: Schema.optional(Schema.String),
+  confidence: Schema.optional(Schema.Number),
+  reason: Schema.optional(Schema.String),
+  reviewRequired: Schema.optional(Schema.Boolean),
+};
+
+const ProductImportDecisionMetadataV2Fields = {
+  mappingKey: Schema.Trim.pipe(Schema.nonEmptyString()),
+  confidence: Schema.Number.pipe(
+    Schema.filter((value) => value >= 0 && value <= 1),
+  ),
+  reason: Schema.optional(Schema.String),
+  reviewRequired: Schema.Boolean,
+};
+
 const ProductImportWarningSchema = Schema.Struct({
   row: Schema.optional(Schema.Number),
   field: Schema.optional(Schema.String),
@@ -67,6 +93,7 @@ const ProductImportWarningSchema = Schema.Struct({
 });
 
 const ProductImportCategoryMappingSchema = Schema.Struct({
+  ...ProductImportDecisionMetadataFields,
   sourcePath: Schema.String,
   targetCategoryId: Schema.optional(Schema.String),
   targetPath: Schema.String,
@@ -78,6 +105,7 @@ const ProductImportCategoryMappingSchema = Schema.Struct({
 });
 
 const ProductImportSupplierMappingSchema = Schema.Struct({
+  ...ProductImportDecisionMetadataFields,
   sourcePattern: Schema.String,
   supplierName: Schema.String,
   targetSupplierId: Schema.optional(Schema.String),
@@ -90,8 +118,10 @@ const ProductImportSupplierMappingSchema = Schema.Struct({
 });
 
 const ProductImportLocationMappingSchema = Schema.Struct({
+  ...ProductImportDecisionMetadataFields,
   sourceLocation: Schema.String,
   targetLocationId: Schema.optional(Schema.String),
+  targetAreaId: Schema.optional(Schema.String),
   targetLocationName: Schema.optional(Schema.String),
   areaPath: Schema.optional(Schema.String),
   action: Schema.Literal(
@@ -110,8 +140,168 @@ const ProductImportLocationMappingSchema = Schema.Struct({
   ),
 );
 
+const ProductImportCategoryMappingV2BaseFields = {
+  ...ProductImportDecisionMetadataV2Fields,
+  sourcePath: Schema.String,
+  targetPath: Schema.String,
+  rowCount: Schema.Number,
+};
+
+const ProductImportCategoryMappingV2Schema = Schema.Union(
+  Schema.Struct({
+    ...ProductImportCategoryMappingV2BaseFields,
+    action: Schema.Literal('use-existing'),
+    targetCategoryId: Schema.String,
+  }),
+  Schema.Struct({
+    ...ProductImportCategoryMappingV2BaseFields,
+    action: Schema.Literal('create', 'default'),
+  }),
+);
+
+const ProductImportLocationMappingV2BaseFields = {
+  ...ProductImportDecisionMetadataV2Fields,
+  sourceLocation: Schema.String,
+  rowCount: Schema.Number,
+};
+
+const ProductImportLocationMappingV2Schema = Schema.Union(
+  Schema.Struct({
+    ...ProductImportLocationMappingV2BaseFields,
+    action: Schema.Literal('use-existing'),
+    targetLocationId: Schema.String,
+    targetLocationName: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({
+    ...ProductImportLocationMappingV2BaseFields,
+    action: Schema.Literal('use-existing-area'),
+    targetLocationId: Schema.String,
+    targetLocationName: Schema.optional(Schema.String),
+    targetAreaId: Schema.String,
+    areaPath: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({
+    ...ProductImportLocationMappingV2BaseFields,
+    action: Schema.Literal('create-location'),
+    targetLocationName: Schema.String,
+  }),
+  Schema.Struct({
+    ...ProductImportLocationMappingV2BaseFields,
+    action: Schema.Literal('create-area'),
+    targetLocationId: Schema.String,
+    areaPath: Schema.String,
+  }),
+  Schema.Struct({
+    ...ProductImportLocationMappingV2BaseFields,
+    action: Schema.Literal('create-area'),
+    targetLocationName: Schema.String,
+    areaPath: Schema.String,
+  }),
+  Schema.Struct({
+    ...ProductImportLocationMappingV2BaseFields,
+    action: Schema.Literal('ignore'),
+  }),
+);
+
+const ProductImportSkuVariantResolutionSchema = Schema.Union(
+  Schema.Struct({
+    variantKey: Schema.String,
+    rows: Schema.Array(Schema.Number),
+    action: Schema.Literal('keep-source-sku', 'derive-sku', 'custom-sku'),
+    targetSku: Schema.String,
+  }),
+  Schema.Struct({
+    variantKey: Schema.String,
+    rows: Schema.Array(Schema.Number),
+    action: Schema.Literal('skip'),
+  }),
+);
+
+const ProductImportSkuConflictResolutionV2Schema = Schema.Struct({
+  ...ProductImportDecisionMetadataV2Fields,
+  conflictKey: Schema.String,
+  sourceSku: Schema.String,
+  variants: Schema.Array(ProductImportSkuVariantResolutionSchema),
+});
+
+const ProductImportSkuConflictResolutionSchema = Schema.Struct({
+  ...ProductImportDecisionMetadataFields,
+  conflictKey: Schema.String,
+  sourceSku: Schema.String,
+  variants: Schema.Array(ProductImportSkuVariantResolutionSchema),
+});
+
+const ProductImportMissingLocationStrategyV2Schema = Schema.Union(
+  Schema.Struct({
+    ...ProductImportDecisionMetadataV2Fields,
+    rowCount: Schema.Number,
+    action: Schema.Literal('assign-review-area'),
+    targetLocationId: Schema.String,
+    areaPath: Schema.String,
+  }),
+  Schema.Struct({
+    ...ProductImportDecisionMetadataV2Fields,
+    rowCount: Schema.Number,
+    action: Schema.Literal('assign-review-area'),
+    targetLocationName: Schema.String,
+    areaPath: Schema.String,
+  }),
+  Schema.Struct({
+    ...ProductImportDecisionMetadataV2Fields,
+    rowCount: Schema.Number,
+    action: Schema.Literal('use-existing-area'),
+    targetLocationId: Schema.String,
+    targetLocationName: Schema.optional(Schema.String),
+    targetAreaId: Schema.String,
+    areaPath: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({
+    ...ProductImportDecisionMetadataV2Fields,
+    rowCount: Schema.Number,
+    action: Schema.Literal('skip-inventory'),
+  }),
+);
+
+const ProductImportMissingLocationStrategySchema = Schema.Union(
+  Schema.Struct({
+    ...ProductImportDecisionMetadataFields,
+    rowCount: Schema.Number,
+    action: Schema.Literal('assign-review-area'),
+    targetLocationId: Schema.String,
+    areaPath: Schema.String,
+  }),
+  Schema.Struct({
+    ...ProductImportDecisionMetadataFields,
+    rowCount: Schema.Number,
+    action: Schema.Literal('assign-review-area'),
+    targetLocationName: Schema.String,
+    areaPath: Schema.String,
+  }),
+  Schema.Struct({
+    ...ProductImportDecisionMetadataFields,
+    rowCount: Schema.Number,
+    action: Schema.Literal('use-existing-area'),
+    targetLocationId: Schema.String,
+    targetLocationName: Schema.optional(Schema.String),
+    targetAreaId: Schema.String,
+    areaPath: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({
+    ...ProductImportDecisionMetadataFields,
+    rowCount: Schema.Number,
+    action: Schema.Literal('skip-inventory'),
+  }),
+);
+
 export const ProductImportApprovedPlanSchema = Schema.Struct({
+  planVersion: Schema.optional(Schema.Undefined),
   skuConflictPolicy: Schema.optional(ProductImportSkuConflictPolicySchema),
+  skuConflictResolutions: Schema.optional(
+    Schema.Array(ProductImportSkuConflictResolutionSchema),
+  ),
+  missingLocationStrategy: Schema.optional(
+    ProductImportMissingLocationStrategySchema,
+  ),
   allowCreateSuppliers: Schema.optional(Schema.Boolean),
   defaultLocationName: Schema.optional(Schema.String),
   categoryMappings: Schema.optional(
@@ -124,6 +314,57 @@ export const ProductImportApprovedPlanSchema = Schema.Struct({
     Schema.Array(ProductImportLocationMappingSchema),
   ),
 });
+
+export const ProductImportApprovedPlanV2Schema = Schema.Struct({
+  planVersion: Schema.Literal(2),
+  skuConflictPolicy: ProductImportSkuConflictPolicySchema,
+  skuConflictResolutions: Schema.Array(
+    ProductImportSkuConflictResolutionV2Schema,
+  ),
+  missingLocationStrategy: ProductImportMissingLocationStrategyV2Schema,
+  allowCreateSuppliers: Schema.optional(Schema.Boolean),
+  defaultLocationName: Schema.optional(Schema.String),
+  categoryMappings: Schema.Array(ProductImportCategoryMappingV2Schema),
+  supplierMappings: Schema.optional(
+    Schema.Array(ProductImportSupplierMappingSchema),
+  ),
+  locationMappings: Schema.Array(ProductImportLocationMappingV2Schema),
+});
+
+const ProductImportLockedDecisionKeysSchema = Schema.Struct({
+  skuConflictPolicy: Schema.optional(Schema.Boolean),
+  missingLocationStrategy: Schema.optional(Schema.Boolean),
+  categoryMappings: Schema.optional(Schema.Array(Schema.String)),
+  locationMappings: Schema.optional(Schema.Array(Schema.String)),
+  skuConflictResolutions: Schema.optional(Schema.Array(Schema.String)),
+});
+
+const countGuidanceLocks = (
+  locks: Schema.Schema.Type<typeof ProductImportLockedDecisionKeysSchema>,
+) =>
+  (locks.skuConflictPolicy ? 1 : 0) +
+  (locks.missingLocationStrategy ? 1 : 0) +
+  (locks.categoryMappings?.length ?? 0) +
+  (locks.locationMappings?.length ?? 0) +
+  (locks.skuConflictResolutions?.length ?? 0);
+
+export const ProductImportProposalGuidanceSchema = Schema.Struct({
+  instructions: Schema.optional(
+    Schema.Trim.pipe(Schema.nonEmptyString(), Schema.maxLength(4_000)),
+  ),
+  currentPlan: Schema.optional(
+    Schema.Union(
+      ProductImportApprovedPlanV2Schema,
+      ProductImportApprovedPlanSchema,
+    ),
+  ),
+  locks: Schema.optional(ProductImportLockedDecisionKeysSchema),
+}).pipe(
+  Schema.filter(
+    (guidance) =>
+      guidance.locks === undefined || countGuidanceLocks(guidance.locks) <= 500,
+  ),
+);
 
 export const ProductImportAiProposalSchema = Schema.Struct({
   format: Schema.Union(ProductImportFormatSchema, Schema.Literal('unknown')),
@@ -200,6 +441,7 @@ export interface ImportProductsFromCsvOptions<E = never> {
 export interface AnalyzeProductsFromCsvOptions {
   readonly content: string;
   readonly importType?: ProductImportType;
+  readonly guidance?: ProductImportProposalGuidanceDto;
 }
 
 export interface ProductImportProgress {

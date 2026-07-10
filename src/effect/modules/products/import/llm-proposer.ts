@@ -1,7 +1,9 @@
 import { Effect } from 'effect';
 import type {
-  ProductImportAiProposalDto,
+  ProductImportAiProposalV2Dto,
   ProductImportPreviewDto,
+  ProductImportProposalGuidanceDto,
+  ProductImportTargetContextDto,
 } from '@stocket/types/products';
 import {
   getOpenAiProductImportConfig,
@@ -19,12 +21,14 @@ type FetchLike = typeof fetch;
 
 async function callOpenAiForProposal(
   preview: ProductImportPreviewDto,
+  context: ProductImportTargetContextDto,
+  guidance: ProductImportProposalGuidanceDto | undefined,
   config: OpenAiProductImportConfig,
   fetchImpl: FetchLike,
-): Promise<ProductImportAiProposalDto> {
+): Promise<ProductImportAiProposalV2Dto> {
   if (!config.apiKey) {
     return appendWarning(
-      makeProductImportProposal(preview),
+      makeProductImportProposal(preview, context, guidance),
       'AI proposal unavailable because OPENAI_API_KEY is not configured.',
     );
   }
@@ -42,7 +46,12 @@ async function callOpenAiForProposal(
         },
         signal: controller.signal,
         body: JSON.stringify(
-          makeOpenAiProductImportProposalRequest(preview, config),
+          makeOpenAiProductImportProposalRequest(
+            preview,
+            context,
+            guidance,
+            config,
+          ),
         ),
       },
     );
@@ -55,7 +64,12 @@ async function callOpenAiForProposal(
     }
 
     const json = await response.json();
-    return sanitizeLlmProposal(JSON.parse(extractResponseText(json)), preview);
+    return sanitizeLlmProposal(
+      JSON.parse(extractResponseText(json)),
+      preview,
+      context,
+      guidance,
+    );
   } finally {
     clearTimeout(timeout);
   }
@@ -67,11 +81,15 @@ export class ProductImportLlmProposer extends Effect.Service<ProductImportLlmPro
     effect: Effect.sync(() => {
       const propose = (
         preview: ProductImportPreviewDto,
-      ): Effect.Effect<ProductImportAiProposalDto> =>
+        context: ProductImportTargetContextDto,
+        guidance?: ProductImportProposalGuidanceDto,
+      ): Effect.Effect<ProductImportAiProposalV2Dto> =>
         Effect.tryPromise({
           try: () =>
             callOpenAiForProposal(
               preview,
+              context,
+              guidance,
               getOpenAiProductImportConfig(),
               globalThis.fetch.bind(globalThis),
             ),
@@ -80,7 +98,7 @@ export class ProductImportLlmProposer extends Effect.Service<ProductImportLlmPro
           Effect.catchAll((cause) =>
             Effect.succeed(
               appendWarning(
-                makeProductImportProposal(preview),
+                makeProductImportProposal(preview, context, guidance),
                 `AI proposal unavailable: ${messageFromUnknown(cause, String(cause))}`,
               ),
             ),

@@ -1,4 +1,6 @@
+import { LocationType } from '@stocket/types/locations';
 import type { ProductImportPreviewDto } from '../types';
+import { categoryDecisionKey } from './proposal-keys';
 import { makeProductImportProposal } from './proposal';
 
 const preview = (
@@ -40,58 +42,80 @@ const preview = (
   ...overrides,
 });
 
+const context = {
+  categories: [{ id: 'cat-dental', path: 'Guest Accessories / Dental' }],
+  locations: [{ id: 'loc-1', name: 'Warehouse', type: LocationType.WAREHOUSE }],
+  areas: [{ id: 'area-1', locationId: 'loc-1', path: 'Bay I / Shelf 3' }],
+};
+
 describe('makeProductImportProposal', () => {
-  it('maps common category source paths into reviewed target paths', () => {
-    const proposal = makeProductImportProposal(preview());
+  it('builds a complete deterministic v2 proposal using existing tenant targets', () => {
+    const proposal = makeProductImportProposal(preview(), context);
 
-    expect(proposal.categoryMappings).toEqual([
-      {
-        sourcePath: 'Dental Care',
-        targetPath: 'Guest Accessories / Dental',
-        action: 'create',
-        rowCount: 2,
-      },
-      {
-        sourcePath: 'Uncategorized',
-        targetPath: 'Needs Review / Uncategorized',
-        action: 'default',
-        rowCount: 1,
-      },
-    ]);
-    expect(proposal.locationMappings[0]).toMatchObject({
-      action: 'create-area',
-      confidence: 0.9,
+    expect(proposal).toMatchObject({
+      planVersion: 2,
+      proposalSource: 'deterministic',
+      targetContext: context,
+      supplierMappings: [],
     });
-  });
-
-  it('sets lower confidence and derive-sku policy when the preview has blocking SKU conflicts', () => {
-    const proposal = makeProductImportProposal(
-      preview({
-        duplicateSkuConflicts: [
-          { sku: 'SKU-1', rows: [2, 3], names: ['One', 'Two'] },
-        ],
-        warnings: [
-          {
-            severity: 'error',
-            field: 'sku',
-            message: 'Duplicate SKU conflict',
-          },
-        ],
-      }),
-    );
-
-    expect(proposal.confidence).toBe(0.72);
-    expect(proposal.productIdentity).toEqual({
-      sourceColumn: 'SID',
-      conflictPolicy: 'derive-sku',
-    });
-    expect(proposal.warnings).toEqual(
+    expect(proposal.categoryMappings).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          message:
-            'This proposal is generated from structured CSV analysis and must be reviewed before import.',
+          sourcePath: 'Dental Care',
+          targetPath: 'Guest Accessories / Dental',
+          targetCategoryId: 'cat-dental',
+          action: 'use-existing',
         }),
       ]),
     );
+    expect(proposal.locationMappings[0]).toMatchObject({
+      action: 'use-existing-area',
+      targetLocationId: 'loc-1',
+      targetAreaId: 'area-1',
+    });
+  });
+
+  it('marks unmatched decisions for review when tenant context was truncated', () => {
+    const proposal = makeProductImportProposal(preview(), {
+      categories: [],
+      locations: [],
+      areas: [],
+      truncated: true,
+    });
+
+    expect(proposal.categoryMappings[0]?.reviewRequired).toBe(true);
+    expect(proposal.locationMappings[0]?.reviewRequired).toBe(true);
+    expect(proposal.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: expect.stringContaining('context was truncated'),
+        }),
+      ]),
+    );
+  });
+
+  it('preserves locked edited decisions in deterministic fallback', () => {
+    const mappingKey = categoryDecisionKey('Dental Care');
+    const proposal = makeProductImportProposal(preview(), context, {
+      currentPlan: {
+        skuConflictPolicy: 'reject',
+        categoryMappings: [
+          {
+            mappingKey,
+            sourcePath: 'Dental Care',
+            targetPath: 'Locked / Dental',
+            action: 'create',
+            rowCount: 2,
+          },
+        ],
+      },
+      locks: { categoryMappings: [mappingKey] },
+    });
+
+    expect(proposal.categoryMappings[0]).toMatchObject({
+      mappingKey,
+      targetPath: 'Locked / Dental',
+      action: 'create',
+    });
   });
 });

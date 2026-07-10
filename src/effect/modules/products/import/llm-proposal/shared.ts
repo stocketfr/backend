@@ -1,4 +1,4 @@
-import type { ProductImportAiProposalDto } from '@stocket/types/products';
+import type { ProductImportAiProposalV2Dto } from '@stocket/types/products';
 
 export const isUnknownRecord = (
   value: unknown,
@@ -25,9 +25,9 @@ export const messageFromUnknown = (
 };
 
 export const appendWarning = (
-  proposal: ProductImportAiProposalDto,
+  proposal: ProductImportAiProposalV2Dto,
   message: string,
-): ProductImportAiProposalDto => ({
+): ProductImportAiProposalV2Dto => ({
   ...proposal,
   warnings: [
     ...proposal.warnings,
