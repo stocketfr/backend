@@ -45,7 +45,7 @@ jobs:
               core.setFailed(`Refusing to deploy ${targetSha}: current main is ${mainRef.object.sha}`)
               return
             }
-            const { data: runs } = await github.rest.actions.listWorkflowRuns({
+            const { data: runs } = await github.rest.actions.listWorkflowRunsForWorkflow({
               owner, repo, workflow_id: 'ci.yml', branch: 'main', event: 'push',
               head_sha: targetSha, status: 'success', per_page: 100,
             })
@@ -119,7 +119,7 @@ jobs:
               core.setFailed(`Refusing to deploy ${targetSha}: current main is ${mainRef.object.sha}`)
               return
             }
-            const { data: runs } = await github.rest.actions.listWorkflowRuns({
+            const { data: runs } = await github.rest.actions.listWorkflowRunsForWorkflow({
               owner, repo, workflow_id: 'ci.yml', branch: 'main', event: 'push',
               head_sha: targetSha, status: 'success', per_page: 100,
             })
