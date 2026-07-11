@@ -1,6 +1,10 @@
 import { Effect } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ProductImportPreviewDto } from '@stocket/types/products';
+import { LocationType } from '@stocket/types/locations';
+import type {
+  ProductImportPreviewDto,
+  ProductImportTargetContextDto,
+} from '@stocket/types/products';
 import { ProductImportLlmProposer } from './llm-proposer';
 
 const preview: ProductImportPreviewDto = {
@@ -45,12 +49,82 @@ const preview: ProductImportPreviewDto = {
   ],
 };
 
+const context: ProductImportTargetContextDto = {
+  categories: [],
+  locations: [
+    { id: 'loc-1', name: 'Warehouse A', type: LocationType.WAREHOUSE },
+  ],
+  areas: [],
+};
+
 const runProposer = () =>
   Effect.runPromise(
     Effect.flatMap(ProductImportLlmProposer, (service) =>
-      service.propose(preview),
+      service.propose(preview, context),
     ).pipe(Effect.provide(ProductImportLlmProposer.Default)),
   );
+
+const validRawProposal = () => ({
+  format: 'sortly-items',
+  confidence: 0.91,
+  productIdentity: {
+    sourceColumn: 'SID',
+    conflictPolicy: 'derive-sku',
+  },
+  skuConflictResolutions: [],
+  missingLocationStrategy: {
+    action: 'skip-inventory',
+    targetLocationId: null,
+    targetLocationName: null,
+    targetAreaId: null,
+    areaPath: null,
+    confidence: 1,
+    reason: null,
+    reviewRequired: false,
+  },
+  categoryMappings: [
+    {
+      sourcePath: 'Accessories / Dental',
+      targetCategoryId: null,
+      targetPath: 'Guest Accessories / Dental',
+      action: 'create',
+      confidence: 0.94,
+      reason: 'A cleaner taxonomy.',
+      reviewRequired: false,
+    },
+    {
+      sourcePath: 'Hallucinated Source',
+      targetCategoryId: null,
+      targetPath: 'Ignored',
+      action: 'create',
+      confidence: 1,
+      reason: null,
+      reviewRequired: false,
+    },
+  ],
+  supplierMappings: [],
+  locationMappings: [
+    {
+      sourceLocation: 'Bay I - Shelf 3',
+      targetLocationId: 'loc-1',
+      targetLocationName: null,
+      targetAreaId: null,
+      areaPath: 'Bay I / Shelf 3',
+      action: 'create-area',
+      confidence: 0.95,
+      reason: 'Bay and shelf form an area hierarchy.',
+      reviewRequired: false,
+    },
+  ],
+  warnings: [
+    {
+      row: null,
+      field: 'category_path',
+      severity: 'warning',
+      message: 'Review proposed taxonomy.',
+    },
+  ],
+});
 
 describe('ProductImportLlmProposer', () => {
   afterEach(() => {
@@ -58,7 +132,7 @@ describe('ProductImportLlmProposer', () => {
     vi.unstubAllGlobals();
   });
 
-  it('falls back to the deterministic proposal when OPENAI_API_KEY is absent', async () => {
+  it('falls back to a complete deterministic v2 proposal without an API key', async () => {
     vi.stubEnv('OPENAI_API_KEY', '');
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
@@ -66,74 +140,23 @@ describe('ProductImportLlmProposer', () => {
     const proposal = await runProposer();
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(proposal.productIdentity.conflictPolicy).toBe('derive-sku');
-    expect(proposal.warnings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          message:
-            'AI proposal unavailable because OPENAI_API_KEY is not configured.',
-        }),
-      ]),
-    );
+    expect(proposal).toMatchObject({
+      planVersion: 2,
+      proposalSource: 'deterministic',
+      supplierMappings: [],
+    });
+    expect(proposal.categoryMappings).toHaveLength(1);
+    expect(proposal.locationMappings).toHaveLength(1);
+    expect(proposal.skuConflictResolutions).toHaveLength(1);
   });
 
-  it('calls the Responses API and sanitizes the structured proposal', async () => {
+  it('calls the Responses API and sanitizes source coverage and tenant IDs', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-key');
     vi.stubEnv('PRODUCT_IMPORT_LLM_MODEL', 'test-model');
     vi.stubEnv('OPENAI_BASE_URL', 'https://api.openai.test/v1');
     const fetchSpy = vi.fn(async () => ({
       ok: true,
-      json: async () => ({
-        output_text: JSON.stringify({
-          format: 'sortly-items',
-          confidence: 0.91,
-          productIdentity: {
-            sourceColumn: 'SID',
-            conflictPolicy: 'derive-sku',
-          },
-          categoryMappings: [
-            {
-              sourcePath: 'Accessories / Dental',
-              targetPath: 'Guest Accessories / Dental',
-              action: 'create',
-              rowCount: 999,
-            },
-            {
-              sourcePath: 'Hallucinated Source',
-              targetPath: 'Ignored',
-              action: 'create',
-              rowCount: 1,
-            },
-          ],
-          supplierMappings: [
-            {
-              sourcePattern: 'Dental',
-              supplierName: 'Dental Supplier',
-              action: 'create',
-              confidence: 0.88,
-              rowCount: 2,
-            },
-          ],
-          locationMappings: [
-            {
-              sourceLocation: 'Bay I - Shelf 3',
-              targetLocationName: 'Warehouse A',
-              areaPath: 'Bay I / Shelf 3',
-              action: 'create-area',
-              confidence: 0.95,
-              rowCount: 999,
-            },
-          ],
-          warnings: [
-            {
-              row: null,
-              field: 'category_path',
-              severity: 'warning',
-              message: 'Review proposed taxonomy.',
-            },
-          ],
-        }),
-      }),
+      json: async () => ({ output_text: JSON.stringify(validRawProposal()) }),
     }));
     vi.stubGlobal('fetch', fetchSpy);
 
@@ -141,179 +164,46 @@ describe('ProductImportLlmProposer', () => {
 
     expect(fetchSpy).toHaveBeenCalledWith(
       'https://api.openai.test/v1/responses',
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          Authorization: 'Bearer test-key',
-          'Content-Type': 'application/json',
-        }),
-      }),
+      expect.objectContaining({ method: 'POST' }),
     );
-    const [, requestInit] = fetchSpy.mock.calls[0] as unknown as [
-      string,
-      { body: string },
-    ];
-    const body = JSON.parse(requestInit.body);
-    expect(body).toMatchObject({
-      model: 'test-model',
-      text: {
-        format: {
-          type: 'json_schema',
-          name: 'product_import_ai_proposal',
-          strict: true,
-        },
-      },
-    });
+    expect(proposal.proposalSource).toBe('ai');
     expect(proposal.categoryMappings).toEqual([
-      {
+      expect.objectContaining({
         sourcePath: 'Accessories / Dental',
         targetPath: 'Guest Accessories / Dental',
         action: 'create',
         rowCount: 2,
-      },
+      }),
     ]);
     expect(proposal.locationMappings).toEqual([
-      {
+      expect.objectContaining({
         sourceLocation: 'Bay I - Shelf 3',
-        targetLocationName: 'Warehouse A',
+        targetLocationId: 'loc-1',
         areaPath: 'Bay I / Shelf 3',
         action: 'create-area',
-        confidence: 0.95,
         rowCount: 2,
-      },
+      }),
     ]);
-    expect(proposal.supplierMappings).toEqual([
-      {
-        sourcePattern: 'Dental',
-        supplierName: 'Dental Supplier',
-        action: 'create',
-        confidence: 0.88,
-        rowCount: 2,
-      },
-    ]);
-    expect(proposal.warnings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ severity: 'error', field: 'sku' }),
-        expect.objectContaining({ message: 'Review proposed taxonomy.' }),
-      ]),
-    );
+    expect(proposal.supplierMappings).toEqual([]);
   });
 
-  it('repairs malformed structured proposal fields without trusting the model', async () => {
+  it('falls back deterministically when strict structured output is malformed', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-key');
-    const fetchSpy = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        output_text: JSON.stringify({
-          format: 'hallucinated-format',
-          confidence: -3,
-          productIdentity: {
-            sourceColumn: '  ',
-            conflictPolicy: 'overwrite',
-          },
-          categoryMappings: [
-            {
-              sourcePath: 'Accessories / Dental',
-              targetPath: '  ',
-              action: 'rename',
-              rowCount: 999,
-            },
-            {
-              sourcePath: 'Hallucinated Source',
-              targetPath: 'Ignored',
-              action: 'create',
-              rowCount: 1,
-            },
-          ],
-          supplierMappings: [
-            {
-              sourcePattern: '  ',
-              supplierName: 'Ignored Supplier',
-              action: 'create',
-              confidence: 0.7,
-              rowCount: 1,
-            },
-            {
-              sourcePattern: 'Dental',
-              supplierName: 'Dental Supplier',
-              action: 'rename',
-              confidence: 2,
-              rowCount: -4,
-            },
-          ],
-          locationMappings: [
-            {
-              sourceLocation: 'Bay I - Shelf 3',
-              targetLocationName: '  ',
-              areaPath: '  ',
-              action: 'teleport',
-              confidence: 3,
-              rowCount: 999,
-            },
-          ],
-          warnings: [
-            {
-              row: 1.5,
-              field: ' category_path ',
-              severity: 'panic',
-              message: '  Needs review. ',
-            },
-            {
-              severity: 'warning',
-              message: '   ',
-            },
-          ],
-        }),
-      }),
-    }));
-    vi.stubGlobal('fetch', fetchSpy);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ output_text: '{"format":"invalid"}' }),
+      })),
+    );
 
     const proposal = await runProposer();
 
-    expect(proposal).toMatchObject({
-      format: 'sortly-items',
-      confidence: 0,
-      productIdentity: {
-        sourceColumn: 'SID',
-        conflictPolicy: 'derive-sku',
-      },
-      categoryMappings: [
-        {
-          sourcePath: 'Accessories / Dental',
-          targetPath: 'Accessories / Dental',
-          action: 'create',
-          rowCount: 2,
-        },
-      ],
-      supplierMappings: [
-        {
-          sourcePattern: 'Dental',
-          supplierName: 'Dental Supplier',
-          action: 'ignore',
-          confidence: 1,
-          rowCount: 0,
-        },
-      ],
-      locationMappings: [
-        {
-          sourceLocation: 'Bay I - Shelf 3',
-          action: 'create-area',
-          confidence: 1,
-          rowCount: 2,
-        },
-      ],
-    });
-    expect(proposal.locationMappings[0]).not.toHaveProperty(
-      'targetLocationName',
-    );
-    expect(proposal.locationMappings[0]).not.toHaveProperty('areaPath');
+    expect(proposal.proposalSource).toBe('deterministic');
     expect(proposal.warnings).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ severity: 'error', field: 'sku' }),
         expect.objectContaining({
-          severity: 'warning',
-          field: 'category_path',
-          message: 'Needs review.',
+          message: expect.stringContaining('AI proposal unavailable'),
         }),
       ]),
     );

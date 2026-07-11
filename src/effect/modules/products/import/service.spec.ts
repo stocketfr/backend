@@ -4,6 +4,8 @@ import type {
   ProductImportAiProposalDto,
   ProductImportApprovedPlanDto,
   ProductImportPreviewDto,
+  ProductImportProposalGuidanceDto,
+  ProductImportTargetContextDto,
 } from '@stocket/types/products';
 import { makeTestLayer } from '../../../testing/utils';
 import { ProductImportRepository } from './repository';
@@ -18,16 +20,30 @@ import { parseDate, parseProductImportNumber } from './utils/value-parsers';
 import { ProductImportLlmProposer } from './llm-proposer';
 import { ProductImportPhotoImporter } from './photo-importer';
 import { ProductImportService } from './service';
+import { ProductImportPlanningContext } from './planning-context';
 
 const TEST_USER_ID = '00000000-0000-4000-a000-000000000001';
+const EMPTY_TARGET_CONTEXT: ProductImportTargetContextDto = {
+  categories: [],
+  locations: [],
+  areas: [],
+};
 
 const makeLlmProposer = (
   overrides: Partial<ProductImportLlmProposer> = {},
 ) => ({
-  propose: vi.fn((preview: ProductImportPreviewDto) =>
-    Effect.succeed(makeProductImportProposal(preview)),
+  propose: vi.fn(
+    (
+      preview: ProductImportPreviewDto,
+      context: ProductImportTargetContextDto,
+      guidance?: ProductImportProposalGuidanceDto,
+    ) => Effect.succeed(makeProductImportProposal(preview, context, guidance)),
   ),
   ...overrides,
+});
+
+const makePlanningContext = () => ({
+  load: vi.fn(() => Effect.succeed(EMPTY_TARGET_CONTEXT)),
 });
 
 const makePhotoImporter = (
@@ -289,6 +305,7 @@ const runImport = (
         makeTestLayer(ProductImportRepository)(repo),
         makeTestLayer(ProductImportLlmProposer)(llmProposer),
         makeTestLayer(ProductImportPhotoImporter)(photoImporter),
+        makeTestLayer(ProductImportPlanningContext)(makePlanningContext()),
       ),
     ),
   );
@@ -321,6 +338,7 @@ const runImportWithState = async (
         makeTestLayer(ProductImportRepository)(state.repo),
         makeTestLayer(ProductImportLlmProposer)(llmProposer),
         makeTestLayer(ProductImportPhotoImporter)(photoImporter),
+        makeTestLayer(ProductImportPlanningContext)(makePlanningContext()),
       ),
     ),
   );
@@ -351,6 +369,7 @@ const failImport = (
         makeTestLayer(ProductImportRepository)(repo),
         makeTestLayer(ProductImportLlmProposer)(llmProposer),
         makeTestLayer(ProductImportPhotoImporter)(photoImporter),
+        makeTestLayer(ProductImportPlanningContext)(makePlanningContext()),
       ),
     ),
   );
@@ -380,6 +399,7 @@ const runPreview = (
         makeTestLayer(ProductImportRepository)(repo),
         makeTestLayer(ProductImportLlmProposer)(llmProposer),
         makeTestLayer(ProductImportPhotoImporter)(photoImporter),
+        makeTestLayer(ProductImportPlanningContext)(makePlanningContext()),
       ),
     ),
   );
@@ -403,6 +423,7 @@ const runProposal = (
         makeTestLayer(ProductImportRepository)(repo),
         makeTestLayer(ProductImportLlmProposer)(llmProposer),
         makeTestLayer(ProductImportPhotoImporter)(photoImporter),
+        makeTestLayer(ProductImportPlanningContext)(makePlanningContext()),
       ),
     ),
   );
@@ -1034,11 +1055,16 @@ Item,Nail File,SORT-2,Spa,Nails,4,,,
       missingRequiredRows: 0,
     });
     expect(preview.duplicateSkuConflicts).toEqual([
-      {
+      expect.objectContaining({
         sku: 'SORT-1',
         rows: [3, 4],
         names: ['Service Gloves Black', 'Service Gloves White'],
-      },
+        conflictKey: 'sku-conflict:SORT-1',
+        variants: expect.arrayContaining([
+          expect.objectContaining({ rows: [3] }),
+          expect.objectContaining({ rows: [4] }),
+        ]),
+      }),
     ]);
     expect(preview.locationMappings).toContainEqual({
       sourceLocation: 'Bay I - Shelf 3',
@@ -1134,18 +1160,49 @@ Item,Shampoo,SORT-2,Bulgari,Green Tea,5,Bay C - Shelf 3
     );
   });
 
+  it('keeps case-distinct duplicate SKU conflict keys separate', async () => {
+    const preview = await runPreview(
+      `sku,name,category_path
+SKU-1,First Product,Category A
+SKU-1,Second Product,Category B
+sku-1,Third Product,Category C
+sku-1,Fourth Product,Category D
+`,
+      'normalized-products',
+    );
+
+    expect(preview.duplicateSkuConflicts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sku: 'SKU-1',
+          conflictKey: 'sku-conflict:SKU-1',
+        }),
+        expect.objectContaining({
+          sku: 'sku-1',
+          conflictKey: 'sku-conflict:sku-1',
+        }),
+      ]),
+    );
+    expect(
+      new Set(
+        preview.duplicateSkuConflicts.map((conflict) => conflict.conflictKey),
+      ).size,
+    ).toBe(2);
+  });
+
   it('delegates reviewed proposals to the LLM proposer after deterministic preview', async () => {
     const llmProposer = makeLlmProposer({
-      propose: vi.fn((preview: ProductImportPreviewDto) =>
-        Effect.succeed({
-          ...makeProductImportProposal(preview),
+      propose: vi.fn((preview, context, guidance) => {
+        const baseline = makeProductImportProposal(preview, context, guidance);
+        return Effect.succeed({
+          ...baseline,
           confidence: 0.99,
-          categoryMappings: preview.categoryMappings.map((mapping) => ({
+          categoryMappings: baseline.categoryMappings.map((mapping) => ({
             ...mapping,
             targetPath: 'AI Suggested / Category',
           })),
-        }),
-      ),
+        });
+      }),
     });
     const proposal = await runProposal(
       `sku,name,category_path,quantity,location
@@ -1161,6 +1218,8 @@ SKU-1,Whisky,Bar,2,Warehouse
         format: 'normalized-products',
         itemRows: 1,
       }),
+      EMPTY_TARGET_CONTEXT,
+      undefined,
     );
     expect(proposal.confidence).toBe(0.99);
     expect(proposal.categoryMappings).toEqual([

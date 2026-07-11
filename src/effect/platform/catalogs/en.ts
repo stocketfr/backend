@@ -120,8 +120,12 @@ export const enCatalog = {
     'Could not remove the input file for product import task {taskId}: {error}',
   'products.importCancelled': 'Product import was canceled.',
   'products.importCsvParseFailed': 'Could not parse the uploaded CSV file.',
+  'products.importGuidanceParseFailed':
+    'Could not parse the product import guidance.',
   'products.importPlanParseFailed':
     'Could not parse the uploaded product import plan.',
+  'products.importProposalInvalid':
+    'The product import proposal contains invalid or stale decisions.',
   'products.importReadUploadFailed':
     'Failed to read the uploaded product import file.',
   'products.importProgressCompleted': 'Product import completed.',

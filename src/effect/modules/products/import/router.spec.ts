@@ -506,6 +506,34 @@ describe('productImportRouter', () => {
         importType: 'auto',
       });
     });
+
+    it('ignores proposal guidance and remains preview-only', async () => {
+      mockMultipart.mockReturnValue(
+        Effect.succeed({
+          file: makePersistedFile(),
+          import_type: 'auto',
+          guidance: '{not-json',
+        }),
+      );
+      const previewCsvContent = vi.fn(() => Effect.succeed(importPreview()));
+      const { handler } = makeProductImportRouterHarness({
+        importService: { previewCsvContent },
+        permissions: writeAll,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/import/preview', {
+          method: 'POST',
+          body: 'ignored',
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(previewCsvContent).toHaveBeenCalledWith({
+        content: 'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
+        importType: 'auto',
+      });
+    });
   });
 
   describe('POST /import/propose', () => {
@@ -534,7 +562,85 @@ describe('productImportRouter', () => {
       expect(proposeImportPlan).toHaveBeenCalledWith({
         content: 'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
         importType: 'sortly-items',
+        guidance: undefined,
       });
+    });
+
+    it('decodes optional guidance and passes it only to proposal analysis', async () => {
+      mockMultipart.mockReturnValue(
+        Effect.succeed({
+          file: makePersistedFile(),
+          import_type: 'auto',
+          guidance: JSON.stringify({
+            instructions: 'Keep the existing category names.',
+          }),
+        }),
+      );
+      const proposeImportPlan = vi.fn(() => Effect.succeed(importProposal()));
+      const { handler } = makeProductImportRouterHarness({
+        importService: { proposeImportPlan },
+        permissions: writeAll,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/import/propose', {
+          method: 'POST',
+          body: 'ignored',
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(proposeImportPlan).toHaveBeenCalledWith({
+        content: 'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
+        importType: 'auto',
+        guidance: {
+          instructions: 'Keep the existing category names.',
+        },
+      });
+    });
+
+    it('returns a typed 400 for malformed or oversized guidance', async () => {
+      const malformedGuidance = [
+        '{not-json',
+        JSON.stringify({ instructions: 'x'.repeat(4_001) }),
+        JSON.stringify({
+          locks: {
+            categoryMappings: Array.from(
+              { length: 501 },
+              (_, index) => `category:${index}`,
+            ),
+          },
+        }),
+      ];
+
+      for (const guidance of malformedGuidance) {
+        mockMultipart.mockReturnValue(
+          Effect.succeed({
+            file: makePersistedFile(),
+            import_type: 'auto',
+            guidance,
+          }),
+        );
+        const proposeImportPlan = vi.fn(() => Effect.succeed(importProposal()));
+        const { handler } = makeProductImportRouterHarness({
+          importService: { proposeImportPlan },
+          permissions: writeAll,
+        });
+
+        const response = await handler(
+          new Request('http://localhost/import/propose', {
+            method: 'POST',
+            body: 'ignored',
+          }),
+        );
+
+        expect(response.status).toBe(400);
+        await expect(response.json()).resolves.toMatchObject({
+          messageKey: 'products.importGuidanceParseFailed',
+          statusCode: 400,
+        });
+        expect(proposeImportPlan).not.toHaveBeenCalled();
+      }
     });
   });
 });

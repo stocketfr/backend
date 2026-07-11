@@ -13,12 +13,17 @@ import {
 } from '../../../platform/http/tenant-route';
 import { requireProductImportAccess } from '../access';
 import {
+  ProductImportGuidanceParseFailed,
   ProductImportPlanParseFailed,
   ProductsInfrastructureError,
 } from '../products.errors';
 import { ProductImportService } from './service';
 import { ProductImportBackgroundService } from './background/service';
-import { ProductImportPlanSchema, ProductImportTypes } from './types';
+import {
+  ProductImportPlanSchema,
+  ProductImportProposalGuidanceSchema,
+  ProductImportTypes,
+} from './types';
 
 const ProductImportTypeSchema = Schema.Literal(...ProductImportTypes);
 const ProductImportIdempotencyKeySchema = Schema.Trim.pipe(
@@ -31,10 +36,14 @@ const ProductImportUploadSchema = Schema.Struct({
     default: () => 'auto' as const,
   }),
   plan: Schema.optional(Schema.String),
+  guidance: Schema.optional(Schema.String),
 });
 
 const decodeProductImportPlan = Schema.decodeUnknown(
   Schema.parseJson(ProductImportPlanSchema),
+);
+const decodeProductImportGuidance = Schema.decodeUnknown(
+  Schema.parseJson(ProductImportProposalGuidanceSchema),
 );
 
 const parseProductImportPlan = (plan: string | undefined) =>
@@ -48,6 +57,22 @@ const parseProductImportPlan = (plan: string | undefined) =>
           new ProductImportPlanParseFailed({
             cause,
             messageKey: 'products.importPlanParseFailed',
+          }),
+      ),
+    );
+  });
+
+const parseProductImportGuidance = (guidance: string | undefined) =>
+  Effect.gen(function* () {
+    const trimmed = guidance?.trim();
+    if (!trimmed) return undefined;
+
+    return yield* decodeProductImportGuidance(trimmed).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProductImportGuidanceParseFailed({
+            cause,
+            messageKey: 'products.importGuidanceParseFailed',
           }),
       ),
     );
@@ -78,6 +103,7 @@ const readProductImportUpload = Effect.gen(function* () {
     bytes: buffer,
     importType: upload.import_type,
     approvedPlan: yield* parseProductImportPlan(upload.plan),
+    guidance: upload.guidance,
     idempotencyKey,
   };
 });
@@ -136,13 +162,16 @@ export const productImportRouter = HttpRouter.empty.pipe(
     tenantRoute({
       guard: requireProductImportAccess,
       decode: readProductImportUpload,
-      handler: ({ input: { bytes, importType } }) =>
-        Effect.flatMap(ProductImportService, (productImportService) =>
-          productImportService.proposeImportPlan({
+      handler: ({ input: { bytes, importType, guidance } }) =>
+        Effect.gen(function* () {
+          const productImportService = yield* ProductImportService;
+          const parsedGuidance = yield* parseProductImportGuidance(guidance);
+          return yield* productImportService.proposeImportPlan({
             content: bytes.toString('utf8'),
             importType,
-          }),
-        ),
+            guidance: parsedGuidance,
+          });
+        }),
     }),
   ),
 );

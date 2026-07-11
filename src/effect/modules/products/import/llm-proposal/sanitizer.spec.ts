@@ -1,5 +1,11 @@
-import type { ProductImportPreviewDto } from '@stocket/types/products';
-import { extractResponseText, sanitizeLlmProposal } from './sanitizer';
+import { LocationType } from '@stocket/types/locations';
+import type {
+  ProductImportPreviewDto,
+  ProductImportTargetContextDto,
+} from '@stocket/types/products';
+import { categoryDecisionKey } from '../utils/proposal-keys';
+import type { RawLlmProposal } from './raw';
+import { sanitizeLlmProposal } from './sanitizer';
 
 const preview: ProductImportPreviewDto = {
   format: 'sortly-items',
@@ -37,129 +43,238 @@ const preview: ProductImportPreviewDto = {
   ],
 };
 
-describe('extractResponseText', () => {
-  it('reads direct output_text responses', () => {
-    expect(extractResponseText({ output_text: '{"ok":true}' })).toBe(
-      '{"ok":true}',
-    );
-  });
+const context: ProductImportTargetContextDto = {
+  categories: [{ id: 'cat-1', path: 'Guest Accessories / Dental' }],
+  locations: [{ id: 'loc-1', name: 'Warehouse', type: LocationType.WAREHOUSE }],
+  areas: [{ id: 'area-1', locationId: 'loc-1', path: 'Bay I / Shelf 3' }],
+};
 
-  it('reads nested content text responses', () => {
-    expect(
-      extractResponseText({
-        output: [{ content: [{ text: '{"nested":true}' }] }],
-      }),
-    ).toBe('{"nested":true}');
-  });
-
-  it('fails when the response does not contain text', () => {
-    expect(() => extractResponseText({ output: [] })).toThrow(
-      'OpenAI response did not include output text',
-    );
-  });
+const rawProposal = (): RawLlmProposal => ({
+  format: 'sortly-items',
+  confidence: 0.95,
+  productIdentity: { sourceColumn: 'SID', conflictPolicy: 'reject' },
+  skuConflictResolutions: [],
+  missingLocationStrategy: {
+    action: 'skip-inventory',
+    targetLocationId: null,
+    targetLocationName: null,
+    targetAreaId: null,
+    areaPath: null,
+    confidence: 1,
+    reason: null,
+    reviewRequired: false,
+  },
+  categoryMappings: [
+    {
+      sourcePath: 'Accessories / Dental',
+      targetCategoryId: 'hallucinated-category',
+      targetPath: 'Hallucinated',
+      action: 'use-existing',
+      confidence: 1,
+      reason: null,
+      reviewRequired: false,
+    },
+    {
+      sourcePath: 'Hallucinated Source',
+      targetCategoryId: null,
+      targetPath: 'Ignored',
+      action: 'create',
+      confidence: 1,
+      reason: null,
+      reviewRequired: false,
+    },
+  ],
+  supplierMappings: [{ ignored: true }],
+  locationMappings: [
+    {
+      sourceLocation: 'Bay I - Shelf 3',
+      targetLocationId: 'loc-1',
+      targetLocationName: null,
+      targetAreaId: 'hallucinated-area',
+      areaPath: 'Bay I / Shelf 3',
+      action: 'use-existing-area',
+      confidence: 1,
+      reason: null,
+      reviewRequired: false,
+    },
+  ],
+  warnings: [
+    {
+      row: null,
+      field: ' category_path ',
+      severity: 'warning',
+      message: ' Review taxonomy. ',
+    },
+  ],
 });
 
 describe('sanitizeLlmProposal', () => {
-  it('repairs malformed fields and keeps only preview-backed mappings', () => {
-    const proposal = sanitizeLlmProposal(
-      {
-        format: 'hallucinated-format',
-        confidence: 3,
-        productIdentity: {
-          sourceColumn: '  ',
-          conflictPolicy: 'overwrite',
+  it('drops hallucinated sources, IDs, and suppliers while preserving coverage', () => {
+    const proposal = sanitizeLlmProposal(rawProposal(), preview, context);
+
+    expect(proposal).toMatchObject({
+      planVersion: 2,
+      proposalSource: 'ai',
+      supplierMappings: [],
+    });
+    expect(proposal.categoryMappings).toEqual([
+      expect.objectContaining({
+        sourcePath: 'Accessories / Dental',
+        action: 'use-existing',
+        targetCategoryId: 'cat-1',
+        reviewRequired: true,
+      }),
+    ]);
+    expect(proposal.locationMappings).toEqual([
+      expect.objectContaining({
+        sourceLocation: 'Bay I - Shelf 3',
+        action: 'use-existing-area',
+        targetAreaId: 'area-1',
+        reviewRequired: true,
+      }),
+    ]);
+  });
+
+  it('reapplies locked user decisions after sanitizing AI output', () => {
+    const mappingKey = categoryDecisionKey('Accessories / Dental');
+    const proposal = sanitizeLlmProposal(rawProposal(), preview, context, {
+      currentPlan: {
+        planVersion: 2,
+        skuConflictPolicy: 'reject',
+        skuConflictResolutions: [],
+        missingLocationStrategy: {
+          mappingKey: 'missing-location',
+          confidence: 1,
+          reviewRequired: false,
+          rowCount: 0,
+          action: 'skip-inventory',
         },
         categoryMappings: [
           {
+            mappingKey,
+            confidence: 1,
+            reviewRequired: false,
             sourcePath: 'Accessories / Dental',
-            targetPath: '  ',
-            action: 'rename',
-            rowCount: 999,
-          },
-          {
-            sourcePath: 'Hallucinated Source',
-            targetPath: 'Ignored',
+            targetPath: 'User Locked / Dental',
+            rowCount: 2,
             action: 'create',
-            rowCount: 1,
           },
         ],
-        supplierMappings: [
+        locationMappings: [],
+      },
+      locks: { categoryMappings: [mappingKey] },
+    });
+
+    expect(proposal.categoryMappings[0]).toMatchObject({
+      mappingKey,
+      targetPath: 'User Locked / Dental',
+      action: 'create',
+    });
+  });
+
+  it('uses canonical tenant display fields and the server-owned source column', () => {
+    const raw = rawProposal();
+    const [rawCategory] = raw.categoryMappings;
+    const [rawLocation] = raw.locationMappings;
+    if (!rawCategory || !rawLocation) throw new Error('Expected raw mappings');
+    const proposal = sanitizeLlmProposal(
+      {
+        ...raw,
+        productIdentity: {
+          ...raw.productIdentity,
+          sourceColumn: 'hallucinated-column',
+        },
+        categoryMappings: [
           {
-            sourcePattern: 'Dental',
-            supplierName: 'Dental Supplier',
-            action: 'rename',
-            confidence: -2,
-            rowCount: -1,
+            ...rawCategory,
+            targetCategoryId: 'cat-1',
+            targetPath: 'Spoofed Category Label',
           },
         ],
         locationMappings: [
           {
-            sourceLocation: 'Bay I - Shelf 3',
-            targetLocationName: '  ',
-            areaPath: '  ',
-            action: 'teleport',
-            confidence: 2,
-            rowCount: 999,
-          },
-        ],
-        warnings: [
-          {
-            row: 1.5,
-            field: ' category_path ',
-            severity: 'panic',
-            message: '  Needs review. ',
+            ...rawLocation,
+            targetAreaId: 'area-1',
+            targetLocationName: 'Spoofed Warehouse',
+            areaPath: 'Spoofed / Area',
           },
         ],
       },
       preview,
+      context,
     );
 
-    expect(proposal).toMatchObject({
-      format: 'sortly-items',
-      confidence: 1,
-      productIdentity: {
-        sourceColumn: 'SID',
-        conflictPolicy: 'reject',
-      },
-      categoryMappings: [
-        {
-          sourcePath: 'Accessories / Dental',
-          targetPath: 'Accessories / Dental',
-          action: 'create',
-          rowCount: 2,
-        },
-      ],
-      supplierMappings: [
-        {
-          sourcePattern: 'Dental',
-          supplierName: 'Dental Supplier',
-          action: 'ignore',
-          confidence: 0,
-          rowCount: 0,
-        },
-      ],
-      locationMappings: [
-        {
-          sourceLocation: 'Bay I - Shelf 3',
-          action: 'create-area',
-          confidence: 1,
-          rowCount: 2,
-        },
-      ],
+    expect(proposal.productIdentity.sourceColumn).toBe('SID');
+    expect(proposal.categoryMappings[0]).toMatchObject({
+      targetCategoryId: 'cat-1',
+      targetPath: 'Guest Accessories / Dental',
     });
-    expect(proposal.locationMappings[0]).not.toHaveProperty(
-      'targetLocationName',
+    expect(proposal.locationMappings[0]).toMatchObject({
+      targetLocationId: 'loc-1',
+      targetLocationName: 'Warehouse',
+      targetAreaId: 'area-1',
+      areaPath: 'Bay I / Shelf 3',
+    });
+  });
+
+  it('rejects overlong model SKUs by retaining the deterministic variant', () => {
+    const conflictPreview: ProductImportPreviewDto = {
+      ...preview,
+      duplicateSkuConflicts: [
+        {
+          conflictKey: 'sku-conflict:SKU-1',
+          sku: 'SKU-1',
+          rows: [2, 3],
+          names: ['First', 'Second'],
+          variants: [
+            {
+              variantKey: 'sku-conflict:SKU-1:variant:first',
+              rows: [2],
+              names: ['First'],
+            },
+            {
+              variantKey: 'sku-conflict:SKU-1:variant:second',
+              rows: [3],
+              names: ['Second'],
+            },
+          ],
+        },
+      ],
+    };
+    const raw = rawProposal();
+    const proposal = sanitizeLlmProposal(
+      {
+        ...raw,
+        skuConflictResolutions: [
+          {
+            conflictKey: 'sku-conflict:SKU-1',
+            confidence: 0.9,
+            reason: null,
+            reviewRequired: true,
+            variants: [
+              {
+                variantKey: 'sku-conflict:SKU-1:variant:first',
+                action: 'keep-source-sku',
+                targetSku: 'SKU-1',
+              },
+              {
+                variantKey: 'sku-conflict:SKU-1:variant:second',
+                action: 'custom-sku',
+                targetSku: 'x'.repeat(51),
+              },
+            ],
+          },
+        ],
+      },
+      conflictPreview,
+      context,
     );
-    expect(proposal.locationMappings[0]).not.toHaveProperty('areaPath');
-    expect(proposal.warnings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ severity: 'error', field: 'sku' }),
-        expect.objectContaining({
-          severity: 'warning',
-          field: 'category_path',
-          message: 'Needs review.',
-        }),
-      ]),
-    );
+
+    const secondVariant = proposal.skuConflictResolutions[0]?.variants[1];
+    expect(secondVariant).toMatchObject({
+      variantKey: 'sku-conflict:SKU-1:variant:second',
+      action: 'derive-sku',
+      targetSku: 'SKU-1-2',
+    });
   });
 });

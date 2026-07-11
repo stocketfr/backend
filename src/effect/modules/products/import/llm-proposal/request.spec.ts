@@ -1,3 +1,4 @@
+import { LocationType } from '@stocket/types/locations';
 import type { ProductImportPreviewDto } from '@stocket/types/products';
 import { makeOpenAiProductImportProposalRequest } from './request';
 
@@ -20,13 +21,6 @@ const locationMapping = (
   rowCount: 1,
 });
 
-const warning = (
-  index: number,
-): ProductImportPreviewDto['warnings'][number] => ({
-  severity: 'warning',
-  message: `Warning ${index}`,
-});
-
 const preview: ProductImportPreviewDto = {
   format: 'sortly-items',
   totalRows: 100,
@@ -34,11 +28,7 @@ const preview: ProductImportPreviewDto = {
   folderRows: 10,
   importableRows: 80,
   missingRequiredRows: 0,
-  duplicateSkuConflicts: Array.from({ length: 31 }, (_, index) => ({
-    sku: `SKU-${index}`,
-    rows: [index + 1],
-    names: [`Product ${index}`],
-  })),
+  duplicateSkuConflicts: [],
   categoryMappings: Array.from({ length: 81 }, (_, index) =>
     categoryMapping(index),
   ),
@@ -47,44 +37,63 @@ const preview: ProductImportPreviewDto = {
     locationMapping(index),
   ),
   inventoryPreviews: [],
-  warnings: Array.from({ length: 31 }, (_, index) => warning(index)),
+  warnings: Array.from({ length: 41 }, (_, index) => ({
+    severity: 'warning',
+    message: `Warning ${index}`,
+  })),
 };
 
 describe('makeOpenAiProductImportProposalRequest', () => {
-  it('builds the Responses API request and compacts large preview arrays', () => {
-    const request = makeOpenAiProductImportProposalRequest(preview, {
-      model: 'test-model',
-    });
+  it('includes complete source coverage, compact tenant context, and guidance', () => {
+    const request = makeOpenAiProductImportProposalRequest(
+      preview,
+      {
+        categories: [{ id: 'cat-1', path: 'Existing / Category' }],
+        locations: [
+          {
+            id: 'loc-1',
+            name: 'Warehouse',
+            type: LocationType.WAREHOUSE,
+          },
+        ],
+        areas: [{ id: 'area-1', locationId: 'loc-1', path: 'Bay I / Shelf 3' }],
+      },
+      { instructions: 'Keep bays beneath Warehouse.' },
+      { model: 'test-model' },
+    );
 
     expect(request.model).toBe('test-model');
     expect(request.text.format).toMatchObject({
       type: 'json_schema',
-      name: 'product_import_ai_proposal',
+      name: 'product_import_ai_proposal_v2',
       strict: true,
       schema: { type: 'object', additionalProperties: false },
     });
 
     const userInput = request.input[1];
-    expect(userInput).toBeDefined();
     if (!userInput) throw new Error('Expected user input message');
-
     const userContent = userInput.content[0];
-    expect(userContent).toBeDefined();
     if (!userContent) throw new Error('Expected user input content');
 
     const payload: {
       readonly preview: {
-        readonly duplicateSkuConflicts: readonly unknown[];
         readonly categoryMappings: readonly unknown[];
         readonly locationMappings: readonly unknown[];
         readonly warnings: readonly unknown[];
       };
+      readonly tenantContext: {
+        readonly categories: readonly unknown[];
+        readonly locations: readonly unknown[];
+        readonly areas: readonly unknown[];
+      };
+      readonly guidance: { readonly instructions: string };
     } = JSON.parse(userContent.text);
 
-    expect(payload.preview.duplicateSkuConflicts).toHaveLength(30);
-    expect(payload.preview.categoryMappings).toHaveLength(80);
-    expect(payload.preview.locationMappings).toHaveLength(80);
-    expect(payload.preview.warnings).toHaveLength(30);
-    expect(payload.preview).not.toHaveProperty('inventoryPreviews');
+    expect(payload.preview.categoryMappings).toHaveLength(81);
+    expect(payload.preview.locationMappings).toHaveLength(81);
+    expect(payload.preview.warnings).toHaveLength(40);
+    expect(payload.tenantContext.locations).toHaveLength(1);
+    expect(payload.tenantContext.areas).toHaveLength(1);
+    expect(payload.guidance.instructions).toBe('Keep bays beneath Warehouse.');
   });
 });

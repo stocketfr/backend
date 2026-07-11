@@ -10,6 +10,7 @@ import {
   parseInteger,
   parseProductImportNumber,
 } from './value-parsers';
+import { skuConflictDecisionKey, skuVariantDecisionKey } from './proposal-keys';
 
 export function productDefinitionKey(
   row: NormalizedProductImportRow,
@@ -158,28 +159,40 @@ export function findConflictingDuplicateSkuGroups(
   rows: readonly NormalizedProductImportRow[],
   options: { readonly includeReorderPoint?: boolean } = {},
 ): ProductImportDuplicateSkuConflictDto[] {
+  interface DefinitionEntry {
+    readonly rows: number[];
+    readonly names: Set<string>;
+  }
+  interface SkuEntry {
+    readonly rows: number[];
+    readonly definitions: Map<string, DefinitionEntry>;
+    readonly names: Set<string>;
+  }
+  const makeDefinitionEntry = (): DefinitionEntry => ({
+    rows: [],
+    names: new Set<string>(),
+  });
+  const makeSkuEntry = (): SkuEntry => ({
+    rows: [],
+    definitions: new Map<string, DefinitionEntry>(),
+    names: new Set<string>(),
+  });
   const keyOptions = {
     includeReorderPoint: options.includeReorderPoint ?? false,
   };
-  const definitionsBySku = new Map<
-    string,
-    {
-      readonly rows: number[];
-      readonly definitions: Set<string>;
-      readonly names: Set<string>;
-    }
-  >();
+  const definitionsBySku = new Map<string, SkuEntry>();
 
   for (const row of rows) {
     if (!row.sku || !row.name) continue;
 
-    const entry = definitionsBySku.get(row.sku) ?? {
-      rows: [],
-      definitions: new Set<string>(),
-      names: new Set<string>(),
-    };
+    const entry = definitionsBySku.get(row.sku) ?? makeSkuEntry();
     entry.rows.push(row.sourceRow);
-    entry.definitions.add(productDefinitionKey(row, keyOptions));
+    const definitionKey = productDefinitionKey(row, keyOptions);
+    const definition =
+      entry.definitions.get(definitionKey) ?? makeDefinitionEntry();
+    definition.rows.push(row.sourceRow);
+    definition.names.add(row.name.trim());
+    entry.definitions.set(definitionKey, definition);
     entry.names.add(row.name.trim());
     definitionsBySku.set(row.sku, entry);
   }
@@ -187,12 +200,27 @@ export function findConflictingDuplicateSkuGroups(
   const conflicts: ProductImportDuplicateSkuConflictDto[] = [];
   for (const [sku, entry] of definitionsBySku.entries()) {
     if (entry.rows.length > 1 && entry.definitions.size > 1) {
+      const conflictKey = skuConflictDecisionKey(sku);
       conflicts.push({
+        conflictKey,
         sku,
         rows: [...entry.rows],
         names: [...entry.names].sort((left, right) =>
           left.localeCompare(right),
         ),
+        variants: [...entry.definitions.entries()]
+          .map(([definitionKey, definition]) => ({
+            variantKey: skuVariantDecisionKey(conflictKey, definitionKey),
+            rows: [...definition.rows].sort((left, right) => left - right),
+            names: [...definition.names].sort((left, right) =>
+              left.localeCompare(right),
+            ),
+          }))
+          .sort(
+            (left, right) =>
+              (left.rows[0] ?? 0) - (right.rows[0] ?? 0) ||
+              left.variantKey.localeCompare(right.variantKey),
+          ),
       });
     }
   }

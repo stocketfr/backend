@@ -147,8 +147,12 @@ export const deCatalog: Record<MessageKey, string> = {
   'products.importCancelled': 'Der Produktimport wurde abgebrochen.',
   'products.importCsvParseFailed':
     'Die hochgeladene CSV-Datei konnte nicht geparst werden.',
+  'products.importGuidanceParseFailed':
+    'Die Anweisungen fuer den Produktimport konnten nicht geparst werden.',
   'products.importPlanParseFailed':
     'Der hochgeladene Produktimportplan konnte nicht geparst werden.',
+  'products.importProposalInvalid':
+    'Der Produktimportvorschlag enthaelt ungueltige oder veraltete Entscheidungen.',
   'products.importReadUploadFailed':
     'Die hochgeladene Produktimportdatei konnte nicht gelesen werden.',
   'products.importProgressCompleted': 'Der Produktimport ist abgeschlossen.',
