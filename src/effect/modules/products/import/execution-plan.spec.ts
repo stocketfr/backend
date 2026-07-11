@@ -73,19 +73,31 @@ const area: ImportAreaRow = {
   updated_at: now,
 };
 
-const repository = {
-  findCategoryById: (id) =>
-    Effect.succeed(id === category.id ? category : null),
-  findCategoryByNameAndParent: () => Effect.succeed(null),
-  createCategory: () => Effect.dieMessage('unexpected category create'),
-  findLocationByName: () => Effect.succeed(null),
-  findLocationById: (id) =>
-    Effect.succeed(id === location.id ? location : null),
-  createLocation: () => Effect.dieMessage('unexpected location create'),
-  findAreaByNameLocationAndParent: () => Effect.succeed(null),
-  findAreaById: (id) => Effect.succeed(id === area.id ? area : null),
-  createArea: () => Effect.dieMessage('unexpected area create'),
-} satisfies ProductImportTargetRepository;
+const makeRepository = (
+  targets: {
+    readonly location?: ImportLocationRow;
+    readonly area?: ImportAreaRow;
+  } = {},
+) => {
+  const targetLocation = targets.location ?? location;
+  const targetArea = targets.area ?? area;
+  return {
+    findCategoryById: (id) =>
+      Effect.succeed(id === category.id ? category : null),
+    findCategoryByNameAndParent: () => Effect.succeed(null),
+    createCategory: () => Effect.dieMessage('unexpected category create'),
+    findLocationByName: () => Effect.succeed(null),
+    findLocationById: (id) =>
+      Effect.succeed(id === targetLocation.id ? targetLocation : null),
+    createLocation: () => Effect.dieMessage('unexpected location create'),
+    findAreaByNameLocationAndParent: () => Effect.succeed(null),
+    findAreaById: (id) =>
+      Effect.succeed(id === targetArea.id ? targetArea : null),
+    createArea: () => Effect.dieMessage('unexpected area create'),
+  } satisfies ProductImportTargetRepository;
+};
+
+const repository = makeRepository();
 
 const makePlan = (
   rows: readonly NormalizedProductImportRow[],
@@ -201,6 +213,82 @@ describe('validateProductImportExecutionPlan', () => {
       );
 
       expect(error).toMatchObject({ _tag: 'ProductImportProposalInvalid' });
+    }),
+  );
+
+  it.effect('rejects duplicate variant keys before applying decisions', () =>
+    Effect.gen(function* () {
+      const rows = [row(2, 'DUP-1', 'Black'), row(3, 'DUP-1', 'White')];
+      const plan = makePlan(rows, ['DUP-BLACK', 'DUP-WHITE']);
+      const resolution = plan.skuConflictResolutions[0];
+      const firstVariant = resolution?.variants[0];
+      if (!resolution || !firstVariant) {
+        throw new Error('Expected conflict resolution fixture');
+      }
+      const invalidPlan = {
+        ...plan,
+        skuConflictResolutions: [
+          {
+            ...resolution,
+            variants: [
+              firstVariant,
+              {
+                variantKey: firstVariant.variantKey,
+                rows: firstVariant.rows,
+                action: 'custom-sku',
+                targetSku: 'CONFLICTING-DECISION',
+              },
+              ...resolution.variants.slice(1),
+            ],
+          },
+        ],
+      } satisfies ProductImportApprovedPlanV2Dto;
+
+      const error = yield* Effect.flip(
+        validateProductImportExecutionPlan({
+          repository,
+          rows,
+          format: 'normalized-products',
+          approvedPlan: invalidPlan,
+        }),
+      );
+
+      expect(error).toMatchObject({ _tag: 'ProductImportProposalInvalid' });
+      expect(String(error.cause)).toContain('Duplicate SKU variant');
+    }),
+  );
+
+  it.effect('rejects inactive existing locations before writes', () =>
+    Effect.gen(function* () {
+      const rows = [row(2, 'DUP-1', 'Black'), row(3, 'DUP-1', 'White')];
+      const error = yield* Effect.flip(
+        validateProductImportExecutionPlan({
+          repository: makeRepository({
+            location: { ...location, is_active: false },
+          }),
+          rows,
+          format: 'normalized-products',
+          approvedPlan: makePlan(rows, ['DUP-BLACK', 'DUP-WHITE']),
+        }),
+      );
+
+      expect(String(error.cause)).toContain('inactive location');
+    }),
+  );
+
+  it.effect('rejects inactive existing areas before writes', () =>
+    Effect.gen(function* () {
+      const rows = [row(2, 'DUP-1', 'Black'), row(3, 'DUP-1', 'White')];
+      const error = yield* Effect.flip(
+        validateProductImportExecutionPlan({
+          repository: makeRepository({ area: { ...area, is_active: false } }),
+          rows,
+          format: 'normalized-products',
+          approvedPlan: makePlan(rows, ['DUP-BLACK', 'DUP-WHITE']),
+        }),
+      );
+
+      expect(String(error.cause)).toContain('inactive area');
     }),
   );
 });

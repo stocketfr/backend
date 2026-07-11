@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Layer, Option } from 'effect';
+import { Cause, Chunk, Effect, Exit, Layer, Option } from 'effect';
 import { eq, isNull, sql, type SQL } from 'drizzle-orm';
 import { makeTryAsync } from '../../../platform/effect/try-async';
 import { DrizzleDatabase, type DrizzleDb } from '../../../platform/db/drizzle';
@@ -34,11 +34,11 @@ const inventoryProductLocationConditions = (
   eq(inventory.location_id, locationId),
 ];
 
-class ProductImportTransactionDefect extends Error {
+export class ProductImportTransactionDefect extends Error {
   private constructor(
     message: string,
     readonly failure: ProductImportRowTransactionError | null,
-    readonly defectCause: Cause.Cause<unknown> | null,
+    readonly nonFailureCause: Cause.Cause<ProductImportRowTransactionError> | null,
   ) {
     super(message);
     this.name = 'ProductImportTransactionDefect';
@@ -48,22 +48,41 @@ class ProductImportTransactionDefect extends Error {
     return new ProductImportTransactionDefect(failure.message, failure, null);
   }
 
-  static defect(cause: Cause.Cause<unknown>) {
+  static nonFailure(cause: Cause.Cause<ProductImportRowTransactionError>) {
     return new ProductImportTransactionDefect(Cause.pretty(cause), null, cause);
   }
 }
 
-const runProductImportEffectAsPromise = async <A>(
+export const runProductImportEffectAsPromise = async <A>(
   effect: Effect.Effect<A, ProductImportRowTransactionError, never>,
 ): Promise<A> => {
   const exit = await Effect.runPromiseExit(effect);
   if (Exit.isSuccess(exit)) return exit.value;
 
-  const failure = Cause.failureOption(exit.cause);
-  if (Option.isSome(failure)) {
-    throw ProductImportTransactionDefect.failure(failure.value);
+  if (
+    !Cause.isDie(exit.cause) &&
+    !Cause.isInterrupted(exit.cause) &&
+    Chunk.size(Cause.failures(exit.cause)) === 1
+  ) {
+    const failure = Cause.failureOption(exit.cause);
+    if (Option.isSome(failure)) {
+      throw ProductImportTransactionDefect.failure(failure.value);
+    }
   }
-  throw ProductImportTransactionDefect.defect(exit.cause);
+  throw ProductImportTransactionDefect.nonFailure(exit.cause);
+};
+
+export const restoreProductImportTransactionError = (
+  error: ProductImportTransactionDefect | ProductsInfrastructureError,
+): Effect.Effect<never, ProductImportRowTransactionError> => {
+  if (!(error instanceof ProductImportTransactionDefect)) {
+    return Effect.fail(error);
+  }
+  if (error.failure !== null) return Effect.fail(error.failure);
+  if (error.nonFailureCause !== null) {
+    return Effect.failCause(error.nonFailureCause);
+  }
+  return Effect.dieMessage('Product import transaction exit was empty');
 };
 
 export class ProductImportRepository extends Effect.Service<ProductImportRepository>()(
@@ -383,15 +402,14 @@ export class ProductImportRepository extends Effect.Service<ProductImportReposit
                 return runProductImportEffectAsPromise(transactionEffect);
               }),
             catch: (cause) =>
-              cause instanceof ProductImportTransactionDefect &&
-              cause.failure !== null
-                ? cause.failure
+              cause instanceof ProductImportTransactionDefect
+                ? cause
                 : new ProductsInfrastructureError({
                     action: 'run product import row transaction',
                     cause,
                     messageKey: 'products.repositoryFailed',
                   }),
-          });
+          }).pipe(Effect.catchAll(restoreProductImportTransactionError));
         });
 
       return {

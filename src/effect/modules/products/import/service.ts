@@ -1,4 +1,4 @@
-import { Effect } from 'effect';
+import { Cause, Chunk, Effect, Option } from 'effect';
 import type {
   AnalyzeProductsFromCsvOptions,
   ImportCaches,
@@ -222,18 +222,30 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
                 }),
               )
               .pipe(
-                Effect.catchTags({
-                  TenantNotResolved: (error) => Effect.fail(error),
-                  ProductInfrastructureError: (error) =>
-                    Effect.sync(() => {
-                      coreRowFailed = true;
-                      pushRowError(
-                        result,
-                        row.sourceRow,
-                        formatImportError(error),
-                      );
-                      return null;
-                    }),
+                Effect.catchAllCause((cause) => {
+                  if (
+                    Cause.isDie(cause) ||
+                    Cause.isInterrupted(cause) ||
+                    Chunk.size(Cause.failures(cause)) !== 1
+                  ) {
+                    return Effect.failCause(cause);
+                  }
+                  const failure = Cause.failureOption(cause);
+                  if (Option.isNone(failure)) return Effect.failCause(cause);
+                  switch (failure.value._tag) {
+                    case 'TenantNotResolved':
+                      return Effect.fail(failure.value);
+                    case 'ProductInfrastructureError':
+                      return Effect.sync(() => {
+                        coreRowFailed = true;
+                        pushRowError(
+                          result,
+                          row.sourceRow,
+                          formatImportError(failure.value),
+                        );
+                        return null;
+                      });
+                  }
                 }),
               );
             if (importedProduct !== null) {

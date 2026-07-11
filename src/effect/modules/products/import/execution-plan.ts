@@ -159,6 +159,8 @@ const validateTenantTargets = (
   errors: string[],
 ) =>
   Effect.gen(function* () {
+    // Categories have no active-state column; tenant ownership and canonical
+    // ancestry are the enforceable stale-target checks for category IDs.
     for (const mapping of plan.categoryMappings) {
       if (mapping.action !== 'use-existing') continue;
       const names: string[] = [];
@@ -196,7 +198,9 @@ const validateTenantTargets = (
       repository.findLocationById(locationId).pipe(
         Effect.map((location) => {
           if (!location) errors.push(`${label} references an unknown location`);
-          else if (
+          else if (!location.is_active) {
+            errors.push(`${label} references an inactive location`);
+          } else if (
             expectedName !== undefined &&
             expectedName !== location.name
           ) {
@@ -225,6 +229,10 @@ const validateTenantTargets = (
           }
           if (current.location_id !== locationId) {
             errors.push(`${label} references an area outside its location`);
+            return;
+          }
+          if (currentId === areaId && !current.is_active) {
+            errors.push(`${label} references an inactive area`);
             return;
           }
           names.push(current.name);
@@ -338,12 +346,16 @@ const makeV2RowDecisions = (
     );
     const seenVariants = new Set<string>();
     for (const variant of resolution.variants) {
+      if (seenVariants.has(variant.variantKey)) {
+        errors.push(`Duplicate SKU variant "${variant.variantKey}"`);
+        continue;
+      }
+      seenVariants.add(variant.variantKey);
       const expected = expectedVariants.get(variant.variantKey);
       if (!expected) {
         errors.push(`Unknown SKU variant "${variant.variantKey}"`);
         continue;
       }
-      seenVariants.add(variant.variantKey);
       if (
         variant.rows.length !== expected.rows.length ||
         variant.rows.some((row, index) => row !== expected.rows[index])
