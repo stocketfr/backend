@@ -119,3 +119,9 @@ jobs:
       - name: Build shared packages
         run: pnpm --filter @stocket/types barrels && pnpm --filter @stocket/types --filter @stocket/emails build
       - run: pnpm build
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, test, integration-test, build]
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit
