@@ -3,6 +3,7 @@ import pg from 'pg';
 import { defaultRoleSeedDefinitions } from '../effect/platform/seed/default-roles';
 import { getDatabaseUrl } from '../config/db-connection.utils';
 import { readOptionalEnv } from '@stocket/types/common';
+import { FeatureKey } from '@stocket/types/features';
 
 const DEFAULT_E2E_TENANT_NAME = 'E2E Tenant';
 const DEFAULT_E2E_TENANT_SLUG = 'e2e';
@@ -102,6 +103,27 @@ export async function seedE2eTenant(
       [randomUUID(), config.tenantName, config.tenantSlug],
     );
     const tenantId = tenantResult.rows[0]!.id;
+
+    await client.query(
+      `
+        INSERT INTO tenant_feature_overrides (
+          tenant_id,
+          feature_key,
+          enabled,
+          reason,
+          expires_at,
+          updated_by
+        )
+        VALUES ($1, $2, true, 'Enabled for E2E product import coverage', NULL, $3)
+        ON CONFLICT (tenant_id, feature_key) DO UPDATE
+        SET enabled = EXCLUDED.enabled,
+            reason = EXCLUDED.reason,
+            expires_at = EXCLUDED.expires_at,
+            updated_by = EXCLUDED.updated_by,
+            updated_at = NOW()
+      `,
+      [tenantId, FeatureKey.SMART_IMPORT, userId],
+    );
 
     await client.query(
       `
