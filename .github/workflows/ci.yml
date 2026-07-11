@@ -16,10 +16,14 @@ jobs:
       - uses: useblacksmith/checkout@v1
         with:
           path: backend
+      - name: Read shared packages revision
+        id: packages_revision
+        run: echo "ref=$(tr -d '[:space:]' < .github/packages-revision)" >> "$GITHUB_OUTPUT"
       - uses: useblacksmith/checkout@v1
         with:
           repository: stocketfr/packages
           path: packages
+          ref: ${{ steps.packages_revision.outputs.ref }}
       - uses: useblacksmith/setup-node@v5
         with:
           node-version: 22
@@ -43,10 +47,14 @@ jobs:
       - uses: useblacksmith/checkout@v1
         with:
           path: backend
+      - name: Read shared packages revision
+        id: packages_revision
+        run: echo "ref=$(tr -d '[:space:]' < .github/packages-revision)" >> "$GITHUB_OUTPUT"
       - uses: useblacksmith/checkout@v1
         with:
           repository: stocketfr/packages
           path: packages
+          ref: ${{ steps.packages_revision.outputs.ref }}
       - uses: useblacksmith/setup-node@v5
         with:
           node-version: 22
@@ -81,10 +89,14 @@ jobs:
       - uses: useblacksmith/checkout@v1
         with:
           path: backend
+      - name: Read shared packages revision
+        id: packages_revision
+        run: echo "ref=$(tr -d '[:space:]' < .github/packages-revision)" >> "$GITHUB_OUTPUT"
       - uses: useblacksmith/checkout@v1
         with:
           repository: stocketfr/packages
           path: packages
+          ref: ${{ steps.packages_revision.outputs.ref }}
       - uses: useblacksmith/setup-node@v5
         with:
           node-version: 22
@@ -107,10 +119,14 @@ jobs:
       - uses: useblacksmith/checkout@v1
         with:
           path: backend
+      - name: Read shared packages revision
+        id: packages_revision
+        run: echo "ref=$(tr -d '[:space:]' < .github/packages-revision)" >> "$GITHUB_OUTPUT"
       - uses: useblacksmith/checkout@v1
         with:
           repository: stocketfr/packages
           path: packages
+          ref: ${{ steps.packages_revision.outputs.ref }}
       - uses: useblacksmith/setup-node@v5
         with:
           node-version: 22
