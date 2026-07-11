@@ -36,10 +36,15 @@ jobs:
           path: backend
           ref: ${{ env.DEPLOY_SHA }}
 
+      - name: Read shared packages revision
+        id: packages_revision
+        run: echo "ref=$(tr -d '[:space:]' < .github/packages-revision)" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
         with:
           repository: stocketfr/packages
           path: backend/packages
+          ref: ${{ steps.packages_revision.outputs.ref }}
 
       - uses: docker/setup-buildx-action@v3
 
