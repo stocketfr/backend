@@ -7,7 +7,7 @@ import type {
   ProductImportPlan,
   ProductImportResultDto,
 } from '../types';
-import { getTargetCategoryPath } from '../plan';
+import { findCategoryMapping, getTargetCategoryPath } from '../plan';
 import { getOrCreateCategoryPath } from '../targets/category';
 import { resolveInventoryTarget } from '../targets/inventory';
 import {
@@ -23,12 +23,11 @@ import {
   type ProductImportProductCreateValues,
   type ProductImportProductUpdateValues,
 } from './values';
-import {
-  importProductPhotos,
-  type ProductImportPhotoImporterPort,
-} from './photos';
+import type { ProductImportPhotoImporterPort } from './photos';
 
 export type { ProductImportPhotoImporterPort } from './photos';
+
+export type ProductImportRowTransactionError = ProductImportTargetError;
 
 interface ProductImportInventoryValues {
   readonly quantity: number;
@@ -72,7 +71,8 @@ export interface ProductImportRowRepository extends ProductImportTargetRepositor
 
 interface ImportProductRowOptions {
   readonly repository: ProductImportRowRepository;
-  readonly photoImporter: ProductImportPhotoImporterPort;
+  /** @deprecated Photos are imported by the service after the row commits. */
+  readonly photoImporter?: ProductImportPhotoImporterPort;
   readonly row: NormalizedProductImportRow;
   readonly caches: ImportCaches;
   readonly result: ProductImportResultDto;
@@ -229,14 +229,16 @@ const validateRootInventoryImport = (
 
 export const importProductRow = ({
   repository,
-  photoImporter,
   row,
   caches,
   result,
   expiryDate,
   userId,
   approvedPlan,
-}: ImportProductRowOptions): Effect.Effect<void, ProductImportTargetError> =>
+}: ImportProductRowOptions): Effect.Effect<
+  ImportProductRow,
+  ProductImportTargetError
+> =>
   Effect.gen(function* () {
     const inventoryTarget = yield* resolveInventoryTarget({
       repository,
@@ -254,6 +256,8 @@ export const importProductRow = ({
     const categoryId = yield* getOrCreateCategoryPath({
       repository,
       categoryPath: getTargetCategoryPath(row, approvedPlan),
+      existingCategoryId: findCategoryMapping(row, approvedPlan)
+        ?.targetCategoryId,
       caches,
       result,
     });
@@ -275,12 +279,5 @@ export const importProductRow = ({
       result,
       expiryDate,
     );
-    yield* importProductPhotos(
-      photoImporter,
-      product,
-      row,
-      caches,
-      result,
-      userId,
-    );
+    return product;
   });

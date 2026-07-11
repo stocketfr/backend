@@ -75,7 +75,10 @@ export const formatPreviewErrors = (preview: ProductImportPreviewDto) => {
 };
 
 export const formatImportResultErrors = (result: ProductImportResultDto) =>
-  result.errors.map((error) => `Row ${error.row}: ${error.error}`).join('; ');
+  result.errors
+    .filter((error) => !error.error.startsWith('Photo import failed for "'))
+    .map((error) => `Row ${error.row}: ${error.error}`)
+    .join('; ');
 
 export const tenantImportRequestContext = (
   actor: CreateTenantActor,

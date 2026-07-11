@@ -14,6 +14,7 @@ import { ProductsInfrastructureError } from '../../products.errors';
 interface GetOrCreateCategoryPathOptions {
   readonly repository: ProductImportTargetRepository;
   readonly categoryPath: string;
+  readonly existingCategoryId?: string;
   readonly caches: ImportCaches;
   readonly result: ProductImportResultDto;
 }
@@ -21,6 +22,7 @@ interface GetOrCreateCategoryPathOptions {
 export const getOrCreateCategoryPath = ({
   repository,
   categoryPath,
+  existingCategoryId,
   caches,
   result,
 }: GetOrCreateCategoryPathOptions): Effect.Effect<
@@ -28,6 +30,19 @@ export const getOrCreateCategoryPath = ({
   ProductImportTargetError
 > =>
   Effect.gen(function* () {
+    if (existingCategoryId !== undefined) {
+      const existing = yield* repository.findCategoryById(existingCategoryId);
+      if (!existing) {
+        return yield* Effect.fail(
+          new ProductsInfrastructureError({
+            action: 'resolve import category by id',
+            messageKey: 'products.repositoryFailed',
+          }),
+        );
+      }
+      return existing.id;
+    }
+
     const parts = normalizeCategoryPath(categoryPath)
       .split('/')
       .map((part) => part.trim())

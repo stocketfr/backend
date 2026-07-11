@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Effect, Layer } from 'effect';
 import { afterEach, vi } from 'vitest';
 import { Permission, Resource } from '@stocket/types/auth';
@@ -7,6 +7,7 @@ import { EntitlementSource, PlanKey } from '@stocket/types/features';
 import {
   areas,
   backgroundTasks,
+  categories,
   inventory,
   locations,
   members,
@@ -45,6 +46,7 @@ import {
 import type {
   ProductImportAiProposalDto,
   ProductImportApprovedPlanDto,
+  ProductImportApprovedPlanV2Dto,
   ProductImportPlan,
 } from './types';
 import { ProductImportService } from './service';
@@ -220,10 +222,7 @@ async function postImport(
   }
 }
 
-async function importCsv(
-  csv: string,
-  approvedPlan?: ProductImportPlan,
-) {
+async function importCsv(csv: string, approvedPlan?: ProductImportPlan) {
   await seedBetterAuthUser(db, { id: TEST_USER_ID });
   return Effect.runPromise(
     Effect.flatMap(ProductImportService, (service) =>
@@ -234,9 +233,7 @@ async function importCsv(
       }),
     ).pipe(
       Effect.provide(
-        makeTestApplicationLayer().pipe(
-          Layer.provide(makeTestDrizzleLayer()),
-        ),
+        makeTestApplicationLayer().pipe(Layer.provide(makeTestDrizzleLayer())),
       ),
     ),
   );
@@ -652,6 +649,203 @@ SHARED-SKU,Default Tenant Product,Default Category,3,Default Location
       sku: 'SHARED-SKU',
       name: 'Other Tenant Product',
     });
+  });
+
+  it('rolls back a failed row while retaining previously committed rows', async () => {
+    const suffix = randomUUID().replaceAll('-', '');
+    const functionName = `fail_import_inventory_${suffix}`;
+    const triggerName = `fail_import_inventory_trigger_${suffix}`;
+    await db.execute(
+      sql.raw(`CREATE FUNCTION ${functionName}() RETURNS trigger AS $$
+BEGIN
+  IF NEW.quantity = 999999 THEN
+    RAISE EXCEPTION 'forced product import inventory failure';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql`),
+    );
+    await db.execute(
+      sql.raw(
+        `CREATE TRIGGER ${triggerName} BEFORE INSERT ON inventory FOR EACH ROW EXECUTE FUNCTION ${functionName}()`,
+      ),
+    );
+
+    try {
+      const approvedPlan = {
+        defaultLocationName: 'Atomic Failed Location',
+        locationMappings: [
+          {
+            sourceLocation: 'Atomic Failed Bay - Shelf 1',
+            targetLocationName: 'Atomic Failed Location',
+            areaPath: 'Bay / Shelf 1',
+            action: 'create-area',
+            confidence: 1,
+            rowCount: 1,
+          },
+        ],
+      } satisfies ProductImportApprovedPlanDto;
+      const result = await importCsv(
+        `sku,name,category_path,quantity,location
+ATOMIC-GOOD-001,Committed Product,Atomic Committed Category,4,Atomic Committed Location
+ATOMIC-FAIL-001,Rolled Back Product,Atomic Failed Category / Child,999999,Atomic Failed Bay - Shelf 1
+`,
+        approvedPlan,
+      );
+
+      expect(result).toMatchObject({
+        categoriesCreated: 1,
+        locationsCreated: 1,
+        areasCreated: 0,
+        productsCreated: 1,
+        inventoryRecordsCreated: 1,
+        rowsSkipped: 1,
+      });
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]?.row).toBe(3);
+      expect(await findProductBySku('ATOMIC-GOOD-001')).toBeTruthy();
+      expect(await findProductBySku('ATOMIC-FAIL-001')).toBeNull();
+
+      const rolledBackCategories = await db
+        .select()
+        .from(categories)
+        .where(
+          and(
+            eq(categories.tenant_id, DEFAULT_TENANT_ID),
+            eq(categories.name, 'Atomic Failed Category'),
+          ),
+        );
+      const rolledBackLocations = await db
+        .select()
+        .from(locations)
+        .where(
+          and(
+            eq(locations.tenant_id, DEFAULT_TENANT_ID),
+            eq(locations.name, 'Atomic Failed Location'),
+          ),
+        );
+      const rolledBackAreas = await db
+        .select()
+        .from(areas)
+        .where(
+          and(eq(areas.tenant_id, DEFAULT_TENANT_ID), eq(areas.name, 'Bay')),
+        );
+      expect(rolledBackCategories).toHaveLength(0);
+      expect(rolledBackLocations).toHaveLength(0);
+      expect(rolledBackAreas).toHaveLength(0);
+    } finally {
+      await db.execute(
+        sql.raw(`DROP TRIGGER IF EXISTS ${triggerName} ON inventory`),
+      );
+      await db.execute(sql.raw(`DROP FUNCTION IF EXISTS ${functionName}()`));
+    }
+  });
+
+  it('is idempotent when the same CSV is imported repeatedly', async () => {
+    const csv = `sku,name,category_path,quantity,location
+IDEMPOTENT-001,Idempotent Product,Idempotent Category / Child,8,Idempotent Location
+`;
+    const first = await importCsv(csv);
+    const second = await importCsv(csv);
+
+    expect(first).toMatchObject({
+      categoriesCreated: 2,
+      locationsCreated: 1,
+      productsCreated: 1,
+      inventoryRecordsCreated: 1,
+      rowsSkipped: 0,
+    });
+    expect(second).toMatchObject({
+      categoriesCreated: 0,
+      locationsCreated: 0,
+      productsCreated: 0,
+      productsUpdated: 0,
+      inventoryRecordsCreated: 0,
+      inventoryRecordsUpdated: 1,
+      rowsSkipped: 0,
+    });
+    const product = await findProductBySku('IDEMPOTENT-001');
+    const productRows = await db
+      .select()
+      .from(products)
+      .where(
+        and(
+          eq(products.tenant_id, DEFAULT_TENANT_ID),
+          eq(products.sku, 'IDEMPOTENT-001'),
+        ),
+      );
+    const inventoryRows = await db
+      .select()
+      .from(inventory)
+      .where(eq(inventory.product_id, product!.id));
+    expect(productRows).toHaveLength(1);
+    expect(inventoryRows).toHaveLength(1);
+    expect(inventoryRows[0]?.quantity).toBe(8);
+  });
+
+  it('rejects version 2 targets owned by another tenant before writes', async () => {
+    const otherTenantId = randomUUID();
+    const otherCategory = await seedCategory(db, {
+      tenant_id: otherTenantId,
+      name: 'Other Existing Category',
+    });
+    const otherLocation = await seedLocation(db, {
+      tenant_id: otherTenantId,
+      name: 'Other Existing Location',
+    });
+    const otherArea = await seedArea(db, {
+      tenant_id: otherTenantId,
+      location_id: otherLocation.id,
+      name: 'Other Existing Area',
+    });
+    const approvedPlan = {
+      planVersion: 2,
+      skuConflictPolicy: 'reject',
+      skuConflictResolutions: [],
+      missingLocationStrategy: {
+        mappingKey: 'missing-location',
+        confidence: 1,
+        reviewRequired: false,
+        rowCount: 0,
+        action: 'skip-inventory',
+      },
+      categoryMappings: [
+        {
+          mappingKey: 'category:Tenant%20Category',
+          confidence: 1,
+          reviewRequired: false,
+          sourcePath: 'Tenant Category',
+          targetPath: 'Other Existing Category',
+          targetCategoryId: otherCategory.id,
+          action: 'use-existing',
+          rowCount: 1,
+        },
+      ],
+      locationMappings: [
+        {
+          mappingKey: 'location:Tenant%20Location',
+          confidence: 1,
+          reviewRequired: false,
+          sourceLocation: 'Tenant Location',
+          targetLocationId: otherLocation.id,
+          targetAreaId: otherArea.id,
+          action: 'use-existing-area',
+          rowCount: 1,
+        },
+      ],
+    } satisfies ProductImportApprovedPlanV2Dto;
+
+    await expect(
+      importCsv(
+        `sku,name,category_path,quantity,location
+CROSS-TARGET-001,Cross Tenant Target,Tenant Category,1,Tenant Location
+`,
+        approvedPlan,
+      ),
+    ).rejects.toThrow(
+      'The product import proposal contains invalid or stale decisions.',
+    );
+    expect(await findProductBySku('CROSS-TARGET-001')).toBeNull();
   });
 
   it('reports an error instead of creating root inventory when area-scoped inventory exists', async () => {

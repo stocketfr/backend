@@ -8,7 +8,11 @@ import type {
   ProductImportPlan,
   ProductImportResultDto,
 } from '../types';
-import { findLocationMapping, getDefaultLocationName } from '../plan';
+import {
+  findLocationMapping,
+  getDefaultLocationName,
+  isProductImportPlanV2,
+} from '../plan';
 import { normalizeStorageLocationName } from '../storage-location/utils';
 import {
   type ImportInventoryTarget,
@@ -81,6 +85,31 @@ const findLocationId = (
     return location.id;
   });
 
+const findAreaId = (
+  repository: ProductImportTargetRepository,
+  locationId: string,
+  areaId: string,
+  caches: ImportCaches,
+): Effect.Effect<string, ProductImportTargetError> =>
+  Effect.gen(function* () {
+    const cacheKey = `${locationId}:id:${areaId}`;
+    const cached = caches.areas.get(cacheKey);
+    if (cached) return cached;
+
+    const area = yield* repository.findAreaById(areaId);
+    if (!area || area.location_id !== locationId) {
+      return yield* Effect.fail(
+        new ProductsInfrastructureError({
+          action: 'resolve import area by id',
+          messageKey: 'products.repositoryFailed',
+        }),
+      );
+    }
+
+    caches.areas.set(cacheKey, area.id);
+    return area.id;
+  });
+
 const getOrCreateAreaPath = (
   repository: ProductImportTargetRepository,
   locationId: string,
@@ -147,12 +176,68 @@ export const resolveInventoryTarget = ({
   Effect.gen(function* () {
     const rawLocation = row.location.trim();
     if (rawLocation === '') {
-      return { locationId: null, areaId: null };
+      if (!isProductImportPlanV2(approvedPlan)) {
+        return { locationId: null, areaId: null };
+      }
+
+      const strategy = approvedPlan.missingLocationStrategy;
+      if (strategy.action === 'skip-inventory') {
+        return { locationId: null, areaId: null };
+      }
+      const locationId =
+        strategy.targetLocationId !== undefined
+          ? yield* findLocationId(repository, strategy.targetLocationId, caches)
+          : yield* getOrCreateLocation(
+              repository,
+              strategy.targetLocationName,
+              caches,
+              result,
+            );
+      if (!locationId) {
+        return yield* Effect.fail(
+          new ProductsInfrastructureError({
+            action: 'resolve missing import location',
+            messageKey: 'products.importAreaLocationRequired',
+          }),
+        );
+      }
+      if (strategy.action === 'use-existing-area') {
+        const areaId = yield* findAreaId(
+          repository,
+          locationId,
+          strategy.targetAreaId,
+          caches,
+        );
+        return { locationId, areaId };
+      }
+      const areaId = yield* getOrCreateAreaPath(
+        repository,
+        locationId,
+        strategy.areaPath,
+        caches,
+        result,
+      );
+      return { locationId, areaId };
     }
 
     const mapping = findLocationMapping(row, approvedPlan);
     if (mapping?.action === 'ignore') {
       return { locationId: null, areaId: null };
+    }
+
+    if (mapping?.action === 'use-existing-area') {
+      const locationId = yield* findLocationId(
+        repository,
+        mapping.targetLocationId,
+        caches,
+      );
+      const areaId = yield* findAreaId(
+        repository,
+        locationId,
+        mapping.targetAreaId,
+        caches,
+      );
+      return { locationId, areaId };
     }
 
     if (mapping?.action === 'create-area' && mapping.areaPath) {

@@ -1,4 +1,4 @@
-import { Effect } from 'effect';
+import { Cause, Chunk, Effect, Option } from 'effect';
 import type {
   AnalyzeProductsFromCsvOptions,
   ImportCaches,
@@ -24,6 +24,7 @@ import { parseDate } from './utils/value-parsers';
 import type {
   ProductImportCancelled,
   ProductImportCsvParseFailed,
+  ProductImportProposalInvalid,
   ProductImportUnsupportedFormat,
   ProductsInfrastructureError,
 } from '../products.errors';
@@ -36,9 +37,11 @@ import { ProductImportRepository } from './repository';
 import { getSkuConflictPolicy } from './plan';
 import { parseAndDetectProductImportFormat } from './parser';
 import { importProductRow } from './row/import';
+import { importProductPhotos } from './row/photos';
 import { ProductImportPlanningContext } from './planning-context';
 import { validateProductImportGuidance } from './guidance';
 import { makeProductImportProposal } from './utils/proposal';
+import { validateProductImportExecutionPlan } from './execution-plan';
 
 const PROGRESS_ROW_REPORT_INTERVAL = 25;
 
@@ -67,6 +70,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
         | E
         | ProductImportCancelled
         | ProductImportCsvParseFailed
+        | ProductImportProposalInvalid
         | ProductImportUnsupportedFormat
         | ProductsInfrastructureError
         | TenantNotResolved
@@ -94,6 +98,12 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
 
           const result = makeEmptyProductImportResult();
           const rows = normalizeProductImportRecords(parsed.records, format);
+          const rowDecisions = yield* validateProductImportExecutionPlan({
+            repository,
+            rows,
+            format,
+            approvedPlan,
+          });
           let processedRows = 0;
           let failedRows = 0;
           const reportProgress = (
@@ -121,6 +131,12 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
               failedRows += 1;
               yield* reportRowProgress();
             });
+          const skipApprovedRow = () =>
+            Effect.gen(function* () {
+              result.rowsSkipped += 1;
+              processedRows += 1;
+              yield* reportRowProgress();
+            });
 
           yield* reportProgress(
             PRODUCT_IMPORT_PROGRESS_MESSAGES.starting,
@@ -145,9 +161,16 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
 
           for (const originalRow of rows) {
             yield* ensureNotCanceled;
-            const derivedSku = derivedSkusByRow.get(originalRow.sourceRow);
-            const row = derivedSku
-              ? { ...originalRow, sku: derivedSku }
+            const rowDecision = rowDecisions.get(originalRow.sourceRow);
+            if (rowDecision?.action === 'skip') {
+              yield* skipApprovedRow();
+              continue;
+            }
+            const targetSku =
+              rowDecision?.targetSku ??
+              derivedSkusByRow.get(originalRow.sourceRow);
+            const row = targetSku
+              ? { ...originalRow, sku: targetSku }
               : originalRow;
             if (!row.sku || !row.name) {
               yield* skipFailedRow(
@@ -157,7 +180,10 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
               continue;
             }
 
-            if (duplicateConflictRows.has(row.sourceRow) && !derivedSku) {
+            if (
+              duplicateConflictRows.has(row.sourceRow) &&
+              targetSku === undefined
+            ) {
               yield* skipFailedRow(
                 row.sourceRow,
                 `Conflicting duplicate SKU "${row.sku}" has different product fields`,
@@ -175,31 +201,85 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
             }
 
             let coreRowFailed = false;
-            yield* importProductRow({
-              repository,
-              photoImporter,
-              row,
-              caches,
-              result,
-              expiryDate,
-              userId,
-              approvedPlan,
-            }).pipe(
-              Effect.catchTags({
-                TenantNotResolved: (error) => Effect.fail(error),
-                ProductInfrastructureError: (error) =>
-                  error.cause === undefined
-                    ? Effect.sync(() => {
+            const rowCaches: ImportCaches = {
+              categories: new Map(caches.categories),
+              locations: new Map(caches.locations),
+              areas: new Map(caches.areas),
+              products: new Map(caches.products),
+              photoUrlsByProduct: new Map(caches.photoUrlsByProduct),
+            };
+            const rowResult = makeEmptyProductImportResult();
+            const importedProduct = yield* repository
+              .runRowTransaction((transactionRepository) =>
+                importProductRow({
+                  repository: transactionRepository,
+                  row,
+                  caches: rowCaches,
+                  result: rowResult,
+                  expiryDate,
+                  userId,
+                  approvedPlan,
+                }),
+              )
+              .pipe(
+                Effect.catchAllCause((cause) => {
+                  if (
+                    Cause.isDie(cause) ||
+                    Cause.isInterrupted(cause) ||
+                    Chunk.size(Cause.failures(cause)) !== 1
+                  ) {
+                    return Effect.failCause(cause);
+                  }
+                  const failure = Cause.failureOption(cause);
+                  if (Option.isNone(failure)) return Effect.failCause(cause);
+                  switch (failure.value._tag) {
+                    case 'TenantNotResolved':
+                      return Effect.fail(failure.value);
+                    case 'ProductInfrastructureError':
+                      return Effect.sync(() => {
                         coreRowFailed = true;
                         pushRowError(
                           result,
                           row.sourceRow,
-                          formatImportError(error),
+                          formatImportError(failure.value),
                         );
-                      })
-                    : Effect.fail(error),
-              }),
-            );
+                        return null;
+                      });
+                  }
+                }),
+              );
+            if (importedProduct !== null) {
+              for (const [key, value] of rowCaches.categories) {
+                caches.categories.set(key, value);
+              }
+              for (const [key, value] of rowCaches.locations) {
+                caches.locations.set(key, value);
+              }
+              for (const [key, value] of rowCaches.areas) {
+                caches.areas.set(key, value);
+              }
+              for (const [key, value] of rowCaches.products) {
+                caches.products.set(key, value);
+              }
+              result.categoriesCreated += rowResult.categoriesCreated;
+              result.locationsCreated += rowResult.locationsCreated;
+              result.areasCreated += rowResult.areasCreated;
+              result.productsCreated += rowResult.productsCreated;
+              result.productsUpdated += rowResult.productsUpdated;
+              result.inventoryRecordsCreated +=
+                rowResult.inventoryRecordsCreated;
+              result.inventoryRecordsUpdated +=
+                rowResult.inventoryRecordsUpdated;
+
+              yield* importProductPhotos(
+                photoImporter,
+                importedProduct,
+                row,
+                caches,
+                result,
+                userId,
+              );
+            }
             processedRows += 1;
             if (coreRowFailed) failedRows += 1;
             yield* reportRowProgress();
