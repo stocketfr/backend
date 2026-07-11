@@ -330,6 +330,50 @@ describe('productImportRouter', () => {
       });
     });
 
+    it('accepts a complete version 2 execution plan', async () => {
+      const approvedPlan = {
+        planVersion: 2,
+        skuConflictPolicy: 'reject',
+        skuConflictResolutions: [],
+        missingLocationStrategy: {
+          mappingKey: 'missing-location',
+          confidence: 1,
+          reviewRequired: false,
+          rowCount: 0,
+          action: 'skip-inventory',
+        },
+        categoryMappings: [],
+        locationMappings: [],
+      };
+      mockMultipart.mockReturnValue(
+        Effect.succeed({
+          file: makePersistedFile(),
+          import_type: 'normalized-products',
+          plan: JSON.stringify(approvedPlan),
+        }),
+      );
+      const enqueue = vi.fn(() => Effect.succeed(queuedTask()));
+      const { handler } = makeProductImportRouterHarness({
+        backgroundService: { enqueue },
+        permissions: writeAll,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/import', {
+          method: 'POST',
+          body: 'ignored',
+        }),
+      );
+
+      expect(response.status).toBe(202);
+      expect(enqueue).toHaveBeenCalledWith({
+        bytes: Buffer.from('sku,name,category_path\nSKU-1,Whisky,Spirits\n'),
+        importType: 'normalized-products',
+        approvedPlan,
+        userId: '00000000-0000-4000-a000-000000000001',
+      });
+    });
+
     it('passes an AI proposal plan from the UI review flow to the import service', async () => {
       const aiProposalPlan = {
         format: 'sortly-items',

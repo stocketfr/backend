@@ -1,7 +1,8 @@
-import { Effect } from 'effect';
+import { Cause, Effect, Exit, Layer, Option } from 'effect';
 import { eq, isNull, sql, type SQL } from 'drizzle-orm';
 import { makeTryAsync } from '../../../platform/effect/try-async';
-import { DrizzleDatabase } from '../../../platform/db/drizzle';
+import { DrizzleDatabase, type DrizzleDb } from '../../../platform/db/drizzle';
+import { withDrizzleTransaction } from '../../../platform/db/transaction';
 import { TenantQuery } from '../../../platform/tenancy/tenant-query';
 import {
   areas,
@@ -11,6 +12,10 @@ import {
   products,
 } from '../../../platform/db/schema';
 import { ProductsInfrastructureError } from '../products.errors';
+import type {
+  ProductImportRowRepository,
+  ProductImportRowTransactionError,
+} from './row/import';
 
 const tryAsync = makeTryAsync(
   (action, cause) =>
@@ -28,6 +33,38 @@ const inventoryProductLocationConditions = (
   eq(inventory.product_id, productId),
   eq(inventory.location_id, locationId),
 ];
+
+class ProductImportTransactionDefect extends Error {
+  private constructor(
+    message: string,
+    readonly failure: ProductImportRowTransactionError | null,
+    readonly defectCause: Cause.Cause<unknown> | null,
+  ) {
+    super(message);
+    this.name = 'ProductImportTransactionDefect';
+  }
+
+  static failure(failure: ProductImportRowTransactionError) {
+    return new ProductImportTransactionDefect(failure.message, failure, null);
+  }
+
+  static defect(cause: Cause.Cause<unknown>) {
+    return new ProductImportTransactionDefect(Cause.pretty(cause), null, cause);
+  }
+}
+
+const runProductImportEffectAsPromise = async <A>(
+  effect: Effect.Effect<A, ProductImportRowTransactionError, never>,
+): Promise<A> => {
+  const exit = await Effect.runPromiseExit(effect);
+  if (Exit.isSuccess(exit)) return exit.value;
+
+  const failure = Cause.failureOption(exit.cause);
+  if (Option.isSome(failure)) {
+    throw ProductImportTransactionDefect.failure(failure.value);
+  }
+  throw ProductImportTransactionDefect.defect(exit.cause);
+};
 
 export class ProductImportRepository extends Effect.Service<ProductImportRepository>()(
   '@stocket/effect/products/ProductImportRepository',
@@ -67,6 +104,19 @@ export class ProductImportRepository extends Effect.Service<ProductImportReposit
           return yield* tryAsync('create import category', async () => {
             const rows = await db.insert(categories).values(values).returning();
             return rows[0]!;
+          });
+        });
+
+      const findCategoryById = (id: string) =>
+        Effect.gen(function* () {
+          const where = yield* tenantQuery.whereTenantId(categories, id);
+          return yield* tryAsync('find import category by id', async () => {
+            const rows = await db
+              .select()
+              .from(categories)
+              .where(where)
+              .limit(1);
+            return rows[0] ?? null;
           });
         });
 
@@ -136,6 +186,15 @@ export class ProductImportRepository extends Effect.Service<ProductImportReposit
           return yield* tryAsync('create import area', async () => {
             const rows = await db.insert(areas).values(values).returning();
             return rows[0]!;
+          });
+        });
+
+      const findAreaById = (id: string) =>
+        Effect.gen(function* () {
+          const where = yield* tenantQuery.whereTenantId(areas, id);
+          return yield* tryAsync('find import area by id', async () => {
+            const rows = await db.select().from(areas).where(where).limit(1);
+            return rows[0] ?? null;
           });
         });
 
@@ -266,13 +325,84 @@ export class ProductImportRepository extends Effect.Service<ProductImportReposit
           });
         });
 
+      const runRowTransaction = <A>(
+        run: (
+          transactionRepository: ProductImportRowRepository,
+        ) => Effect.Effect<A, ProductImportRowTransactionError>,
+      ) =>
+        Effect.gen(function* () {
+          const tenantId = yield* tenantQuery.tenantId;
+          const tenantScope = tenantQuery.forTenant(tenantId);
+          const transactionTenantQuery = {
+            _tag: '@stocket/effect/platform/TenantQuery' as const,
+            forTenant: tenantQuery.forTenant,
+            tenantId: Effect.succeed(tenantId),
+            tenantPredicate: (
+              table: Parameters<typeof tenantScope.tenantPredicate>[0],
+            ) => Effect.succeed(tenantScope.tenantPredicate(table)),
+            whereTenant: (
+              table: Parameters<typeof tenantScope.whereTenant>[0],
+              ...conditions: SQL[]
+            ) => Effect.succeed(tenantScope.whereTenant(table, ...conditions)),
+            whereTenantId: (
+              table: Parameters<typeof tenantScope.whereTenantId>[0],
+              id: string,
+              ...conditions: SQL[]
+            ) =>
+              Effect.succeed(
+                tenantScope.whereTenantId(table, id, ...conditions),
+              ),
+            whereTenantIds: (
+              table: Parameters<typeof tenantScope.whereTenantIds>[0],
+              ids: readonly string[],
+              ...conditions: SQL[]
+            ) =>
+              Effect.succeed(
+                tenantScope.whereTenantIds(table, ids, ...conditions),
+              ),
+            insertValues: <T extends object>(data: T) =>
+              Effect.succeed(tenantScope.insertValues(data)),
+          };
+
+          return yield* Effect.tryPromise({
+            try: () =>
+              withDrizzleTransaction(db, async (transactionDb: DrizzleDb) => {
+                const transactionPlatformLayer = Layer.merge(
+                  Layer.succeed(DrizzleDatabase, transactionDb),
+                  Layer.succeed(TenantQuery, transactionTenantQuery),
+                );
+                const transactionRepositoryLayer =
+                  ProductImportRepository.DefaultWithoutDependencies.pipe(
+                    Layer.provide(transactionPlatformLayer),
+                  );
+                const transactionEffect = Effect.gen(function* () {
+                  const transactionRepository = yield* ProductImportRepository;
+                  return yield* run(transactionRepository);
+                }).pipe(Effect.provide(transactionRepositoryLayer));
+
+                return runProductImportEffectAsPromise(transactionEffect);
+              }),
+            catch: (cause) =>
+              cause instanceof ProductImportTransactionDefect &&
+              cause.failure !== null
+                ? cause.failure
+                : new ProductsInfrastructureError({
+                    action: 'run product import row transaction',
+                    cause,
+                    messageKey: 'products.repositoryFailed',
+                  }),
+          });
+        });
+
       return {
         findCategoryByNameAndParent,
+        findCategoryById,
         createCategory,
         findLocationByName,
         findLocationById,
         createLocation,
         findAreaByNameLocationAndParent,
+        findAreaById,
         createArea,
         findProductBySku,
         createProduct,
@@ -282,6 +412,7 @@ export class ProductImportRepository extends Effect.Service<ProductImportReposit
         hasAreaScopedInventoryForProductAndLocation,
         createInventory,
         updateInventory,
+        runRowTransaction,
       };
     }),
     dependencies: [TenantQuery.Default],

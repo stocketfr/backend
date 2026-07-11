@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type {
   ProductImportAiProposalDto,
   ProductImportApprovedPlanDto,
+  ProductImportApprovedPlanV2Dto,
   ProductImportPreviewDto,
   ProductImportProposalGuidanceDto,
   ProductImportTargetContextDto,
@@ -21,6 +22,10 @@ import { ProductImportLlmProposer } from './llm-proposer';
 import { ProductImportPhotoImporter } from './photo-importer';
 import { ProductImportService } from './service';
 import { ProductImportPlanningContext } from './planning-context';
+import type {
+  ProductImportRowRepository,
+  ProductImportRowTransactionError,
+} from './row/import';
 
 const TEST_USER_ID = '00000000-0000-4000-a000-000000000001';
 const EMPTY_TARGET_CONTEXT: ProductImportTargetContextDto = {
@@ -91,7 +96,12 @@ function makeInMemoryRepository() {
     areaId: string | null = null,
   ) => `${productId}:${locationId}:${areaId ?? 'root'}`;
 
-  const repo = {
+  const transactionRepository = {
+    findCategoryById: vi.fn((categoryId: string) =>
+      Effect.sync(
+        () => categories.find((category) => category.id === categoryId) ?? null,
+      ),
+    ),
     findCategoryByNameAndParent: vi.fn(
       (name: string, parentId: string | null) =>
         Effect.sync(
@@ -138,6 +148,9 @@ function makeInMemoryRepository() {
             ) ?? null,
         ),
     ),
+    findAreaById: vi.fn((areaId: string) =>
+      Effect.sync(() => areas.find((area) => area.id === areaId) ?? null),
+    ),
     createArea: vi.fn((data: any) =>
       Effect.sync(() => {
         const row = makeRow({ id: id('area'), ...data } as any);
@@ -171,12 +184,6 @@ function makeInMemoryRepository() {
         return null;
       }),
     ),
-    findRootInventoryByProductAndLocation: vi.fn(
-      (productId: string, locationId: string) =>
-        Effect.sync(
-          () => inventoryByKey.get(inventoryKey(productId, locationId)) ?? null,
-        ),
-    ),
     findInventoryByProductLocationAndArea: vi.fn(
       (productId: string, locationId: string, areaId: string | null) =>
         Effect.sync(
@@ -209,6 +216,16 @@ function makeInMemoryRepository() {
         }
         return null;
       }),
+    ),
+  } satisfies ProductImportRowRepository;
+  const repo = {
+    ...transactionRepository,
+    runRowTransaction: vi.fn(
+      <A>(
+        run: (
+          repository: ProductImportRowRepository,
+        ) => Effect.Effect<A, ProductImportRowTransactionError>,
+      ) => Effect.suspend(() => run(transactionRepository)),
     ),
   };
 
@@ -722,6 +739,60 @@ Item,Service Gloves White,SORT-1,Accessories,12,Warehouse,2
       'SORT-1-SERVICE-GLOVES-BLACK',
       'SORT-1-SERVICE-GLOVES-WHITE',
     ]);
+  });
+
+  it('applies version 2 custom SKU and skip decisions per conflict variant', async () => {
+    const csv = `sku,name,category_path,location,quantity
+DUP-EDIT,Black Gloves,Accessories,Warehouse,6
+DUP-EDIT,White Gloves,Accessories,Warehouse,12
+`;
+    const preview = await runPreview(csv, 'normalized-products');
+    const proposal = makeProductImportProposal(preview, EMPTY_TARGET_CONTEXT);
+    const [resolution] = proposal.skuConflictResolutions;
+    const firstVariant = resolution?.variants[0];
+    const secondVariant = resolution?.variants[1];
+    if (!resolution || !firstVariant || !secondVariant) {
+      throw new Error('Expected editable duplicate SKU proposal');
+    }
+    const approvedPlan = {
+      planVersion: 2,
+      skuConflictPolicy: proposal.productIdentity.conflictPolicy,
+      skuConflictResolutions: [
+        {
+          ...resolution,
+          variants: [
+            {
+              ...firstVariant,
+              action: 'custom-sku',
+              targetSku: 'GLOVES-CUSTOM',
+            },
+            {
+              variantKey: secondVariant.variantKey,
+              rows: secondVariant.rows,
+              action: 'skip',
+            },
+          ],
+        },
+      ],
+      missingLocationStrategy: proposal.missingLocationStrategy,
+      categoryMappings: proposal.categoryMappings,
+      locationMappings: proposal.locationMappings,
+    } satisfies ProductImportApprovedPlanV2Dto;
+
+    const { result, state } = await runImportWithState(
+      csv,
+      'normalized-products',
+      undefined,
+      approvedPlan,
+    );
+
+    expect(result).toMatchObject({
+      productsCreated: 1,
+      inventoryRecordsCreated: 1,
+      rowsSkipped: 1,
+      errors: [],
+    });
+    expect([...state.productsBySku.keys()]).toEqual(['GLOVES-CUSTOM']);
   });
 
   it('clears stale inventory expiry dates when an update row has an empty expiry date', async () => {

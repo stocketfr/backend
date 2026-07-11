@@ -147,6 +147,23 @@ describe('tenant import helpers', () => {
     ).toBe('Row 3: Invalid quantity; Row 5: Missing product name');
   });
 
+  it('keeps post-commit photo failures nonblocking', () => {
+    expect(
+      formatImportResultErrors(
+        importResult({
+          photosSkipped: 1,
+          errors: [
+            {
+              row: 2,
+              error:
+                'Photo import failed for "https://example.test/photo.jpg": network down',
+            },
+          ],
+        }),
+      ),
+    ).toBe('');
+  });
+
   it('builds tenant-scoped request context for import execution', () => {
     expect(tenantImportRequestContext(actor, created)).toEqual({
       requestId: '00000000-0000-4000-8000-123456789abc',
@@ -256,5 +273,36 @@ describe('tenant import helpers', () => {
           details: 'Row 2: Invalid SKU',
         });
       }),
+  );
+
+  it.effect('accepts product imports with only photo warnings', () =>
+    Effect.gen(function* () {
+      const service: Pick<TenantImportProductService, 'importFromCsvContent'> =
+        {
+          importFromCsvContent: () =>
+            Effect.succeed(
+              importResult({
+                photosSkipped: 1,
+                errors: [
+                  {
+                    row: 2,
+                    error:
+                      'Photo import failed for "https://example.test/photo.jpg": network down',
+                  },
+                ],
+              }),
+            ),
+        };
+
+      const result = yield* importProductsForTenant(
+        created,
+        productImport,
+        actor,
+        service,
+      );
+
+      expect(result.photosSkipped).toBe(1);
+      expect(result.errors).toHaveLength(1);
+    }),
   );
 });

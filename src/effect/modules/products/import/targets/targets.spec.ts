@@ -114,6 +114,10 @@ const makeTargetState = () => {
   };
 
   const repository = {
+    findCategoryById: (categoryId) =>
+      Effect.sync(
+        () => categories.find((category) => category.id === categoryId) ?? null,
+      ),
     findCategoryByNameAndParent: (name, parentId) =>
       Effect.sync(() => {
         calls.findCategoryByNameAndParent++;
@@ -169,6 +173,8 @@ const makeTargetState = () => {
           ) ?? null
         );
       }),
+    findAreaById: (areaId) =>
+      Effect.sync(() => areas.find((area) => area.id === areaId) ?? null),
     createArea: (data) =>
       Effect.sync(() => {
         calls.createArea++;
@@ -222,6 +228,36 @@ describe('product import target resolution', () => {
       expect(state.calls.findCategoryByNameAndParent).toBe(2);
       expect(state.calls.createCategory).toBe(2);
     }),
+  );
+
+  it.effect(
+    'resolves an approved existing category id without creating paths',
+    () =>
+      Effect.gen(function* () {
+        const state = makeTargetState();
+        const result = makeEmptyProductImportResult();
+        const caches = makeCaches();
+        state.categories.push(
+          categoryRow({
+            id: 'cat-existing',
+            name: 'Existing Oils',
+            parent_id: null,
+          }),
+        );
+
+        const categoryId = yield* getOrCreateCategoryPath({
+          repository: state.repository,
+          categoryPath: 'Spa / Oils',
+          existingCategoryId: 'cat-existing',
+          caches,
+          result,
+        });
+
+        expect(categoryId).toBe('cat-existing');
+        expect(result.categoriesCreated).toBe(0);
+        expect(state.calls.findCategoryByNameAndParent).toBe(0);
+        expect(state.calls.createCategory).toBe(0);
+      }),
   );
 
   it.effect('creates mapped area paths under the resolved location', () =>
@@ -297,6 +333,172 @@ describe('product import target resolution', () => {
       expect(state.calls.findLocationById).toBe(1);
       expect(state.calls.createLocation).toBe(0);
       expect(caches.locations.get('Existing Warehouse')).toBe('loc-existing');
+    }),
+  );
+
+  it.effect('retains an existing mapped area id in version 2 plans', () =>
+    Effect.gen(function* () {
+      const state = makeTargetState();
+      const result = makeEmptyProductImportResult();
+      const caches = makeCaches();
+      state.locations.push(
+        locationRow({ id: 'loc-existing', name: 'Existing Warehouse' }),
+      );
+      state.areas.push(
+        areaRow({
+          id: 'area-existing',
+          location_id: 'loc-existing',
+          name: 'Shelf 2',
+          parent_id: null,
+        }),
+      );
+      const plan = {
+        planVersion: 2,
+        skuConflictPolicy: 'reject',
+        skuConflictResolutions: [],
+        missingLocationStrategy: {
+          mappingKey: 'missing-location',
+          confidence: 1,
+          reviewRequired: false,
+          rowCount: 0,
+          action: 'skip-inventory',
+        },
+        categoryMappings: [],
+        locationMappings: [
+          {
+            mappingKey: 'location:Main%20Warehouse%20-%20Shelf%202',
+            confidence: 1,
+            reviewRequired: false,
+            sourceLocation: 'Main Warehouse - Shelf 2',
+            targetLocationId: 'loc-existing',
+            targetAreaId: 'area-existing',
+            action: 'use-existing-area',
+            rowCount: 1,
+          },
+        ],
+      } satisfies ProductImportPlan;
+
+      const target = yield* resolveInventoryTarget({
+        repository: state.repository,
+        row: row(),
+        caches,
+        result,
+        approvedPlan: plan,
+      });
+
+      expect(target).toEqual({
+        locationId: 'loc-existing',
+        areaId: 'area-existing',
+      });
+      expect(state.calls.createLocation).toBe(0);
+      expect(state.calls.createArea).toBe(0);
+    }),
+  );
+
+  it.effect('assigns missing stock to a review area in version 2 plans', () =>
+    Effect.gen(function* () {
+      const state = makeTargetState();
+      const result = makeEmptyProductImportResult();
+      const caches = makeCaches();
+      const plan = {
+        planVersion: 2,
+        skuConflictPolicy: 'reject',
+        skuConflictResolutions: [],
+        missingLocationStrategy: {
+          mappingKey: 'missing-location',
+          confidence: 0.7,
+          reviewRequired: true,
+          rowCount: 1,
+          action: 'assign-review-area',
+          targetLocationName: 'Imported Inventory',
+          areaPath: 'Unassigned / Needs Review',
+        },
+        categoryMappings: [],
+        locationMappings: [],
+      } satisfies ProductImportPlan;
+
+      const target = yield* resolveInventoryTarget({
+        repository: state.repository,
+        row: row({ location: '' }),
+        caches,
+        result,
+        approvedPlan: plan,
+      });
+
+      expect(target).toEqual({ locationId: 'loc-1', areaId: 'area-2' });
+      expect(state.locations.map((item) => item.name)).toEqual([
+        'Imported Inventory',
+      ]);
+      expect(state.areas.map((item) => item.name)).toEqual([
+        'Unassigned',
+        'Needs Review',
+      ]);
+    }),
+  );
+
+  it.effect('uses or skips missing inventory exactly as approved', () =>
+    Effect.gen(function* () {
+      const state = makeTargetState();
+      const result = makeEmptyProductImportResult();
+      const caches = makeCaches();
+      state.locations.push(
+        locationRow({ id: 'loc-existing', name: 'Existing Warehouse' }),
+      );
+      state.areas.push(
+        areaRow({
+          id: 'area-existing',
+          location_id: 'loc-existing',
+          name: 'Needs Review',
+          parent_id: null,
+        }),
+      );
+      const common = {
+        planVersion: 2 as const,
+        skuConflictPolicy: 'reject' as const,
+        skuConflictResolutions: [],
+        categoryMappings: [],
+        locationMappings: [],
+      };
+      const existingTarget = yield* resolveInventoryTarget({
+        repository: state.repository,
+        row: row({ location: '' }),
+        caches,
+        result,
+        approvedPlan: {
+          ...common,
+          missingLocationStrategy: {
+            mappingKey: 'missing-location',
+            confidence: 1,
+            reviewRequired: false,
+            rowCount: 1,
+            action: 'use-existing-area',
+            targetLocationId: 'loc-existing',
+            targetAreaId: 'area-existing',
+          },
+        },
+      });
+      const skippedTarget = yield* resolveInventoryTarget({
+        repository: state.repository,
+        row: row({ location: '' }),
+        caches,
+        result,
+        approvedPlan: {
+          ...common,
+          missingLocationStrategy: {
+            mappingKey: 'missing-location',
+            confidence: 1,
+            reviewRequired: false,
+            rowCount: 1,
+            action: 'skip-inventory',
+          },
+        },
+      });
+
+      expect(existingTarget).toEqual({
+        locationId: 'loc-existing',
+        areaId: 'area-existing',
+      });
+      expect(skippedTarget).toEqual({ locationId: null, areaId: null });
     }),
   );
 

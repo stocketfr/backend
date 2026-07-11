@@ -382,12 +382,13 @@ export const ProductImportAiProposalSchema = Schema.Struct({
 export const ProductImportPlanSchema = Schema.Union(
   ProductImportAiProposalSchema,
   ProductImportApprovedPlanSchema,
+  ProductImportApprovedPlanV2Schema,
 );
 
 export type ProductImportType = (typeof ProductImportTypes)[number];
 export type ProductImportFormat = Exclude<ProductImportType, 'auto'>;
 export type ProductImportPlan =
-  | ProductImportApprovedPlanDto
+  | ProductImportPlanDto
   | ProductImportAiProposalDto;
 
 export interface CsvParseResult {

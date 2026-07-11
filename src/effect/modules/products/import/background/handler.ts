@@ -160,6 +160,13 @@ export const makeProductImportTaskHandler = ({
                   retryable: false,
                 }),
               ),
+            ProductImportProposalInvalid: () =>
+              Effect.fail(
+                new TaskExecutionFailed({
+                  error: 'Product import plan is invalid',
+                  retryable: false,
+                }),
+              ),
             ProductInfrastructureError: () =>
               Effect.fail(
                 new TaskExecutionFailed({

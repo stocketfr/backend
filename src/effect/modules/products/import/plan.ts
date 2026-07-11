@@ -1,8 +1,10 @@
 import type {
-  NormalizedProductImportRow,
+  ProductImportCategoryMappingDto,
+  ProductImportCategoryMappingV2Dto,
+  ProductImportLocationMappingV2Dto,
   ProductImportLocationMappingDto,
-  ProductImportPlan,
-} from './types';
+} from '@stocket/types/products';
+import type { NormalizedProductImportRow, ProductImportPlan } from './types';
 import { normalizeStorageLocationName } from './storage-location/utils';
 import { normalizeCategoryPath } from './utils/csv';
 
@@ -43,11 +45,27 @@ export const getDefaultLocationName = (
 export const findLocationMapping = (
   row: NormalizedProductImportRow,
   approvedPlan: ProductImportPlan | undefined,
-): ProductImportLocationMappingDto | undefined => {
+):
+  | ProductImportLocationMappingDto
+  | ProductImportLocationMappingV2Dto
+  | undefined => {
   const sourceLocation = normalizeStorageLocationName(row.location);
   return approvedPlan?.locationMappings?.find(
     (mapping) =>
       normalizeStorageLocationName(mapping.sourceLocation) === sourceLocation,
+  );
+};
+
+export const findCategoryMapping = (
+  row: NormalizedProductImportRow,
+  approvedPlan: ProductImportPlan | undefined,
+):
+  | ProductImportCategoryMappingDto
+  | ProductImportCategoryMappingV2Dto
+  | undefined => {
+  const sourcePath = normalizeCategoryPath(row.category_path);
+  return approvedPlan?.categoryMappings?.find(
+    (candidate) => normalizeCategoryPath(candidate.sourcePath) === sourcePath,
   );
 };
 
@@ -56,8 +74,11 @@ export const getTargetCategoryPath = (
   approvedPlan: ProductImportPlan | undefined,
 ): string => {
   const sourcePath = normalizeCategoryPath(row.category_path);
-  const mapping = approvedPlan?.categoryMappings?.find(
-    (candidate) => normalizeCategoryPath(candidate.sourcePath) === sourcePath,
-  );
+  const mapping = findCategoryMapping(row, approvedPlan);
   return normalizeCategoryPath(mapping?.targetPath ?? sourcePath);
 };
+
+export const isProductImportPlanV2 = (
+  approvedPlan: ProductImportPlan | undefined,
+): approvedPlan is Extract<ProductImportPlan, { readonly planVersion: 2 }> =>
+  approvedPlan?.planVersion === 2;

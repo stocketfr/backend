@@ -13,6 +13,9 @@ export type ProductImportTargetError =
   | TenantNotResolved;
 
 export interface ProductImportTargetRepository {
+  readonly findCategoryById: (
+    id: string,
+  ) => Effect.Effect<ImportCategoryRow | null, ProductImportTargetError>;
   readonly findCategoryByNameAndParent: (
     name: string,
     parentId: string | null,
@@ -40,6 +43,9 @@ export interface ProductImportTargetRepository {
     locationId: string,
     name: string,
     parentId: string | null,
+  ) => Effect.Effect<ImportAreaRow | null, ProductImportTargetError>;
+  readonly findAreaById: (
+    id: string,
   ) => Effect.Effect<ImportAreaRow | null, ProductImportTargetError>;
   readonly createArea: (data: {
     readonly location_id: string;

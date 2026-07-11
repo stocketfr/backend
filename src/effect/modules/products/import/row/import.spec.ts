@@ -197,6 +197,10 @@ const makeImportState = () => {
   ) => `${productId}:${locationId}:${areaId ?? 'root'}`;
 
   const repository = {
+    findCategoryById: (categoryId) =>
+      Effect.sync(
+        () => categories.find((category) => category.id === categoryId) ?? null,
+      ),
     findCategoryByNameAndParent: (name, parentId) =>
       Effect.sync(
         () =>
@@ -246,6 +250,8 @@ const makeImportState = () => {
               area.parent_id === parentId,
           ) ?? null,
       ),
+    findAreaById: (areaId) =>
+      Effect.sync(() => areas.find((area) => area.id === areaId) ?? null),
     createArea: (data) =>
       Effect.sync(() => {
         const area = areaRow({
@@ -488,53 +494,37 @@ describe('importProductRow', () => {
       }),
   );
 
-  it.effect(
-    'imports supported photos once and records unsupported or failed URLs',
-    () =>
-      Effect.gen(function* () {
-        const state = makeImportState();
-        const failingUrl = 'https://lnk.sortly.co/fail';
-        const { importer, calls } = makePhotoImporter(new Set([failingUrl]));
-        const result = makeEmptyProductImportResult();
-        const caches = makeCaches();
+  it.effect('defers photo imports until after database work commits', () =>
+    Effect.gen(function* () {
+      const state = makeImportState();
+      const failingUrl = 'https://lnk.sortly.co/fail';
+      const { importer, calls } = makePhotoImporter(new Set([failingUrl]));
+      const result = makeEmptyProductImportResult();
+      const caches = makeCaches();
 
-        yield* importProductRow({
-          repository: state.repository,
-          photoImporter: importer,
-          row: row({
-            location: '',
-            photo_urls: [
-              'https://lnk.sortly.co/ok',
-              failingUrl,
-              'https://example.com/nope',
-              'https://lnk.sortly.co/ok',
-            ],
-          }),
-          caches,
-          result,
-          expiryDate: null,
-          userId: TEST_USER_ID,
-          approvedPlan: undefined,
-        });
+      yield* importProductRow({
+        repository: state.repository,
+        photoImporter: importer,
+        row: row({
+          location: '',
+          photo_urls: [
+            'https://lnk.sortly.co/ok',
+            failingUrl,
+            'https://example.com/nope',
+            'https://lnk.sortly.co/ok',
+          ],
+        }),
+        caches,
+        result,
+        expiryDate: null,
+        userId: TEST_USER_ID,
+        approvedPlan: undefined,
+      });
 
-        expect(result.photosCreated).toBe(1);
-        expect(result.photosSkipped).toBe(2);
-        expect(calls.map((call) => call.url)).toEqual([
-          'https://lnk.sortly.co/ok',
-          failingUrl,
-        ]);
-        expect(result.errors).toEqual([
-          {
-            row: 2,
-            error:
-              'Photo import failed for "https://lnk.sortly.co/fail": download failed',
-          },
-          {
-            row: 2,
-            error:
-              'Photo import failed for "https://example.com/nope": Unsupported Sortly photo URL',
-          },
-        ]);
-      }),
+      expect(result.photosCreated).toBe(0);
+      expect(result.photosSkipped).toBe(0);
+      expect(calls).toEqual([]);
+      expect(result.errors).toEqual([]);
+    }),
   );
 });
