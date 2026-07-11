@@ -487,6 +487,7 @@ const makeSqlLogRecord = (
 
 export const runtimeLoggingLayer = Layer.mergeAll(
   Logger.replace(Logger.defaultLogger, appConsoleLogger),
+  Logger.replace(Logger.prettyLoggerDefault, appConsoleLogger),
   Logger.minimumLogLevel(resolveLogLevel()),
 );
 

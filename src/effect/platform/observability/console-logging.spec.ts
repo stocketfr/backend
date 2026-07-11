@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { Data } from 'effect';
+import { Data, Effect, Logger } from 'effect';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { formatLogLine } from './console-logging';
+import { formatLogLine, runtimeLoggingLayer } from './console-logging';
 
 const requestLog = {
   messageKey: 'http.request',
@@ -23,6 +23,11 @@ class TestInfrastructureError extends Data.TaggedError(
 }> {}
 
 describe('formatLogLine', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.LOG_FORMAT;
+  });
+
   it('keeps the compact text format for local logs', () => {
     expect(
       formatLogLine(
@@ -94,5 +99,30 @@ describe('formatLogLine', () => {
         },
       },
     });
+  });
+
+  it('emits one JSON event per Effect log in production format', async () => {
+    process.env.LOG_FORMAT = 'json';
+    const output: unknown[][] = [];
+    for (const method of ['debug', 'error', 'info', 'log', 'warn'] as const) {
+      vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
+        output.push(args);
+      });
+    }
+
+    await Effect.runPromise(
+      Effect.log(requestLog).pipe(
+        Effect.provide(runtimeLoggingLayer),
+        Effect.provide(
+          Logger.replace(Logger.defaultLogger, Logger.prettyLoggerDefault),
+        ),
+      ),
+    );
+
+    expect(output).toHaveLength(1);
+    expect(output[0]).toHaveLength(1);
+    expect(output[0]?.[0]).toEqual(expect.any(String));
+    expect(output[0]?.[0]).not.toContain('\n');
+    expect(JSON.parse(String(output[0]?.[0]))).toMatchObject(requestLog);
   });
 });
