@@ -23,6 +23,7 @@
 import { Effect } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
+import { ErrorCode } from '@stocket/types/common';
 import {
   CategoryNotFound,
   PriceBelowCost,
@@ -582,6 +583,9 @@ describe('productsRouter', () => {
         }),
       );
       expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: ErrorCode.PRODUCT_SKU_DUPLICATE,
+      });
       expect(auditLog).not.toHaveBeenCalled();
     });
   });
@@ -926,6 +930,9 @@ describe('productsRouter', () => {
         new Request(`http://localhost/products/${PRODUCT_ID}`),
       );
       expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toMatchObject({
+        code: ErrorCode.PRODUCT_NOT_FOUND,
+      });
     });
   });
 

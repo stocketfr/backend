@@ -18,6 +18,7 @@ import { Effect } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
 import { OrderStatus } from '@stocket/types/orders';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
+import { ErrorCode } from '@stocket/types/common';
 import {
   CannotDeleteNonDraftOrder,
   ClientNotFound,
@@ -518,6 +519,9 @@ describe('ordersRouter', () => {
       );
 
       expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: ErrorCode.ORDER_INVALID_TRANSITION,
+      });
       expect(auditLog).not.toHaveBeenCalled();
     });
   });

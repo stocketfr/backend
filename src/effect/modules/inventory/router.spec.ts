@@ -14,6 +14,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { type Context, Effect, Layer } from 'effect';
 import { HttpApp, HttpRouter } from '@effect/platform';
 import { Permission, Resource } from '@stocket/types/auth';
+import { ErrorCode } from '@stocket/types/common';
 import { respondCause } from '../../platform/http/errors';
 import { PermissionProvider } from '../../platform/auth/permission-provider';
 import { AuditLogWriter } from '../../platform/audit/index';
@@ -388,6 +389,7 @@ describe('inventoryRouter', () => {
       expect(response.status).toBe(400);
       await expect(response.json()).resolves.toMatchObject({
         statusCode: 400,
+        code: ErrorCode.INVENTORY_NEGATIVE_QUANTITY,
         messageKey: 'inventory.quantityAdjustmentNegative',
       });
     });
