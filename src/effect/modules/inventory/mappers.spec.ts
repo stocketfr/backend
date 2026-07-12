@@ -37,11 +37,13 @@ const inventory = {
 
 describe('inventory mappers', () => {
   it('maps inventory relations and numeric cost to the response contract', () => {
-    expect(toInventoryResponseDto(inventory)).toMatchObject({
+    expect(
+      toInventoryResponseDto(inventory, 'Warehouse / Cold Room'),
+    ).toMatchObject({
       id: inventory.id,
       product: { sku: 'SKU-1', unit: 'bottle' },
       location: { name: 'Warehouse A' },
-      area: { code: 'COLD' },
+      area: { code: 'COLD', path: 'Warehouse / Cold Room' },
       batchNumber: 'BATCH-1',
       cost_per_unit: 9.5,
     });

@@ -22,6 +22,8 @@ import type {
   UpdateInventoryDto,
 } from './types';
 import { makeInventoryWriteWorkflows } from './write';
+import { buildAreaPathMap } from './area-paths';
+import type { Inventory } from './types';
 
 export class InventoryService extends Effect.Service<InventoryService>()(
   '@stocket/effect/inventory/InventoryService',
@@ -86,20 +88,46 @@ export class InventoryService extends Effect.Service<InventoryService>()(
         getInventoryOrFail,
       });
 
+      const loadAreaPaths = (inventoryItems: readonly Inventory[]) =>
+        inventoryItems.some((item) => item.area_id !== null)
+          ? areasService.findAll({}).pipe(Effect.map(buildAreaPathMap))
+          : Effect.succeed(new Map<string, string>());
+
+      const mapInventoryWithPath = (
+        inventoryItem: Inventory,
+        areaPaths: ReadonlyMap<string, string>,
+      ) =>
+        toInventoryResponseDto(
+          inventoryItem,
+          inventoryItem.area_id
+            ? areaPaths.get(inventoryItem.area_id)
+            : undefined,
+        );
+
       const findAllPaginated = (query: InventoryQueryDto) =>
-        Effect.map(repository.findAllPaginatedWithRelations(query), (result) =>
-          toPaginatedResponse(result, toInventoryResponseDto),
-        ).pipe(trace.span('findAllPaginated'));
+        Effect.gen(function* () {
+          const result = yield* repository.findAllPaginatedWithRelations(query);
+          const areaPaths = yield* loadAreaPaths(result.data);
+          return toPaginatedResponse(result, (item) =>
+            mapInventoryWithPath(item, areaPaths),
+          );
+        }).pipe(trace.span('findAllPaginated'));
 
       const findAll = () =>
-        Effect.map(repository.findAllWithRelations(), (inventoryItems) =>
-          inventoryItems.map(toInventoryResponseDto),
-        ).pipe(trace.span('findAll'));
+        Effect.gen(function* () {
+          const inventoryItems = yield* repository.findAllWithRelations();
+          const areaPaths = yield* loadAreaPaths(inventoryItems);
+          return inventoryItems.map((item) =>
+            mapInventoryWithPath(item, areaPaths),
+          );
+        }).pipe(trace.span('findAll'));
 
       const findOne = (id: string) =>
-        Effect.map(getInventoryOrFail(id), toInventoryResponseDto).pipe(
-          trace.span('findOne', { attributes: { id } }),
-        );
+        Effect.gen(function* () {
+          const inventoryItem = yield* getInventoryOrFail(id);
+          const areaPaths = yield* loadAreaPaths([inventoryItem]);
+          return mapInventoryWithPath(inventoryItem, areaPaths);
+        }).pipe(trace.span('findOne', { attributes: { id } }));
 
       const findByProduct = (productId: string) =>
         Effect.gen(function* () {
@@ -107,7 +135,10 @@ export class InventoryService extends Effect.Service<InventoryService>()(
 
           const inventoryItems =
             yield* repository.findByProductIdWithRelations(productId);
-          return inventoryItems.map(toInventoryResponseDto);
+          const areaPaths = yield* loadAreaPaths(inventoryItems);
+          return inventoryItems.map((item) =>
+            mapInventoryWithPath(item, areaPaths),
+          );
         }).pipe(
           trace.span('findByProduct', {
             attributes: { productId },
@@ -123,7 +154,10 @@ export class InventoryService extends Effect.Service<InventoryService>()(
 
           const inventoryItems =
             yield* repository.findByLocationIdWithRelations(locationId);
-          return inventoryItems.map(toInventoryResponseDto);
+          const areaPaths = yield* loadAreaPaths(inventoryItems);
+          return inventoryItems.map((item) =>
+            mapInventoryWithPath(item, areaPaths),
+          );
         }).pipe(
           trace.span('findByLocation', {
             attributes: { locationId },
