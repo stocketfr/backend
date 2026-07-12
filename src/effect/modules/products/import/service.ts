@@ -34,7 +34,7 @@ import { makeServiceTracer } from '../../../platform/observability/service-trace
 import { ProductImportLlmProposer } from './llm-proposer';
 import { ProductImportPhotoImporter } from './photo-importer';
 import { ProductImportRepository } from './repository';
-import { getSkuConflictPolicy } from './plan';
+import { getPhotoPolicy, getSkuConflictPolicy } from './plan';
 import { parseAndDetectProductImportFormat } from './parser';
 import { importProductRow } from './row/import';
 import { importProductPhotos } from './row/photos';
@@ -98,6 +98,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
 
           const result = makeEmptyProductImportResult();
           const rows = normalizeProductImportRecords(parsed.records, format);
+          const photoPolicy = getPhotoPolicy(approvedPlan);
           const rowDecisions = yield* validateProductImportExecutionPlan({
             repository,
             rows,
@@ -271,14 +272,18 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
               result.inventoryRecordsUpdated +=
                 rowResult.inventoryRecordsUpdated;
 
-              yield* importProductPhotos(
-                photoImporter,
-                importedProduct,
-                row,
-                caches,
-                result,
-                userId,
-              );
+              if (photoPolicy === 'skip') {
+                result.photosSkipped += row.photo_urls.length;
+              } else {
+                yield* importProductPhotos(
+                  photoImporter,
+                  importedProduct,
+                  row,
+                  caches,
+                  result,
+                  userId,
+                );
+              }
             }
             processedRows += 1;
             if (coreRowFailed) failedRows += 1;

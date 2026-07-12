@@ -114,15 +114,28 @@ beforeEach(() => {
 
 describe('inventoryRouter', () => {
   describe('GET /inventory (list)', () => {
-    it('returns paginated inventory on success', async () => {
+    it('returns placement paths with inventory-only read permission', async () => {
       const handler = makeHandler({
         service: {
           findAllPaginated: () =>
             Effect.succeed({
-              data: [makeInventoryDto()],
+              data: [
+                makeInventoryDto({
+                  area_id: '00000000-0000-4000-b000-000000000004',
+                  area: {
+                    id: '00000000-0000-4000-b000-000000000004',
+                    name: 'Shelf 3',
+                    code: '',
+                    path: 'Bay E / Shelf 3',
+                  },
+                }),
+              ],
               meta: { total: 1, page: 1, limit: 20, total_pages: 1 },
             }),
         } as any,
+        permissions: {
+          [Resource.INVENTORY]: [Permission.READ],
+        },
       });
 
       const response = await handler(new Request('http://localhost/inventory'));
@@ -130,6 +143,7 @@ describe('inventoryRouter', () => {
       const body = (await response.json()) as any;
       expect(body.data).toHaveLength(1);
       expect(body.data[0].id).toBe(TEST_INVENTORY_ID);
+      expect(body.data[0].area.path).toBe('Bay E / Shelf 3');
     });
 
     it('returns 403 when the caller lacks inventory:read', async () => {

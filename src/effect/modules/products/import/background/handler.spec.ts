@@ -18,6 +18,21 @@ const blobKey = productImportBlobKey(
   tenantId,
   '10000000-0000-4000-8000-000000000001',
 );
+const approvedSkipPlan = {
+  planVersion: 2,
+  photoPolicy: 'skip',
+  skuConflictPolicy: 'reject',
+  skuConflictResolutions: [],
+  missingLocationStrategy: {
+    mappingKey: 'missing-location',
+    confidence: 1,
+    reviewRequired: false,
+    rowCount: 0,
+    action: 'skip-inventory',
+  },
+  categoryMappings: [],
+  locationMappings: [],
+} as const;
 
 const makeTask = (payload: unknown = { blobKey, importType: 'auto' }) =>
   makeTaskRow({
@@ -78,6 +93,39 @@ describe('ProductImportTaskHandler', () => {
         messageArgs: { processedRows: 1, totalRows: 1 },
         force: true,
       },
+    ]);
+  });
+
+  it('preserves the v2 photo policy from the durable task payload', async () => {
+    const storage = makeInMemoryStorageAdapter({
+      [blobKey]: Buffer.from('sku,name\nSKU-1,Whisky\n'),
+    });
+    const receivedOptions: unknown[] = [];
+    const importFromCsvContent: ProductImportService['importFromCsvContent'] = (
+      options,
+    ) =>
+      Effect.sync(() => {
+        receivedOptions.push(options);
+        return makeEmptyProductImportResult();
+      });
+    const handler = makeProductImportTaskHandler({
+      productImport: { importFromCsvContent },
+      storage,
+      authorize: Effect.void,
+    });
+    const task = makeTask({
+      blobKey,
+      importType: 'sortly-items',
+      approvedPlan: approvedSkipPlan,
+    });
+
+    await Effect.runPromise(handler.run(task, { ...executionContext, task }));
+
+    expect(receivedOptions).toEqual([
+      expect.objectContaining({
+        importType: 'sortly-items',
+        approvedPlan: approvedSkipPlan,
+      }),
     ]);
   });
 

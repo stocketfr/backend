@@ -63,6 +63,7 @@ const importPreview = () => ({
   totalRows: 2,
   itemRows: 1,
   folderRows: 1,
+  photoUrlCount: 0,
   importableRows: 1,
   missingRequiredRows: 0,
   duplicateSkuConflicts: [],
@@ -333,6 +334,7 @@ describe('productImportRouter', () => {
     it('accepts a complete version 2 execution plan', async () => {
       const approvedPlan = {
         planVersion: 2,
+        photoPolicy: 'skip',
         skuConflictPolicy: 'reject',
         skuConflictResolutions: [],
         missingLocationStrategy: {
@@ -343,7 +345,24 @@ describe('productImportRouter', () => {
           action: 'skip-inventory',
         },
         categoryMappings: [],
-        locationMappings: [],
+        locationMappings: [
+          {
+            mappingKey: 'location:Bay%20I%20-%20Shelf%203',
+            confidence: 1,
+            reviewRequired: false,
+            sourceLocation: 'Bay I - Shelf 3',
+            action: 'create-area',
+            targetLocationName: 'Main Warehouse',
+            areaPath: 'Bay I / Shelf 3',
+            rowCount: 1,
+            childAreas: [
+              { name: 'Bin 1' },
+              { name: 'Bin 2' },
+              { name: 'Bin 3' },
+              { name: 'Bin 4' },
+            ],
+          },
+        ],
       };
       mockMultipart.mockReturnValue(
         Effect.succeed({
@@ -372,6 +391,50 @@ describe('productImportRouter', () => {
         approvedPlan,
         userId: '00000000-0000-4000-a000-000000000001',
       });
+    });
+
+    it('rejects an unsupported version 2 photo policy at the upload boundary', async () => {
+      const invalidPlan = {
+        planVersion: 2,
+        photoPolicy: 'download',
+        skuConflictPolicy: 'reject',
+        skuConflictResolutions: [],
+        missingLocationStrategy: {
+          mappingKey: 'missing-location',
+          confidence: 1,
+          reviewRequired: false,
+          rowCount: 0,
+          action: 'skip-inventory',
+        },
+        categoryMappings: [],
+        locationMappings: [],
+      };
+      mockMultipart.mockReturnValue(
+        Effect.succeed({
+          file: makePersistedFile(),
+          import_type: 'normalized-products',
+          plan: JSON.stringify(invalidPlan),
+        }),
+      );
+      const enqueue = vi.fn(() => Effect.succeed(queuedTask()));
+      const { handler } = makeProductImportRouterHarness({
+        backgroundService: { enqueue },
+        permissions: writeAll,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/import', {
+          method: 'POST',
+          body: 'ignored',
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        statusCode: 400,
+        messageKey: 'products.importPlanParseFailed',
+      });
+      expect(enqueue).not.toHaveBeenCalled();
     });
 
     it('passes an AI proposal plan from the UI review flow to the import service', async () => {
@@ -640,6 +703,53 @@ describe('productImportRouter', () => {
         guidance: {
           instructions: 'Keep the existing category names.',
         },
+      });
+    });
+
+    it('preserves a locked photo choice while decoding proposal guidance', async () => {
+      const currentPlan = {
+        planVersion: 2,
+        photoPolicy: 'skip',
+        skuConflictPolicy: 'reject',
+        skuConflictResolutions: [],
+        missingLocationStrategy: {
+          mappingKey: 'missing-location',
+          confidence: 1,
+          reviewRequired: false,
+          rowCount: 0,
+          action: 'skip-inventory',
+        },
+        categoryMappings: [],
+        locationMappings: [],
+      };
+      mockMultipart.mockReturnValue(
+        Effect.succeed({
+          file: makePersistedFile(),
+          import_type: 'auto',
+          guidance: JSON.stringify({
+            currentPlan,
+            locks: { photoPolicy: true },
+          }),
+        }),
+      );
+      const proposeImportPlan = vi.fn(() => Effect.succeed(importProposal()));
+      const { handler } = makeProductImportRouterHarness({
+        importService: { proposeImportPlan },
+        permissions: writeAll,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/import/propose', {
+          method: 'POST',
+          body: 'ignored',
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(proposeImportPlan).toHaveBeenCalledWith({
+        content: 'sku,name,category_path\nSKU-1,Whisky,Spirits\n',
+        importType: 'auto',
+        guidance: { currentPlan, locks: { photoPolicy: true } },
       });
     });
 

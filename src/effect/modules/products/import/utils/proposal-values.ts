@@ -38,5 +38,13 @@ export const normalizeProductImportPath = (
 export const normalizeProductImportLocationName = (value: string) =>
   normalizeProductImportText(value, PRODUCT_IMPORT_MAX_LOCATION_NAME_LENGTH);
 
+export const normalizeProductImportAreaName = (value: string) => {
+  if (value.includes('/')) return undefined;
+  return normalizeProductImportText(
+    value,
+    PRODUCT_IMPORT_MAX_PATH_SEGMENT_LENGTH,
+  );
+};
+
 export const normalizeProductImportSku = (value: string) =>
   normalizeProductImportText(value, PRODUCT_IMPORT_MAX_SKU_LENGTH);

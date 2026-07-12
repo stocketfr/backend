@@ -13,6 +13,7 @@ import {
   skuConflictDecisionKey,
 } from './utils/proposal-keys';
 import {
+  normalizeProductImportAreaName,
   normalizeProductImportLocationName,
   normalizeProductImportPath,
   normalizeProductImportSku,
@@ -81,6 +82,27 @@ const validateCanonicalLocationName = (
       `${label} must be a normalized location name within import limits`,
     );
   }
+};
+
+const validateChildAreas = (
+  childAreas: readonly { readonly name: string }[] | undefined,
+  label: string,
+  errors: string[],
+) => {
+  if (childAreas === undefined) return;
+  if (childAreas.length > 20) {
+    errors.push(`${label} cannot create more than 20 child areas`);
+  }
+  const normalizedNames: string[] = [];
+  for (const child of childAreas) {
+    const name = normalizeProductImportAreaName(child.name);
+    if (name === undefined || name !== child.name) {
+      errors.push(`${label} has an invalid child-area name`);
+      continue;
+    }
+    normalizedNames.push(name.toLowerCase());
+  }
+  validateNoDuplicates(normalizedNames, `${label} child-area name`, errors);
 };
 
 const validateCategoryMappings = (
@@ -202,6 +224,13 @@ const validateLocationMappings = (
       `Area target for "${mapping.sourceLocation}"`,
       errors,
     );
+    if ('childAreas' in mapping) {
+      validateChildAreas(
+        mapping.childAreas,
+        `Location mapping "${mapping.sourceLocation}"`,
+        errors,
+      );
+    }
 
     if (mapping.action === 'use-existing') {
       const location = locationsById.get(mapping.targetLocationId);
@@ -447,6 +476,9 @@ export const validateProductImportGuidance = (
     }
 
     if (plan?.planVersion === 2) {
+      if (locks?.photoPolicy && plan.photoPolicy === undefined) {
+        errors.push('Locked photo policy is not present in currentPlan');
+      }
       if (
         (plan.supplierMappings?.length ?? 0) > 0 ||
         plan.allowCreateSuppliers

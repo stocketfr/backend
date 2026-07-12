@@ -87,8 +87,12 @@ export const makeProductWriteWorkflows = <
       }
 
       yield* validatePriceNotBelowCost(
-        dto.standard_price ?? product.standard_price,
-        dto.standard_cost ?? product.standard_cost,
+        dto.standard_price === undefined
+          ? product.standard_price
+          : dto.standard_price,
+        dto.standard_cost === undefined
+          ? product.standard_cost
+          : dto.standard_cost,
       );
 
       const updateData = pickDefined<UpdateProductDto>([

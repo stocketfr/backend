@@ -12,6 +12,7 @@ const preview: ProductImportPreviewDto = {
   totalRows: 3,
   itemRows: 2,
   folderRows: 1,
+  photoUrlCount: 1,
   importableRows: 1,
   missingRequiredRows: 0,
   duplicateSkuConflicts: [
@@ -110,6 +111,7 @@ const validRawProposal = () => ({
       targetLocationName: null,
       targetAreaId: null,
       areaPath: 'Bay I / Shelf 3',
+      childAreas: [],
       action: 'create-area',
       confidence: 0.95,
       reason: 'Bay and shelf form an area hierarchy.',

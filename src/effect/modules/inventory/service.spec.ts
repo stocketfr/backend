@@ -137,6 +137,7 @@ const makeMockAreasService = (
   > = {},
 ) =>
   ({
+    findAll: vi.fn().mockReturnValue(Effect.succeed([])),
     findById: vi.fn().mockReturnValue(Effect.succeed(makeAreaDto())),
     ...overrides,
   }) as any;
@@ -178,6 +179,50 @@ describe('Effect InventoryService', () => {
 
       expect(result.data).toHaveLength(1);
       expect(result.meta).toMatchObject({ page: 1, total: 1 });
+    });
+
+    it('includes a complete area path without a locations permission lookup', async () => {
+      const repository = makeMockRepository({
+        findAllPaginatedWithRelations: vi.fn().mockReturnValue(
+          Effect.succeed({
+            data: [
+              makeInventoryEntity({
+                area_id: 'shelf-3',
+                area: { id: 'shelf-3', name: 'Shelf 3', code: '' },
+              }),
+            ],
+            total: 1,
+            page: 1,
+            limit: 20,
+            total_pages: 1,
+          }),
+        ),
+      });
+      const areasService = makeMockAreasService({
+        findAll: vi.fn().mockReturnValue(
+          Effect.succeed([
+            makeAreaDto({ id: 'bay-e', name: 'Bay E' }),
+            makeAreaDto({
+              id: 'shelf-3',
+              name: 'Shelf 3',
+              parent_id: 'bay-e',
+            }),
+          ]),
+        ),
+      });
+      const service = await buildService(
+        repository,
+        makeMockProductsService(),
+        makeMockLocationsService(),
+        areasService,
+      );
+
+      const result = await run(
+        service.findAllPaginated({ page: 1, limit: 20 } as any),
+      );
+
+      expect(result.data[0]?.area?.path).toBe('Bay E / Shelf 3');
+      expect(areasService.findAll).toHaveBeenCalledWith({});
     });
   });
 

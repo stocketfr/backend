@@ -3,6 +3,7 @@ import type { Inventory } from './types';
 
 export function toInventoryResponseDto(
   inventory: Inventory,
+  areaPath?: string,
 ): InventoryResponseDto {
   return {
     id: inventory.id,
@@ -29,6 +30,7 @@ export function toInventoryResponseDto(
           id: inventory.area.id,
           name: inventory.area.name,
           code: inventory.area.code,
+          path: areaPath ?? inventory.area.name,
         }
       : null,
     quantity: inventory.quantity,

@@ -52,6 +52,12 @@ const validRawProposal = {
       targetLocationName: 'Warehouse',
       targetAreaId: null,
       areaPath: 'Shelf 1',
+      childAreas: [
+        { name: 'Bin 1' },
+        { name: 'Bin 2' },
+        { name: 'Bin 3' },
+        { name: 'Bin 4' },
+      ],
       action: 'create-area',
       confidence: 0.8,
       reason: null,

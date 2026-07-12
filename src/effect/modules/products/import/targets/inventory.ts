@@ -163,6 +163,40 @@ const getOrCreateAreaPath = (
     return areaId;
   });
 
+const getOrCreateChildAreas = (
+  repository: ProductImportTargetRepository,
+  locationId: string,
+  parentAreaId: string,
+  children: readonly { readonly name: string }[] | undefined,
+  caches: ImportCaches,
+  result: ProductImportResultDto,
+): Effect.Effect<void, ProductImportTargetError> =>
+  Effect.gen(function* () {
+    for (const child of children ?? []) {
+      const cacheKey = `${locationId}:${parentAreaId}:${child.name}`;
+      if (caches.areas.has(cacheKey)) continue;
+
+      let area: ImportAreaRow | null =
+        yield* repository.findAreaByNameLocationAndParent(
+          locationId,
+          child.name,
+          parentAreaId,
+        );
+      if (!area) {
+        area = yield* repository.createArea({
+          location_id: locationId,
+          parent_id: parentAreaId,
+          name: child.name,
+          description: 'Created by product import setup',
+          code: '',
+          is_active: true,
+        });
+        result.areasCreated = (result.areasCreated ?? 0) + 1;
+      }
+      caches.areas.set(cacheKey, area.id);
+    }
+  });
+
 export const resolveInventoryTarget = ({
   repository,
   row,
@@ -237,6 +271,14 @@ export const resolveInventoryTarget = ({
         mapping.targetAreaId,
         caches,
       );
+      yield* getOrCreateChildAreas(
+        repository,
+        locationId,
+        areaId,
+        mapping.childAreas,
+        caches,
+        result,
+      );
       return { locationId, areaId };
     }
 
@@ -269,6 +311,16 @@ export const resolveInventoryTarget = ({
         caches,
         result,
       );
+      if (areaId) {
+        yield* getOrCreateChildAreas(
+          repository,
+          locationId,
+          areaId,
+          'childAreas' in mapping ? mapping.childAreas : undefined,
+          caches,
+          result,
+        );
+      }
       return { locationId, areaId };
     }
 

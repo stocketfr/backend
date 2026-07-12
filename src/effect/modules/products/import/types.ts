@@ -67,6 +67,8 @@ const ProductImportSkuConflictPolicySchema = Schema.Literal(
   'derive-sku',
 );
 
+const ProductImportPhotoPolicySchema = Schema.Literal('import', 'skip');
+
 const ProductImportDecisionMetadataFields = {
   mappingKey: Schema.optional(Schema.String),
   confidence: Schema.optional(Schema.Number),
@@ -165,6 +167,23 @@ const ProductImportLocationMappingV2BaseFields = {
   rowCount: Schema.Number,
 };
 
+const ProductImportChildAreasSchema = Schema.Array(
+  Schema.Struct({
+    name: Schema.Trim.pipe(
+      Schema.nonEmptyString(),
+      Schema.maxLength(100),
+      Schema.filter((name) => !name.includes('/')),
+    ),
+  }),
+).pipe(
+  Schema.filter(
+    (children) =>
+      children.length <= 20 &&
+      new Set(children.map((child) => child.name.toLowerCase())).size ===
+        children.length,
+  ),
+);
+
 const ProductImportLocationMappingV2Schema = Schema.Union(
   Schema.Struct({
     ...ProductImportLocationMappingV2BaseFields,
@@ -179,6 +198,7 @@ const ProductImportLocationMappingV2Schema = Schema.Union(
     targetLocationName: Schema.optional(Schema.String),
     targetAreaId: Schema.String,
     areaPath: Schema.optional(Schema.String),
+    childAreas: Schema.optional(ProductImportChildAreasSchema),
   }),
   Schema.Struct({
     ...ProductImportLocationMappingV2BaseFields,
@@ -190,12 +210,14 @@ const ProductImportLocationMappingV2Schema = Schema.Union(
     action: Schema.Literal('create-area'),
     targetLocationId: Schema.String,
     areaPath: Schema.String,
+    childAreas: Schema.optional(ProductImportChildAreasSchema),
   }),
   Schema.Struct({
     ...ProductImportLocationMappingV2BaseFields,
     action: Schema.Literal('create-area'),
     targetLocationName: Schema.String,
     areaPath: Schema.String,
+    childAreas: Schema.optional(ProductImportChildAreasSchema),
   }),
   Schema.Struct({
     ...ProductImportLocationMappingV2BaseFields,
@@ -295,6 +317,7 @@ const ProductImportMissingLocationStrategySchema = Schema.Union(
 
 export const ProductImportApprovedPlanSchema = Schema.Struct({
   planVersion: Schema.optional(Schema.Undefined),
+  photoPolicy: Schema.optional(ProductImportPhotoPolicySchema),
   skuConflictPolicy: Schema.optional(ProductImportSkuConflictPolicySchema),
   skuConflictResolutions: Schema.optional(
     Schema.Array(ProductImportSkuConflictResolutionSchema),
@@ -317,6 +340,7 @@ export const ProductImportApprovedPlanSchema = Schema.Struct({
 
 export const ProductImportApprovedPlanV2Schema = Schema.Struct({
   planVersion: Schema.Literal(2),
+  photoPolicy: Schema.optional(ProductImportPhotoPolicySchema),
   skuConflictPolicy: ProductImportSkuConflictPolicySchema,
   skuConflictResolutions: Schema.Array(
     ProductImportSkuConflictResolutionV2Schema,
@@ -333,6 +357,7 @@ export const ProductImportApprovedPlanV2Schema = Schema.Struct({
 
 const ProductImportLockedDecisionKeysSchema = Schema.Struct({
   skuConflictPolicy: Schema.optional(Schema.Boolean),
+  photoPolicy: Schema.optional(Schema.Boolean),
   missingLocationStrategy: Schema.optional(Schema.Boolean),
   categoryMappings: Schema.optional(Schema.Array(Schema.String)),
   locationMappings: Schema.optional(Schema.Array(Schema.String)),
@@ -343,6 +368,7 @@ const countGuidanceLocks = (
   locks: Schema.Schema.Type<typeof ProductImportLockedDecisionKeysSchema>,
 ) =>
   (locks.skuConflictPolicy ? 1 : 0) +
+  (locks.photoPolicy ? 1 : 0) +
   (locks.missingLocationStrategy ? 1 : 0) +
   (locks.categoryMappings?.length ?? 0) +
   (locks.locationMappings?.length ?? 0) +
@@ -367,6 +393,7 @@ export const ProductImportProposalGuidanceSchema = Schema.Struct({
 );
 
 export const ProductImportAiProposalSchema = Schema.Struct({
+  photoPolicy: Schema.optional(ProductImportPhotoPolicySchema),
   format: Schema.Union(ProductImportFormatSchema, Schema.Literal('unknown')),
   confidence: Schema.Number,
   productIdentity: Schema.Struct({

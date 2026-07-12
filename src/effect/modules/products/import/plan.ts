@@ -3,6 +3,7 @@ import type {
   ProductImportCategoryMappingV2Dto,
   ProductImportLocationMappingV2Dto,
   ProductImportLocationMappingDto,
+  ProductImportPhotoPolicyDto,
 } from '@stocket/types/products';
 import type { NormalizedProductImportRow, ProductImportPlan } from './types';
 import { normalizeStorageLocationName } from './storage-location/utils';
@@ -28,6 +29,15 @@ export const getSkuConflictPolicy = (
 
   return undefined;
 };
+
+export const getPhotoPolicy = (
+  approvedPlan: ProductImportPlan | undefined,
+): ProductImportPhotoPolicyDto =>
+  approvedPlan &&
+  'photoPolicy' in approvedPlan &&
+  approvedPlan.photoPolicy !== undefined
+    ? approvedPlan.photoPolicy
+    : 'import';
 
 export const getDefaultLocationName = (
   approvedPlan: ProductImportPlan | undefined,

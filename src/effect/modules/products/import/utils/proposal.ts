@@ -1,6 +1,7 @@
 import type {
   ProductImportAiProposalV2Dto,
   ProductImportCategoryMappingV2Dto,
+  ProductImportChildAreaDto,
   ProductImportLocationMappingDto,
   ProductImportLocationMappingV2Dto,
   ProductImportPlanDto,
@@ -20,6 +21,7 @@ import {
   skuVariantDecisionKey,
 } from './proposal-keys';
 import {
+  normalizeProductImportAreaName,
   normalizeProductImportLocationName,
   normalizeProductImportPath,
   normalizeProductImportSku,
@@ -33,6 +35,9 @@ const EMPTY_TARGET_CONTEXT: ProductImportTargetContextDto = {
 };
 
 const importedLocationName = 'Imported Inventory';
+const fourBinChildAreas = ['Bin 1', 'Bin 2', 'Bin 3', 'Bin 4'].map(
+  (name): ProductImportChildAreaDto => ({ name }),
+);
 
 const mapEntry = <K, V>(key: K, value: V): readonly [K, V] => [key, value];
 
@@ -225,6 +230,44 @@ const makeLocationMappings = (
   });
 };
 
+const requestsFourBinsPerShelf = (instructions: string | undefined) => {
+  if (!instructions) return false;
+  const normalized = instructions.toLowerCase();
+  if (
+    /\b(?:do not|don't|dont|never)\s+(?:\w+\s+){0,6}(?:create|add|make)\b[^.]{0,80}\bbins?\b/.test(
+      normalized,
+    ) ||
+    /\bno\s+(?:\w+\s+){0,3}bins?\b/.test(normalized)
+  ) {
+    return false;
+  }
+  return (
+    /\bshel(?:f|ves)\b/.test(normalized) &&
+    /\bbins?\b/.test(normalized) &&
+    /\b(?:4|four)\b/.test(normalized)
+  );
+};
+
+const isTerminalShelfPath = (areaPath: string | undefined) => {
+  const terminal = areaPath?.split('/').at(-1)?.trim() ?? '';
+  return /\bshelf\b/i.test(terminal);
+};
+
+const applyDeterministicAreaGuidance = (
+  mappings: readonly ProductImportLocationMappingV2Dto[],
+  instructions: string | undefined,
+): ProductImportLocationMappingV2Dto[] => {
+  if (!requestsFourBinsPerShelf(instructions)) return [...mappings];
+
+  return mappings.map((mapping) =>
+    (mapping.action === 'create-area' ||
+      mapping.action === 'use-existing-area') &&
+    isTerminalShelfPath(mapping.areaPath)
+      ? { ...mapping, childAreas: fourBinChildAreas }
+      : mapping,
+  );
+};
+
 const suggestedDerivedSku = (sourceSku: string, index: number) =>
   `${sourceSku}-${index + 1}`.slice(0, 50);
 
@@ -276,7 +319,7 @@ const makeMissingLocationStrategy = (
   context: ProductImportTargetContextDto,
 ): ProductImportAiProposalV2Dto['missingLocationStrategy'] => {
   const rowCount = preview.inventoryPreviews.filter(
-    (item) => item.reason === 'Missing location',
+    (item) => item.location.trim() === '',
   ).length;
   if (rowCount === 0) {
     return {
@@ -417,6 +460,14 @@ const normalizeLockedLocation = (
   const targetLocationName = mapping.targetLocationName
     ? normalizeProductImportLocationName(mapping.targetLocationName)
     : undefined;
+  const childAreas =
+    'childAreas' in mapping
+      ? mapping.childAreas?.flatMap((child) => {
+          const name = normalizeProductImportAreaName(child.name);
+          return name ? [{ name }] : [];
+        })
+      : undefined;
+  const childAreaSetup = childAreas === undefined ? {} : { childAreas };
   const metadata = {
     mappingKey: fallback.mappingKey,
     confidence: mapping.confidence ?? fallback.confidence,
@@ -428,6 +479,7 @@ const normalizeLockedLocation = (
   if (area && location && area.locationId === location.id) {
     return {
       ...metadata,
+      ...childAreaSetup,
       action: 'use-existing-area',
       targetLocationId: location.id,
       targetLocationName: location.name,
@@ -454,6 +506,7 @@ const normalizeLockedLocation = (
     if (location) {
       return {
         ...metadata,
+        ...childAreaSetup,
         action: 'create-area',
         targetLocationId: location.id,
         areaPath,
@@ -462,6 +515,7 @@ const normalizeLockedLocation = (
     if (targetLocationName) {
       return {
         ...metadata,
+        ...childAreaSetup,
         action: 'create-area',
         targetLocationName,
         areaPath,
@@ -572,7 +626,11 @@ export const applyProductImportGuidanceLocks = (
 ): ProductImportAiProposalV2Dto => {
   const plan = guidance?.currentPlan;
   const locks = guidance?.locks;
-  if (!plan || plan.planVersion !== 2 || !locks) return proposal;
+  if (!plan || plan.planVersion !== 2) return proposal;
+  const proposalWithPhotoPolicy = plan.photoPolicy
+    ? { ...proposal, photoPolicy: plan.photoPolicy }
+    : proposal;
+  if (!locks) return proposalWithPhotoPolicy;
   const planLocationMappings:
     | readonly (
         | ProductImportLocationMappingDto
@@ -620,7 +678,7 @@ export const applyProductImportGuidanceLocks = (
   );
 
   return {
-    ...proposal,
+    ...proposalWithPhotoPolicy,
     productIdentity:
       locks.skuConflictPolicy && plan.skuConflictPolicy
         ? {
@@ -681,7 +739,10 @@ export function makeProductImportProposal(
       missingLocationStrategy: makeMissingLocationStrategy(preview, context),
       categoryMappings: makeCategoryMappings(preview, context),
       supplierMappings: [],
-      locationMappings: makeLocationMappings(preview, context),
+      locationMappings: applyDeterministicAreaGuidance(
+        makeLocationMappings(preview, context),
+        guidance?.instructions,
+      ),
       warnings,
     },
     guidance,

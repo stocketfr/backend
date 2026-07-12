@@ -19,6 +19,9 @@ const RawLocationMappingSchema = Schema.Struct({
   targetLocationName: NullableString,
   targetAreaId: NullableString,
   areaPath: NullableString,
+  childAreas: Schema.Array(Schema.Struct({ name: Schema.String })).pipe(
+    Schema.filter((children) => children.length <= 20),
+  ),
   action: Schema.Literal(
     'use-existing',
     'use-existing-area',
