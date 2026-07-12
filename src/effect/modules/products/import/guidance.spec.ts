@@ -13,6 +13,7 @@ const preview: ProductImportPreviewDto = {
   totalRows: 1,
   itemRows: 1,
   folderRows: 0,
+  photoUrlCount: 0,
   importableRows: 1,
   missingRequiredRows: 0,
   duplicateSkuConflicts: [
@@ -110,6 +111,44 @@ describe('validateProductImportGuidance', () => {
         ),
       ),
     ).resolves.toMatchObject({ _tag: 'ProductImportProposalInvalid' });
+  });
+
+  it('rejects a photo-policy lock when currentPlan has no photo choice', async () => {
+    const baseline = makeProductImportProposal(preview, context);
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          validateProductImportGuidance(
+            {
+              currentPlan: toCurrentPlan(baseline),
+              locks: { photoPolicy: true },
+            },
+            baseline,
+            context,
+          ),
+        ),
+      ),
+    ).resolves.toMatchObject({ _tag: 'ProductImportProposalInvalid' });
+  });
+
+  it('accepts and preserves a locked photo choice in currentPlan', async () => {
+    const baseline = makeProductImportProposal(preview, context);
+    const currentPlan = {
+      ...toCurrentPlan(baseline),
+      photoPolicy: 'skip' as const,
+    };
+
+    const guidance = await Effect.runPromise(
+      validateProductImportGuidance(
+        { currentPlan, locks: { photoPolicy: true } },
+        baseline,
+        context,
+      ),
+    );
+
+    expect(guidance?.currentPlan?.photoPolicy).toBe('skip');
+    expect(guidance?.locks?.photoPolicy).toBe(true);
   });
 
   it('rejects user decisions that reference unknown target IDs', async () => {
@@ -270,6 +309,37 @@ describe('validateProductImportGuidance', () => {
             validateProductImportGuidance(
               {
                 currentPlan: { ...plan, missingLocationStrategy },
+              },
+              baseline,
+              context,
+            ),
+          ),
+        ),
+      ).resolves.toMatchObject({ _tag: 'ProductImportProposalInvalid' });
+    }
+  });
+
+  it('rejects duplicate or nested child-area names in an editable shelf setup', async () => {
+    const baseline = makeProductImportProposal(preview, context);
+    const plan = toCurrentPlan(baseline);
+    const [locationMapping] = plan.locationMappings;
+    if (!locationMapping || locationMapping.action !== 'use-existing-area') {
+      throw new Error('Expected an existing-area mapping');
+    }
+
+    for (const childAreas of [
+      [{ name: 'Bin 1' }, { name: 'Bin 1' }],
+      [{ name: 'Bin 1 / Nested' }],
+    ]) {
+      await expect(
+        Effect.runPromise(
+          Effect.flip(
+            validateProductImportGuidance(
+              {
+                currentPlan: {
+                  ...plan,
+                  locationMappings: [{ ...locationMapping, childAreas }],
+                },
               },
               baseline,
               context,

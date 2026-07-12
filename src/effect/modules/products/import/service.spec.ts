@@ -1,4 +1,5 @@
 import { Cause, Effect, Exit, Layer, Option } from 'effect';
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it, vi } from 'vitest';
 import type {
   ProductImportAiProposalDto,
@@ -1073,6 +1074,55 @@ Item,Imported Tonic,SORT-1,Drinks,12,Bar,https://lnk.sortly.co/v2/downloads/phot
     );
   });
 
+  it('skips every source photo when the approved v2 plan chooses skip', async () => {
+    const csv = `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location,Photo1,Photo2
+Item,Imported Tonic,SORT-1,Drinks,12,Bar,https://lnk.sortly.co/v2/downloads/photo/photo-1,https://lnk.sortly.co/v2/downloads/photo/photo-2
+`;
+    const preview = await runPreview(csv, 'sortly-items');
+    const proposal = makeProductImportProposal(preview, EMPTY_TARGET_CONTEXT);
+    const approvedPlan = {
+      planVersion: 2,
+      photoPolicy: 'skip',
+      skuConflictPolicy: proposal.productIdentity.conflictPolicy,
+      skuConflictResolutions: proposal.skuConflictResolutions,
+      missingLocationStrategy: proposal.missingLocationStrategy,
+      categoryMappings: proposal.categoryMappings,
+      locationMappings: proposal.locationMappings,
+    } satisfies ProductImportApprovedPlanV2Dto;
+    const photoImporter = makePhotoImporter();
+
+    const prepared = makeImportEffectWithState(
+      csv,
+      'sortly-items',
+      undefined,
+      approvedPlan,
+      photoImporter,
+    );
+    const result = await Effect.runPromise(prepared.effect);
+    const repeatedResult = await Effect.runPromise(prepared.effect);
+
+    expect(result).toMatchObject({
+      productsCreated: 1,
+      inventoryRecordsCreated: 1,
+      photosCreated: 0,
+      photosSkipped: 2,
+      rowsSkipped: 0,
+      errors: [],
+    });
+    expect(repeatedResult).toMatchObject({
+      productsCreated: 0,
+      productsUpdated: 0,
+      inventoryRecordsCreated: 0,
+      inventoryRecordsUpdated: 1,
+      photosCreated: 0,
+      photosSkipped: 2,
+      rowsSkipped: 0,
+      errors: [],
+    });
+    expect(prepared.state.productsBySku.has('SORT-1')).toBe(true);
+    expect(photoImporter.importSortlyPhoto).not.toHaveBeenCalled();
+  });
+
   it('skips unsupported Sortly photo URLs without skipping the product row', async () => {
     const photoImporter = makePhotoImporter();
     const { result } = await runImportWithState(
@@ -1189,6 +1239,7 @@ Item,Nail File,SORT-2,Spa,Nails,4,,,
       folderRows: 1,
       importableRows: 1,
       missingRequiredRows: 0,
+      photoUrlCount: 1,
     });
     expect(preview.duplicateSkuConflicts).toEqual([
       expect.objectContaining({
@@ -1217,6 +1268,66 @@ Item,Nail File,SORT-2,Spa,Nails,4,,,
       ]),
     );
   });
+
+  it('counts every non-empty Sortly photo cell, including repeated URLs', async () => {
+    const photoUrl = 'https://lnk.sortly.co/v2/downloads/photo/photo-1';
+    const preview = await runPreview(
+      `Entry Type,Entry Name,SID,Primary Folder,Photo1,Photo2
+Item,Imported Tonic,SORT-1,Drinks,${photoUrl},${photoUrl}
+`,
+      'sortly-items',
+    );
+
+    expect(preview.photoUrlCount).toBe(2);
+  });
+
+  it.runIf(process.env.SORTLY_IMPORT_FIXTURE !== undefined)(
+    'counts all photo URLs in the exact Sortly fixture',
+    async () => {
+      const fixturePath = process.env.SORTLY_IMPORT_FIXTURE;
+      if (!fixturePath) throw new Error('SORTLY_IMPORT_FIXTURE is required');
+
+      const preview = await runPreview(
+        await readFile(fixturePath, 'utf8'),
+        'sortly-items',
+      );
+
+      expect(preview).toMatchObject({
+        totalRows: 1_107,
+        itemRows: 976,
+        photoUrlCount: 1_205,
+      });
+
+      const proposal = makeProductImportProposal(preview, EMPTY_TARGET_CONTEXT);
+      const approvedPlan = {
+        planVersion: 2,
+        photoPolicy: 'skip',
+        skuConflictPolicy: proposal.productIdentity.conflictPolicy,
+        skuConflictResolutions: proposal.skuConflictResolutions,
+        missingLocationStrategy: proposal.missingLocationStrategy,
+        categoryMappings: proposal.categoryMappings,
+        locationMappings: proposal.locationMappings,
+      } satisfies ProductImportApprovedPlanV2Dto;
+      const photoImporter = makePhotoImporter();
+      const { result, state } = await runImportWithState(
+        await readFile(fixturePath, 'utf8'),
+        'sortly-items',
+        undefined,
+        approvedPlan,
+        photoImporter,
+      );
+
+      expect(result).toMatchObject({
+        productsCreated: 976,
+        photosCreated: 0,
+        photosSkipped: 1_205,
+        rowsSkipped: 0,
+        errors: [],
+      });
+      expect(state.productsBySku.size).toBe(976);
+      expect(photoImporter.importSortlyPhoto).not.toHaveBeenCalled();
+    },
+  );
 
   it('previews nested Sortly storage values as area paths', async () => {
     const preview = await runPreview(

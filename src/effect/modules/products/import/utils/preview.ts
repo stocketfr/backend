@@ -222,6 +222,10 @@ export function makeProductImportPreview(
     totalRows: records.length,
     itemRows: rows.length,
     folderRows: format === 'sortly-items' ? records.length - rows.length : 0,
+    photoUrlCount: rows.reduce(
+      (count, row) => count + row.photo_urls.length,
+      0,
+    ),
     importableRows: rows.length - blockedRows.size,
     missingRequiredRows: missingRequiredRows.size,
     duplicateSkuConflicts,

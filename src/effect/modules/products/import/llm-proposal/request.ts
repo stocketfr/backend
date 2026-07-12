@@ -140,6 +140,7 @@ const openAiProductImportProposalSchema = {
           'targetLocationName',
           'targetAreaId',
           'areaPath',
+          'childAreas',
           'action',
           'confidence',
           'reason',
@@ -151,6 +152,18 @@ const openAiProductImportProposalSchema = {
           targetLocationName: nullableString,
           targetAreaId: nullableString,
           areaPath: nullableString,
+          childAreas: {
+            type: 'array',
+            maxItems: 20,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['name'],
+              properties: {
+                name: { type: 'string', minLength: 1, maxLength: 100 },
+              },
+            },
+          },
           action: {
             enum: [
               'use-existing',
@@ -188,6 +201,7 @@ const compactPreviewForLlm = (preview: ProductImportPreviewDto) => ({
   totalRows: preview.totalRows,
   itemRows: preview.itemRows,
   folderRows: preview.folderRows,
+  photoUrlCount: preview.photoUrlCount,
   importableRows: preview.importableRows,
   missingRequiredRows: preview.missingRequiredRows,
   duplicateSkuConflicts: preview.duplicateSkuConflicts,
@@ -217,6 +231,7 @@ export const makeOpenAiProductImportProposalRequest = (
             'Only reference category, location, and area IDs from tenantContext.',
             'An existing area must belong to its target location.',
             'Prefer locations for sites and nested area paths for shelves, bays, racks, bins, rooms, and drawers.',
+            'Use childAreas only to create empty direct children beneath an area target; childAreas never changes where product inventory is assigned. Return an empty childAreas array for mappings without requested children.',
             'Place missing locations in an explicit Unassigned / Needs Review area instead of guessing a physical bay.',
             'Return an empty supplierMappings array.',
             'Respect user guidance and locked decisions; the server will enforce locks after your response.',

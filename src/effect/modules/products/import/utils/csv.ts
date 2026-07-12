@@ -132,14 +132,14 @@ const normalizeNormalizedRecord = (
 });
 
 export function extractSortlyPhotoUrls(record: CsvRecord): string[] {
-  const urls = new Set<string>();
+  const urls: string[] = [];
   for (const header of sortlyPhotoHeaders) {
     const value = readCell(record, header);
     if (value !== '') {
-      urls.add(value);
+      urls.push(value);
     }
   }
-  return [...urls];
+  return urls;
 }
 
 export function sortlyPhotoSourceKey(value: string): string | null {

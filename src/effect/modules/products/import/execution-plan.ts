@@ -23,6 +23,7 @@ import {
   skuConflictDecisionKey,
 } from './utils/proposal-keys';
 import {
+  normalizeProductImportAreaName,
   normalizeProductImportLocationName,
   normalizeProductImportPath,
   normalizeProductImportSku,
@@ -132,6 +133,29 @@ const validateCanonicalTargets = (
       normalizeProductImportPath(mapping.areaPath) !== mapping.areaPath
     ) {
       errors.push(`Area target "${mapping.areaPath}" is invalid`);
+    }
+    if ('childAreas' in mapping && mapping.childAreas !== undefined) {
+      if (mapping.childAreas.length > 20) {
+        errors.push(
+          `Location mapping "${mapping.sourceLocation}" has too many child areas`,
+        );
+      }
+      const seen = new Set<string>();
+      for (const child of mapping.childAreas) {
+        const name = normalizeProductImportAreaName(child.name);
+        const key = name?.toLowerCase();
+        if (name === undefined || name !== child.name) {
+          errors.push(
+            `Location mapping "${mapping.sourceLocation}" has an invalid child-area name`,
+          );
+        } else if (key && seen.has(key)) {
+          errors.push(
+            `Location mapping "${mapping.sourceLocation}" has a duplicate child-area name`,
+          );
+        } else if (key) {
+          seen.add(key);
+        }
+      }
     }
   }
   const strategy = plan.missingLocationStrategy;

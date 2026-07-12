@@ -14,6 +14,7 @@ const preview = (
   totalRows: 2,
   itemRows: 2,
   folderRows: 0,
+  photoUrlCount: 0,
   importableRows: 2,
   missingRequiredRows: 0,
   duplicateSkuConflicts: [],
@@ -98,6 +99,73 @@ describe('makeProductImportProposal', () => {
     );
   });
 
+  it('counts every blank-location row even when another conflict owns its preview reason', () => {
+    const proposal = makeProductImportProposal(
+      preview({
+        inventoryPreviews: [
+          {
+            row: 2,
+            sku: 'DUPLICATE-001',
+            location: '',
+            quantity: 1,
+            action: 'conflict',
+            reason: 'Conflicting duplicate SKU',
+          },
+        ],
+      }),
+      context,
+    );
+
+    expect(proposal.missingLocationStrategy.rowCount).toBe(1);
+  });
+
+  it('deterministically proposes four editable bins beneath terminal shelves', () => {
+    const proposal = makeProductImportProposal(
+      preview({
+        locationMappings: [
+          {
+            sourceLocation: 'Bay I - Shelf 3',
+            areaPath: 'Bay I / Shelf 3',
+            action: 'create-area',
+            confidence: 0.9,
+            rowCount: 1,
+          },
+          {
+            sourceLocation: 'Bay I - Shelf 3 - Bin A',
+            areaPath: 'Bay I / Shelf 3 / Bin A',
+            action: 'create-area',
+            confidence: 0.9,
+            rowCount: 1,
+          },
+        ],
+      }),
+      { categories: [], locations: [], areas: [] },
+      {
+        instructions:
+          'For every shelf detected under every imported location, create four empty child bins named Bin 1, Bin 2, Bin 3, and Bin 4. Keep products assigned to their existing shelf unless the CSV explicitly names a bin.',
+      },
+    );
+
+    expect(proposal.locationMappings[0]).toMatchObject({
+      areaPath: 'Bay I / Shelf 3',
+      childAreas: [
+        { name: 'Bin 1' },
+        { name: 'Bin 2' },
+        { name: 'Bin 3' },
+        { name: 'Bin 4' },
+      ],
+    });
+    expect(proposal.locationMappings[1]).not.toHaveProperty('childAreas');
+  });
+
+  it('does not turn a negated shelf instruction into structural changes', () => {
+    const proposal = makeProductImportProposal(preview(), context, {
+      instructions: 'Do not create four bins per shelf.',
+    });
+
+    expect(proposal.locationMappings[0]).not.toHaveProperty('childAreas');
+  });
+
   it('preserves locked edited decisions in deterministic fallback', () => {
     const mappingKey = categoryDecisionKey('Dental Care');
     const baseline = makeProductImportProposal(preview(), context);
@@ -130,6 +198,64 @@ describe('makeProductImportProposal', () => {
       mappingKey,
       targetPath: 'Locked / Dental',
       action: 'create',
+    });
+  });
+
+  it('preserves a locked photo policy across proposal refreshes', () => {
+    const baseline = makeProductImportProposal(preview(), context);
+    const currentPlan = {
+      planVersion: 2 as const,
+      photoPolicy: 'skip' as const,
+      skuConflictPolicy: baseline.productIdentity.conflictPolicy,
+      skuConflictResolutions: baseline.skuConflictResolutions,
+      missingLocationStrategy: baseline.missingLocationStrategy,
+      categoryMappings: baseline.categoryMappings,
+      locationMappings: baseline.locationMappings,
+    };
+    const proposal = makeProductImportProposal(preview(), context, {
+      currentPlan,
+      locks: { photoPolicy: true },
+    });
+    const unlockedProposal = makeProductImportProposal(preview(), context, {
+      currentPlan,
+    });
+
+    expect(proposal.photoPolicy).toBe('skip');
+    expect(unlockedProposal.photoPolicy).toBe('skip');
+  });
+
+  it('preserves a locked client-edited child-area setup across guidance refresh', () => {
+    const instructions = 'Create four bins per shelf.';
+    const baseline = makeProductImportProposal(preview(), context, {
+      instructions,
+    });
+    const [mapping] = baseline.locationMappings;
+    if (!mapping || mapping.action !== 'use-existing-area') {
+      throw new Error('Expected existing shelf mapping');
+    }
+    const currentPlan = {
+      planVersion: 2 as const,
+      skuConflictPolicy: baseline.productIdentity.conflictPolicy,
+      skuConflictResolutions: baseline.skuConflictResolutions,
+      missingLocationStrategy: baseline.missingLocationStrategy,
+      categoryMappings: baseline.categoryMappings,
+      locationMappings: [
+        {
+          ...mapping,
+          childAreas: [{ name: 'Left Bin' }, { name: 'Right Bin' }],
+        },
+      ],
+    };
+
+    const refreshed = makeProductImportProposal(preview(), context, {
+      instructions,
+      currentPlan,
+      locks: { locationMappings: [mapping.mappingKey] },
+    });
+
+    expect(refreshed.locationMappings[0]).toMatchObject({
+      mappingKey: mapping.mappingKey,
+      childAreas: [{ name: 'Left Bin' }, { name: 'Right Bin' }],
     });
   });
 

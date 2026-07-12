@@ -291,4 +291,33 @@ describe('validateProductImportExecutionPlan', () => {
       expect(String(error.cause)).toContain('inactive area');
     }),
   );
+
+  it.effect('rejects invalid child-area setup before any import writes', () =>
+    Effect.gen(function* () {
+      const rows = [row(2, 'DUP-1', 'Black'), row(3, 'DUP-1', 'White')];
+      const plan = makePlan(rows, ['DUP-BLACK', 'DUP-WHITE']);
+      const [mapping] = plan.locationMappings;
+      if (!mapping || mapping.action !== 'use-existing-area') {
+        throw new Error('Expected existing-area fixture');
+      }
+      const invalidPlan = {
+        ...plan,
+        locationMappings: [
+          { ...mapping, childAreas: [{ name: 'Nested / Bin' }] },
+        ],
+      } satisfies ProductImportApprovedPlanV2Dto;
+
+      const error = yield* Effect.flip(
+        validateProductImportExecutionPlan({
+          repository,
+          rows,
+          format: 'normalized-products',
+          approvedPlan: invalidPlan,
+        }),
+      );
+
+      expect(error).toMatchObject({ _tag: 'ProductImportProposalInvalid' });
+      expect(String(error.cause)).toContain('invalid child-area name');
+    }),
+  );
 });

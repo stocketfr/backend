@@ -47,6 +47,7 @@ const preview = (
   totalRows: 1,
   itemRows: 1,
   folderRows: 0,
+  photoUrlCount: 0,
   importableRows: 1,
   missingRequiredRows: 0,
   duplicateSkuConflicts: [],

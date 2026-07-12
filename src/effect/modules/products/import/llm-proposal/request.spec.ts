@@ -26,6 +26,7 @@ const preview: ProductImportPreviewDto = {
   totalRows: 100,
   itemRows: 90,
   folderRows: 10,
+  photoUrlCount: 120,
   importableRows: 80,
   missingRequiredRows: 0,
   duplicateSkuConflicts: [],
@@ -69,6 +70,18 @@ describe('makeOpenAiProductImportProposalRequest', () => {
       strict: true,
       schema: { type: 'object', additionalProperties: false },
     });
+    expect(
+      request.text.format.schema.properties.locationMappings.items.properties
+        .childAreas,
+    ).toMatchObject({
+      type: 'array',
+      maxItems: 20,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name'],
+      },
+    });
 
     const userInput = request.input[1];
     if (!userInput) throw new Error('Expected user input message');
@@ -77,6 +90,7 @@ describe('makeOpenAiProductImportProposalRequest', () => {
 
     const payload: {
       readonly preview: {
+        readonly photoUrlCount: number;
         readonly categoryMappings: readonly unknown[];
         readonly locationMappings: readonly unknown[];
         readonly warnings: readonly unknown[];
@@ -89,6 +103,7 @@ describe('makeOpenAiProductImportProposalRequest', () => {
       readonly guidance: { readonly instructions: string };
     } = JSON.parse(userContent.text);
 
+    expect(payload.preview.photoUrlCount).toBe(120);
     expect(payload.preview.categoryMappings).toHaveLength(81);
     expect(payload.preview.locationMappings).toHaveLength(81);
     expect(payload.preview.warnings).toHaveLength(40);

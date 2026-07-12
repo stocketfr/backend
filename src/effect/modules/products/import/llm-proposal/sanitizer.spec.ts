@@ -12,6 +12,7 @@ const preview: ProductImportPreviewDto = {
   totalRows: 3,
   itemRows: 2,
   folderRows: 1,
+  photoUrlCount: 1,
   importableRows: 1,
   missingRequiredRows: 0,
   duplicateSkuConflicts: [],
@@ -92,6 +93,7 @@ const rawProposal = (): RawLlmProposal => ({
       targetLocationName: null,
       targetAreaId: 'hallucinated-area',
       areaPath: 'Bay I / Shelf 3',
+      childAreas: [],
       action: 'use-existing-area',
       confidence: 1,
       reason: null,
@@ -214,6 +216,39 @@ describe('sanitizeLlmProposal', () => {
       targetLocationName: 'Warehouse',
       targetAreaId: 'area-1',
       areaPath: 'Bay I / Shelf 3',
+    });
+  });
+
+  it('normalizes unique child areas while keeping the mapped shelf as the inventory target', () => {
+    const raw = rawProposal();
+    const [rawLocation] = raw.locationMappings;
+    if (!rawLocation) throw new Error('Expected raw location mapping');
+
+    const proposal = sanitizeLlmProposal(
+      {
+        ...raw,
+        locationMappings: [
+          {
+            ...rawLocation,
+            targetAreaId: 'area-1',
+            childAreas: [
+              { name: ' Bin 1 ' },
+              { name: 'bin 1' },
+              { name: 'Bad / Nested' },
+              { name: 'Bin 2' },
+            ],
+          },
+        ],
+      },
+      preview,
+      context,
+    );
+
+    expect(proposal.locationMappings[0]).toMatchObject({
+      action: 'use-existing-area',
+      targetAreaId: 'area-1',
+      areaPath: 'Bay I / Shelf 3',
+      childAreas: [{ name: 'Bin 1' }, { name: 'Bin 2' }],
     });
   });
 

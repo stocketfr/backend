@@ -50,6 +50,10 @@ import type {
   ProductImportPlan,
 } from './types';
 import { ProductImportService } from './service';
+import {
+  categoryDecisionKey,
+  locationDecisionKey,
+} from './utils/proposal-keys';
 
 let db: DrizzleDb;
 
@@ -494,6 +498,77 @@ Item,Imported Tonic Photo,SORT-PHOTO-001,Drinks,12,Bar,https://lnk.sortly.co/v2/
     );
   });
 
+  it('imports core data without downloading photos when a v2 plan skips them', async () => {
+    const sourceCategory = 'Photo Skip Drinks';
+    const sourceLocation = 'Photo Skip Bar';
+    const approvedPlan = {
+      planVersion: 2,
+      photoPolicy: 'skip',
+      skuConflictPolicy: 'reject',
+      skuConflictResolutions: [],
+      missingLocationStrategy: {
+        mappingKey: 'missing-location',
+        confidence: 1,
+        reviewRequired: false,
+        rowCount: 0,
+        action: 'skip-inventory',
+      },
+      categoryMappings: [
+        {
+          mappingKey: categoryDecisionKey(sourceCategory),
+          confidence: 1,
+          reviewRequired: false,
+          sourcePath: sourceCategory,
+          targetPath: sourceCategory,
+          action: 'create',
+          rowCount: 1,
+        },
+      ],
+      locationMappings: [
+        {
+          mappingKey: locationDecisionKey(sourceLocation),
+          confidence: 1,
+          reviewRequired: false,
+          sourceLocation,
+          targetLocationName: sourceLocation,
+          action: 'create-location',
+          rowCount: 1,
+        },
+      ],
+    } satisfies ProductImportApprovedPlanV2Dto;
+    const fetchMock = vi.fn(() =>
+      Promise.reject(new Error('Photo download must not run')),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await importCsv(
+      `Entry Type,Entry Name,SID,Primary Folder,Quantity,Location,Photo1
+Item,Skipped Photo Product,SORT-PHOTO-SKIP-001,${sourceCategory},12,${sourceLocation},https://lnk.sortly.co/v2/downloads/photo/photo-skip-1
+`,
+      approvedPlan,
+    );
+
+    expect(result).toMatchObject({
+      categoriesCreated: 1,
+      locationsCreated: 1,
+      productsCreated: 1,
+      inventoryRecordsCreated: 1,
+      photosCreated: 0,
+      photosSkipped: 1,
+      rowsSkipped: 0,
+      errors: [],
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const product = await findProductBySku('SORT-PHOTO-SKIP-001');
+    expect(product).toBeTruthy();
+    const photoRows = await db
+      .select()
+      .from(photos)
+      .where(eq(photos.product_id, product!.id));
+    expect(photoRows).toEqual([]);
+  });
+
   it('imports nested Sortly storage locations as areas when an approved plan is provided', async () => {
     const approvedPlan = {
       defaultLocationName: 'Main Warehouse',
@@ -781,6 +856,111 @@ IDEMPOTENT-001,Idempotent Product,Idempotent Category / Child,8,Idempotent Locat
     expect(productRows).toHaveLength(1);
     expect(inventoryRows).toHaveLength(1);
     expect(inventoryRows[0]?.quantity).toBe(8);
+  });
+
+  it('creates empty child bins idempotently while inventory remains assigned to the shelf', async () => {
+    const sourceLocation = 'Bay I - Shelf 3';
+    const approvedPlan = {
+      planVersion: 2,
+      skuConflictPolicy: 'reject',
+      skuConflictResolutions: [],
+      missingLocationStrategy: {
+        mappingKey: 'missing-location',
+        confidence: 1,
+        reviewRequired: false,
+        rowCount: 0,
+        action: 'skip-inventory',
+      },
+      categoryMappings: [
+        {
+          mappingKey: categoryDecisionKey('Spa'),
+          confidence: 1,
+          reviewRequired: false,
+          sourcePath: 'Spa',
+          targetPath: 'Spa',
+          action: 'create',
+          rowCount: 1,
+        },
+      ],
+      locationMappings: [
+        {
+          mappingKey: locationDecisionKey(sourceLocation),
+          confidence: 1,
+          reviewRequired: false,
+          sourceLocation,
+          targetLocationName: 'Main Warehouse',
+          areaPath: 'Bay I / Shelf 3',
+          childAreas: [
+            { name: 'Bin 1' },
+            { name: 'Bin 2' },
+            { name: 'Bin 3' },
+            { name: 'Bin 4' },
+          ],
+          action: 'create-area',
+          rowCount: 1,
+        },
+      ],
+    } satisfies ProductImportApprovedPlanV2Dto;
+    const csv = `sku,name,category_path,quantity,location
+SHELF-BINS-001,Shelf Product,Spa,8,${sourceLocation}
+`;
+
+    const first = await importCsv(csv, approvedPlan);
+    const second = await importCsv(csv, approvedPlan);
+
+    expect(first).toMatchObject({
+      locationsCreated: 1,
+      areasCreated: 6,
+      productsCreated: 1,
+      inventoryRecordsCreated: 1,
+      rowsSkipped: 0,
+      errors: [],
+    });
+    expect(second).toMatchObject({
+      locationsCreated: 0,
+      areasCreated: 0,
+      productsCreated: 0,
+      inventoryRecordsUpdated: 1,
+      rowsSkipped: 0,
+      errors: [],
+    });
+
+    const product = await findProductBySku('SHELF-BINS-001');
+    const [location] = await db
+      .select()
+      .from(locations)
+      .where(
+        and(
+          eq(locations.tenant_id, DEFAULT_TENANT_ID),
+          eq(locations.name, 'Main Warehouse'),
+        ),
+      );
+    const areaRows = await db
+      .select()
+      .from(areas)
+      .where(eq(areas.location_id, location!.id));
+    const bay = areaRows.find((area) => area.name === 'Bay I');
+    const shelf = areaRows.find((area) => area.name === 'Shelf 3');
+    const bins = areaRows.filter((area) => area.name.startsWith('Bin '));
+    const stockRows = await db
+      .select()
+      .from(inventory)
+      .where(eq(inventory.product_id, product!.id));
+
+    expect(shelf).toMatchObject({ parent_id: bay!.id });
+    expect(bins.map((bin) => bin.name).sort()).toEqual([
+      'Bin 1',
+      'Bin 2',
+      'Bin 3',
+      'Bin 4',
+    ]);
+    expect(bins.every((bin) => bin.parent_id === shelf!.id)).toBe(true);
+    expect(stockRows).toHaveLength(1);
+    expect(stockRows[0]).toMatchObject({
+      location_id: location!.id,
+      area_id: shelf!.id,
+      quantity: 8,
+    });
   });
 
   it('rejects version 2 targets owned by another tenant before writes', async () => {

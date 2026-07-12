@@ -18,6 +18,7 @@ import {
 } from '../utils/proposal';
 import type { RawLlmProposal } from './raw';
 import {
+  normalizeProductImportAreaName,
   normalizeProductImportLocationName,
   normalizeProductImportPath,
   normalizeProductImportSku,
@@ -31,6 +32,22 @@ const clampConfidence = (value: number, fallback: number): number =>
 const optionalReason = (reason: string | null) => {
   const trimmed = reason?.trim();
   return trimmed ? { reason: trimmed } : {};
+};
+
+const sanitizeChildAreas = (
+  raw: RawLlmProposal['locationMappings'][number]['childAreas'],
+  fallback: ProductImportLocationMappingV2Dto,
+) => {
+  const seen = new Set<string>();
+  const sanitized = raw.flatMap((child) => {
+    const name = normalizeProductImportAreaName(child.name);
+    const key = name?.toLowerCase();
+    if (!name || !key || seen.has(key)) return [];
+    seen.add(key);
+    return [{ name }];
+  });
+  if (sanitized.length > 0) return sanitized.slice(0, 20);
+  return 'childAreas' in fallback ? fallback.childAreas : undefined;
 };
 
 const sanitizeWarnings = (
@@ -112,6 +129,8 @@ const sanitizeLocationMapping = (
     sourceLocation: fallback.sourceLocation,
     rowCount: fallback.rowCount,
   };
+  const childAreas = sanitizeChildAreas(raw.childAreas, fallback);
+  const childAreaSetup = childAreas === undefined ? {} : { childAreas };
   if (raw.action === 'use-existing' && raw.targetLocationId) {
     const location = locationsById.get(raw.targetLocationId);
     if (!location) return { ...fallback, reviewRequired: true };
@@ -134,6 +153,7 @@ const sanitizeLocationMapping = (
     }
     return {
       ...metadata,
+      ...childAreaSetup,
       action: 'use-existing-area',
       targetLocationId: location.id,
       targetLocationName: location.name,
@@ -161,6 +181,7 @@ const sanitizeLocationMapping = (
     if (location) {
       return {
         ...metadata,
+        ...childAreaSetup,
         action: 'create-area',
         targetLocationId: location.id,
         areaPath,
@@ -169,6 +190,7 @@ const sanitizeLocationMapping = (
     if (targetLocationName) {
       return {
         ...metadata,
+        ...childAreaSetup,
         action: 'create-area',
         targetLocationName,
         areaPath,
