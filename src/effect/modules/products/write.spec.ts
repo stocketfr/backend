@@ -134,6 +134,31 @@ describe('makeProductWriteWorkflows', () => {
         }),
     );
 
+    it.effect('persists unit and barcode metadata on creation', () =>
+      Effect.gen(function* () {
+        let capturedCreate: ProductCreateData | undefined;
+        const repository = makeRepository({
+          create: (data) =>
+            Effect.sync(() => {
+              capturedCreate = data;
+              return makeProduct({ id: 'created-product' });
+            }),
+        });
+        const workflows = makeWorkflows(repository);
+
+        yield* workflows.create({
+          ...createDto,
+          unit: 'case',
+          barcode: 'BAR-001',
+        });
+
+        expect(capturedCreate).toMatchObject({
+          unit: 'case',
+          barcode: 'BAR-001',
+        });
+      }),
+    );
+
     it.effect('maps product SKU unique violations to the domain error', () =>
       Effect.gen(function* () {
         const repository = makeRepository({
@@ -216,6 +241,45 @@ describe('makeProductWriteWorkflows', () => {
           expect(result).toMatchObject({
             id: 'prod-1',
             sku: 'SKU-001',
+          });
+        }),
+    );
+
+    it.effect(
+      'treats explicit null prices as cleared values during validation',
+      () =>
+        Effect.gen(function* () {
+          let current = makeProduct({
+            standard_cost: 10,
+            standard_price: 20,
+          });
+          let capturedUpdate: ProductUpdateData | undefined;
+          const repository = makeRepository({
+            update: (_id, data) =>
+              Effect.sync(() => {
+                capturedUpdate = data;
+                current = makeProduct({ ...current, ...data });
+                return current;
+              }),
+          });
+          const workflows = makeWorkflows(
+            repository,
+            () => Effect.void,
+            () => Effect.succeed(current),
+          );
+
+          const result = yield* workflows.update('prod-1', {
+            standard_cost: 30,
+            standard_price: null,
+          });
+
+          expect(capturedUpdate).toMatchObject({
+            standard_cost: 30,
+            standard_price: null,
+          });
+          expect(result).toMatchObject({
+            standard_cost: 30,
+            standard_price: null,
           });
         }),
     );

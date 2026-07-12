@@ -20,6 +20,8 @@ export function toCreateProductEntity(
     markup_percentage: dto.markup_percentage ?? null,
     primary_supplier_id: dto.primary_supplier_id ?? null,
     supplier_sku: dto.supplier_sku ?? null,
+    barcode: dto.barcode ?? null,
+    unit: dto.unit ?? null,
     notes: dto.notes ?? null,
     created_by: userId ?? null,
     updated_by: userId ?? null,
