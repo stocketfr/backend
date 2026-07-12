@@ -1,5 +1,6 @@
 import { Effect, Layer } from 'effect';
 import { HttpApp, HttpRouter } from '@effect/platform';
+import { ErrorCode } from '@stocket/types/common';
 import { authRouter } from './router';
 import { AuthService } from './service';
 
@@ -114,6 +115,7 @@ describe('authRouter', () => {
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
       statusCode: 401,
+      code: ErrorCode.UNAUTHORIZED,
       message: 'Unauthorized.',
     });
   });

@@ -1,9 +1,5 @@
 import { Data } from 'effect';
-import {
-  type ErrorCode,
-  errorCodeForHttpStatus,
-  isErrorCode,
-} from '@stocket/types/common';
+import { type ErrorCode, errorCodeForHttpStatus } from '@stocket/types/common';
 import {
   DEFAULT_LOCALE,
   translateMessage,
@@ -55,7 +51,7 @@ export interface AppError<
   readonly message: string;
   readonly messageKey: AnyMessageKey;
   readonly messageArgs?: MessageArgs;
-  readonly code: ErrorCode;
+  readonly code?: ErrorCode;
   readonly statusCode: StatusCode;
 }
 
@@ -66,7 +62,6 @@ export const isAppError = (value: unknown): value is AppError =>
   isUnknownRecord(value) &&
   typeof value._tag === 'string' &&
   typeof value.messageKey === 'string' &&
-  isErrorCode(value.code) &&
   typeof value.statusCode === 'number';
 
 function makeErrorFactory<StatusCode extends number>(statusCode: StatusCode) {

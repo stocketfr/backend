@@ -1,7 +1,11 @@
 import { HttpServerError, HttpServerResponse } from '@effect/platform';
 import { Effect, Cause, ParseResult } from 'effect';
 import { TreeFormatter } from 'effect/ParseResult';
-import { type ErrorCode, errorCodeForHttpStatus } from '@stocket/types/common';
+import {
+  type ErrorCode,
+  errorCodeForHttpStatus,
+  isErrorCode,
+} from '@stocket/types/common';
 import { AppConfig, type AppConfigShape } from '../config/app-config';
 import { isAppError } from '../effect/domain-errors';
 import { getRequestContext } from './request-context';
@@ -104,7 +108,9 @@ const toErrorDetails = (
     return {
       statusCode: error.statusCode,
       error: getStatusName(error.statusCode),
-      code: error.code,
+      code: isErrorCode(error.code)
+        ? error.code
+        : errorCodeForHttpStatus(error.statusCode),
       messageKey: isMasked ? 'errors.internalServerError' : error.messageKey,
       ...(isMasked || !error.messageArgs
         ? {}
