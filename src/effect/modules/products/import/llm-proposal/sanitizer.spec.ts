@@ -219,6 +219,71 @@ describe('sanitizeLlmProposal', () => {
     });
   });
 
+  it('rejects a missing-stock location that the model did not map', () => {
+    const importPreview: ProductImportPreviewDto = {
+      ...preview,
+      locationMappings: [
+        {
+          sourceLocation: 'North Store',
+          targetLocationName: 'North Store',
+          action: 'create-location',
+          confidence: 0.8,
+          rowCount: 1,
+        },
+      ],
+      inventoryPreviews: [
+        {
+          row: 2,
+          sku: 'UNLOCATED-001',
+          location: '',
+          quantity: 1,
+          action: 'skip',
+          reason: 'Missing location',
+        },
+      ],
+    };
+    const raw = rawProposal();
+    const [rawLocation] = raw.locationMappings;
+    if (!rawLocation) throw new Error('Expected raw location mapping');
+
+    const proposal = sanitizeLlmProposal(
+      {
+        ...raw,
+        missingLocationStrategy: {
+          action: 'assign-review-area',
+          targetLocationId: null,
+          targetLocationName: 'Invented Holding Location',
+          targetAreaId: null,
+          areaPath: 'Unassigned / Needs Review',
+          confidence: 0.9,
+          reason: 'Temporary holding location.',
+          reviewRequired: false,
+        },
+        locationMappings: [
+          {
+            ...rawLocation,
+            sourceLocation: 'North Store',
+            targetLocationId: null,
+            targetLocationName: 'North Store',
+            targetAreaId: null,
+            areaPath: null,
+            action: 'create-location',
+          },
+        ],
+      },
+      importPreview,
+      { categories: [], locations: [], areas: [] },
+    );
+
+    expect(proposal.missingLocationStrategy).toMatchObject({
+      action: 'assign-review-area',
+      targetLocationName: 'North Store',
+    });
+    expect(proposal.missingLocationStrategy).not.toMatchObject({
+      targetLocationName: 'Invented Holding Location',
+    });
+  });
+
   it('normalizes unique child areas while keeping the mapped shelf as the inventory target', () => {
     const raw = rawProposal();
     const [rawLocation] = raw.locationMappings;

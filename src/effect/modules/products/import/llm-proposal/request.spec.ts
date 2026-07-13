@@ -88,6 +88,10 @@ describe('makeOpenAiProductImportProposalRequest', () => {
     const userContent = userInput.content[0];
     if (!userContent) throw new Error('Expected user input content');
 
+    expect(request.input[0]?.content[0]?.text).toContain(
+      'Never create a generic holding location such as Imported Inventory.',
+    );
+
     const payload: {
       readonly preview: {
         readonly photoUrlCount: number;

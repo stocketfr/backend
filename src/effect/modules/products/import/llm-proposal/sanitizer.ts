@@ -25,6 +25,7 @@ import {
 } from '../utils/proposal-values';
 
 const mapEntry = <K, V>(key: K, value: V): readonly [K, V] => [key, value];
+const normalizedKey = (value: string): string => value.trim().toLowerCase();
 
 const clampConfidence = (value: number, fallback: number): number =>
   Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : fallback;
@@ -206,6 +207,7 @@ const sanitizeMissingLocationStrategy = (
   fallback: ProductImportAiProposalV2Dto['missingLocationStrategy'],
   locationsById: ReadonlyMap<string, ProductImportLocationTargetDto>,
   areasById: ReadonlyMap<string, ProductImportAreaTargetDto>,
+  locationMappings: readonly ProductImportLocationMappingV2Dto[],
 ): ProductImportAiProposalV2Dto['missingLocationStrategy'] => {
   const metadata = {
     mappingKey: fallback.mappingKey,
@@ -242,6 +244,14 @@ const sanitizeMissingLocationStrategy = (
   const targetLocationName = raw.targetLocationName
     ? normalizeProductImportLocationName(raw.targetLocationName)
     : undefined;
+  const proposedLocationNames = new Set(
+    locationMappings.flatMap((mapping) =>
+      mapping.targetLocationName &&
+      (mapping.action === 'create-location' || mapping.action === 'create-area')
+        ? [normalizedKey(mapping.targetLocationName)]
+        : [],
+    ),
+  );
   if (raw.action === 'assign-review-area' && areaPath) {
     const location = raw.targetLocationId
       ? locationsById.get(raw.targetLocationId)
@@ -254,7 +264,10 @@ const sanitizeMissingLocationStrategy = (
         areaPath,
       };
     }
-    if (targetLocationName) {
+    if (
+      targetLocationName &&
+      proposedLocationNames.has(normalizedKey(targetLocationName))
+    ) {
       return {
         ...metadata,
         action: 'assign-review-area',
@@ -384,6 +397,7 @@ export const sanitizeLlmProposal = (
         fallback.missingLocationStrategy,
         locationsById,
         areasById,
+        locationMappings,
       ),
       categoryMappings,
       supplierMappings: [],

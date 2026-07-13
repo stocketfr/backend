@@ -119,6 +119,52 @@ describe('makeProductImportProposal', () => {
     expect(proposal.missingLocationStrategy.rowCount).toBe(1);
   });
 
+  it('places missing stock under a real location created by the import', () => {
+    const proposal = makeProductImportProposal(
+      preview({
+        locationMappings: [
+          {
+            sourceLocation: 'North Store',
+            targetLocationName: 'North Store',
+            action: 'create-location',
+            confidence: 0.8,
+            rowCount: 1,
+          },
+          {
+            sourceLocation: 'Bay I - Shelf 3',
+            areaPath: 'Bay I / Shelf 3',
+            action: 'create-area',
+            confidence: 0.9,
+            rowCount: 1,
+          },
+        ],
+        inventoryPreviews: [
+          {
+            row: 2,
+            sku: 'UNLOCATED-001',
+            location: '',
+            quantity: 1,
+            action: 'skip',
+            reason: 'Missing location',
+          },
+        ],
+      }),
+      { categories: [], locations: [], areas: [] },
+    );
+
+    expect(proposal.missingLocationStrategy).toMatchObject({
+      action: 'assign-review-area',
+      targetLocationName: 'North Store',
+      areaPath: 'Unassigned / Needs Review',
+    });
+    expect(
+      proposal.locationMappings.map((mapping) => mapping.targetLocationName),
+    ).not.toContain('Imported Inventory');
+    expect(proposal.missingLocationStrategy).not.toMatchObject({
+      targetLocationName: 'Imported Inventory',
+    });
+  });
+
   it('deterministically proposes four editable bins beneath terminal shelves', () => {
     const proposal = makeProductImportProposal(
       preview({
@@ -147,7 +193,8 @@ describe('makeProductImportProposal', () => {
     );
 
     expect(proposal.locationMappings[0]).toMatchObject({
-      areaPath: 'Bay I / Shelf 3',
+      targetLocationName: 'Bay I',
+      areaPath: 'Shelf 3',
       childAreas: [
         { name: 'Bin 1' },
         { name: 'Bin 2' },

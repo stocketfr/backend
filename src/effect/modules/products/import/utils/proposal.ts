@@ -34,7 +34,6 @@ const EMPTY_TARGET_CONTEXT: ProductImportTargetContextDto = {
   areas: [],
 };
 
-const importedLocationName = 'Imported Inventory';
 const fourBinChildAreas = ['Bin 1', 'Bin 2', 'Bin 3', 'Bin 4'].map(
   (name): ProductImportChildAreaDto => ({ name }),
 );
@@ -83,6 +82,19 @@ const inferTargetCategoryPath = (sourcePath: string): string => {
 };
 
 const normalizedKey = (value: string) => value.trim().toLowerCase();
+
+const splitImportedAreaTarget = (
+  areaPath: string,
+): { readonly targetLocationName: string; readonly areaPath: string } => {
+  const [root, ...rest] = areaPath
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  return {
+    targetLocationName: root ?? areaPath,
+    areaPath: rest.join(' / ') || 'Unassigned / Needs Review',
+  };
+};
 
 const makeCategoryMappings = (
   preview: ProductImportPreviewDto,
@@ -148,7 +160,7 @@ const makeLocationMappings = (
     const mappingKey = locationDecisionKey(sourceLocation);
     const safeTargetLocationName =
       normalizeProductImportLocationName(sourceLocation) ??
-      importedLocationName;
+      sourceLocation.slice(0, 100).trim();
     const safeAreaPath = mapping.areaPath
       ? (normalizeProductImportPath(mapping.areaPath) ??
         'Unassigned / Needs Review')
@@ -204,17 +216,23 @@ const makeLocationMappings = (
         areaPath: safeAreaPath,
         rowCount: mapping.rowCount,
       };
-      return onlyLocation
-        ? {
-            ...metadata,
-            action: 'create-area',
-            targetLocationId: onlyLocation.id,
-          }
-        : {
-            ...metadata,
-            action: 'create-area',
-            targetLocationName: importedLocationName,
-          };
+      if (onlyLocation) {
+        return {
+          ...metadata,
+          action: 'create-area',
+          targetLocationId: onlyLocation.id,
+        };
+      }
+
+      const importedTarget = splitImportedAreaTarget(safeAreaPath);
+      return {
+        ...metadata,
+        reason:
+          'Uses the first imported path segment as the location and keeps the remaining hierarchy as areas.',
+        action: 'create-area',
+        targetLocationName: importedTarget.targetLocationName,
+        areaPath: importedTarget.areaPath,
+      };
     }
 
     return {
@@ -317,6 +335,7 @@ const makeSkuConflictResolutions = (
 const makeMissingLocationStrategy = (
   preview: ProductImportPreviewDto,
   context: ProductImportTargetContextDto,
+  locationMappings: readonly ProductImportLocationMappingV2Dto[],
 ): ProductImportAiProposalV2Dto['missingLocationStrategy'] => {
   const rowCount = preview.inventoryPreviews.filter(
     (item) => item.location.trim() === '',
@@ -357,27 +376,52 @@ const makeMissingLocationStrategy = (
 
   const onlyLocation =
     context.locations.length === 1 ? context.locations[0] : undefined;
+  const importedLocationName = locationMappings.find(
+    (mapping) =>
+      (mapping.action === 'create-location' ||
+        mapping.action === 'create-area') &&
+      mapping.targetLocationName,
+  )?.targetLocationName;
+  const mappedExistingLocationId = locationMappings.find(
+    (mapping) => mapping.targetLocationId,
+  )?.targetLocationId;
   const metadata = {
     mappingKey: MISSING_LOCATION_DECISION_KEY,
-    confidence: onlyLocation ? 0.9 : 0.65,
+    confidence: onlyLocation || importedLocationName ? 0.9 : 0.65,
     reason: onlyLocation
       ? 'Keeps unlocated inventory visible beneath the only active location.'
-      : 'Keeps unlocated inventory visible without guessing a physical bay.',
+      : importedLocationName
+        ? 'Keeps unlocated inventory visible beneath a location created by this import.'
+        : mappedExistingLocationId
+          ? 'Keeps unlocated inventory visible beneath a location already selected by this import.'
+          : 'No safe inventory destination could be inferred.',
     reviewRequired: true,
     rowCount,
     areaPath: 'Unassigned / Needs Review',
   };
-  return onlyLocation
-    ? {
-        ...metadata,
-        action: 'assign-review-area',
-        targetLocationId: onlyLocation.id,
-      }
-    : {
-        ...metadata,
-        action: 'assign-review-area',
-        targetLocationName: importedLocationName,
-      };
+  const existingLocationId = onlyLocation?.id ?? mappedExistingLocationId;
+  if (existingLocationId) {
+    return {
+      ...metadata,
+      action: 'assign-review-area',
+      targetLocationId: existingLocationId,
+    };
+  }
+  if (importedLocationName) {
+    return {
+      ...metadata,
+      action: 'assign-review-area',
+      targetLocationName: importedLocationName,
+    };
+  }
+  return {
+    mappingKey: metadata.mappingKey,
+    confidence: metadata.confidence,
+    reason: metadata.reason,
+    reviewRequired: true,
+    rowCount,
+    action: 'skip-inventory',
+  };
 };
 
 const lockedMappings = <
@@ -705,6 +749,10 @@ export function makeProductImportProposal(
   context: ProductImportTargetContextDto = EMPTY_TARGET_CONTEXT,
   guidance?: ProductImportProposalGuidanceDto,
 ): ProductImportAiProposalV2Dto {
+  const locationMappings = applyDeterministicAreaGuidance(
+    makeLocationMappings(preview, context),
+    guidance?.instructions,
+  );
   const warnings = [
     ...preview.warnings,
     makeImportWarning(
@@ -736,13 +784,14 @@ export function makeProductImportProposal(
       },
       targetContext: context,
       skuConflictResolutions: makeSkuConflictResolutions(preview),
-      missingLocationStrategy: makeMissingLocationStrategy(preview, context),
+      missingLocationStrategy: makeMissingLocationStrategy(
+        preview,
+        context,
+        locationMappings,
+      ),
       categoryMappings: makeCategoryMappings(preview, context),
       supplierMappings: [],
-      locationMappings: applyDeterministicAreaGuidance(
-        makeLocationMappings(preview, context),
-        guidance?.instructions,
-      ),
+      locationMappings,
       warnings,
     },
     guidance,

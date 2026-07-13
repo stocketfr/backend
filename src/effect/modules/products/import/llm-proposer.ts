@@ -25,10 +25,14 @@ const callOpenAiForProposal = (
   fetchImpl: FetchLike,
 ): Effect.Effect<ProductImportAiProposalV2Dto, unknown> => {
   if (!config.apiKey) {
-    return Effect.succeed(
-      appendWarning(
-        makeProductImportProposal(preview, context, guidance),
-        'AI proposal unavailable because OPENAI_API_KEY is not configured.',
+    const message =
+      'AI proposal unavailable because OPENAI_API_KEY is not configured.';
+    return Effect.logWarning(message).pipe(
+      Effect.as(
+        appendWarning(
+          makeProductImportProposal(preview, context, guidance),
+          message,
+        ),
       ),
     );
   }
@@ -96,14 +100,17 @@ export class ProductImportLlmProposer extends Effect.Service<ProductImportLlmPro
           getOpenAiProductImportConfig(),
           globalThis.fetch.bind(globalThis),
         ).pipe(
-          Effect.catchAll((cause) =>
-            Effect.succeed(
-              appendWarning(
-                makeProductImportProposal(preview, context, guidance),
-                `AI proposal unavailable: ${messageFromUnknown(cause, String(cause))}`,
+          Effect.catchAll((cause) => {
+            const message = `AI proposal unavailable: ${messageFromUnknown(cause, String(cause))}`;
+            return Effect.logWarning(message).pipe(
+              Effect.as(
+                appendWarning(
+                  makeProductImportProposal(preview, context, guidance),
+                  message,
+                ),
               ),
-            ),
-          ),
+            );
+          }),
         );
 
       return { propose };

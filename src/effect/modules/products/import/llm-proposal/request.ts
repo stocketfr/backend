@@ -232,7 +232,7 @@ export const makeOpenAiProductImportProposalRequest = (
             'An existing area must belong to its target location.',
             'Prefer locations for sites and nested area paths for shelves, bays, racks, bins, rooms, and drawers.',
             'Use childAreas only to create empty direct children beneath an area target; childAreas never changes where product inventory is assigned. Return an empty childAreas array for mappings without requested children.',
-            'Place missing locations in an explicit Unassigned / Needs Review area instead of guessing a physical bay.',
+            'Place missing locations in an explicit Unassigned / Needs Review area beneath the best location already reused or created by locationMappings. Never create a generic holding location such as Imported Inventory.',
             'Return an empty supplierMappings array.',
             'Respect user guidance and locked decisions; the server will enforce locks after your response.',
             'Preserve deterministic error warnings.',

@@ -13,7 +13,7 @@ describe('OpenAI product import config', () => {
       apiKey: undefined,
       model: 'gpt-5-mini',
       baseUrl: 'https://api.openai.com/v1',
-      timeoutMs: 15000,
+      timeoutMs: 60000,
     });
   });
 
