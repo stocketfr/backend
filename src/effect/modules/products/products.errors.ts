@@ -1,10 +1,14 @@
+import { ErrorCode } from '@stocket/types/common';
 import {
   BadRequestError,
   InternalError,
   NotFoundError,
 } from '../../platform/effect/domain-errors';
 
-export class ProductNotFound extends NotFoundError('ProductNotFound')<{
+export class ProductNotFound extends NotFoundError(
+  'ProductNotFound',
+  ErrorCode.PRODUCT_NOT_FOUND,
+)<{
   readonly productId: string;
 }> {}
 
@@ -12,7 +16,10 @@ export class CategoryNotFound extends NotFoundError('CategoryNotFound')<{
   readonly categoryId: string;
 }> {}
 
-export class SkuAlreadyExists extends BadRequestError('SkuAlreadyExists')<{
+export class SkuAlreadyExists extends BadRequestError(
+  'SkuAlreadyExists',
+  ErrorCode.PRODUCT_SKU_DUPLICATE,
+)<{
   readonly sku: string;
 }> {}
 

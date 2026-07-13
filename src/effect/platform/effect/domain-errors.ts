@@ -1,4 +1,5 @@
 import { Data } from 'effect';
+import { type ErrorCode, errorCodeForHttpStatus } from '@stocket/types/common';
 import {
   DEFAULT_LOCALE,
   translateMessage,
@@ -9,7 +10,7 @@ import {
 interface AppErrorInputFields {
   readonly messageKey: AnyMessageKey;
   readonly messageArgs?: MessageArgs;
-  readonly code?: string;
+  readonly code?: ErrorCode;
 }
 
 interface AppErrorFields extends AppErrorInputFields {
@@ -50,7 +51,7 @@ export interface AppError<
   readonly message: string;
   readonly messageKey: AnyMessageKey;
   readonly messageArgs?: MessageArgs;
-  readonly code?: string;
+  readonly code?: ErrorCode;
   readonly statusCode: StatusCode;
 }
 
@@ -66,6 +67,7 @@ export const isAppError = (value: unknown): value is AppError =>
 function makeErrorFactory<StatusCode extends number>(statusCode: StatusCode) {
   return <Tag extends string>(
     tag: Tag,
+    defaultCode: ErrorCode = errorCodeForHttpStatus(statusCode),
   ): AppErrorConstructor<Tag, StatusCode> => {
     class EffectError extends Data.TaggedError(tag)<AppErrorFields> {
       readonly statusCode: StatusCode = statusCode;
@@ -73,6 +75,7 @@ function makeErrorFactory<StatusCode extends number>(statusCode: StatusCode) {
       constructor(args: Readonly<object & AppErrorInputFields>) {
         super({
           ...args,
+          code: args.code ?? defaultCode,
           message: translateMessage(
             DEFAULT_LOCALE,
             args.messageKey,

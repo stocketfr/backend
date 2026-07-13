@@ -1,4 +1,5 @@
 import type { OrderStatus } from '@stocket/types/orders';
+import { ErrorCode } from '@stocket/types/common';
 import {
   BadRequestError,
   InternalError,
@@ -15,6 +16,7 @@ export class ClientNotFound extends BadRequestError('ClientNotFound')<{
 
 export class InvalidOrderStatusTransition extends BadRequestError(
   'InvalidOrderStatusTransition',
+  ErrorCode.ORDER_INVALID_TRANSITION,
 )<{
   readonly from: OrderStatus;
   readonly to: OrderStatus;

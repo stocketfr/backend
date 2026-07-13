@@ -11,6 +11,7 @@
  */
 import { Effect } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
+import { ErrorCode } from '@stocket/types/common';
 import { StockMovementReason } from '@stocket/types/stock-movements';
 import type { StockMovementResponseDto } from '@stocket/types/stock-movements';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
@@ -473,6 +474,9 @@ describe('stockMovementsRouter', () => {
         }),
       );
       expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toMatchObject({
+        code: ErrorCode.UNAUTHORIZED,
+      });
     });
   });
 

@@ -2,6 +2,7 @@ import * as HttpServerRequest from '@effect/platform/HttpServerRequest';
 import { Effect } from 'effect';
 import { eq } from 'drizzle-orm';
 import type { Permission, Resource } from '@stocket/types/auth';
+import { ErrorCode } from '@stocket/types/common';
 import { DrizzleDatabase } from '../db/drizzle';
 import { superAdmins } from '../db/schema';
 import { PermissionProvider } from './permission-provider';
@@ -17,7 +18,10 @@ import {
   resolveTenantForSession,
 } from '../tenancy/tenant-context';
 
-export class PermissionDenied extends ForbiddenError('PermissionDenied') {}
+export class PermissionDenied extends ForbiddenError(
+  'PermissionDenied',
+  ErrorCode.PERMISSION_DENIED,
+) {}
 export class PlatformHostRequired extends NotFoundError(
   'PlatformHostRequired',
 )<{

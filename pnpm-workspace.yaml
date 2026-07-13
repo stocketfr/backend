@@ -1,10 +1,10 @@
 packages:
   - .
-  - ../packages/emails
-  - ../packages/types
-  - ../packages/tsconfig
 
 minimumReleaseAge: 1440
+
+minimumReleaseAgeExclude:
+  - '@stocketfr/*'
 
 catalog:
   '@better-auth/expo': ^1.6.2

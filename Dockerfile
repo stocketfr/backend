@@ -7,21 +7,21 @@ WORKDIR /app
 # only setup step is to activate the project's pinned pnpm.
 RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY packages ./packages
-RUN sed -i 's#../packages#packages#g' pnpm-workspace.yaml pnpm-lock.yaml
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 # Cache the pnpm content-addressable store across builds. Combined with the
 # GHA layer cache this keeps unchanged dependencies off the wire.
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile
+    --mount=type=secret,id=npm_token \
+    token="$(cat /run/secrets/npm_token)" \
+  && printf '//npm.pkg.github.com/:_authToken=%s\n' "$token" > /tmp/github-packages.npmrc \
+  && NPM_CONFIG_USERCONFIG=/tmp/github-packages.npmrc pnpm install --frozen-lockfile \
+  && rm -f /tmp/github-packages.npmrc
 
 COPY src ./src
 COPY drizzle ./drizzle
 COPY drizzle.config.ts tsconfig.json tsconfig.build.json ./
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
-    pnpm --filter @stocket/types barrels \
-  && pnpm --filter @stocket/types --filter @stocket/emails build \
-  && pnpm run build \
+    pnpm run build \
   && rm -rf /tmp/stocket-api \
   && pnpm deploy --prod --legacy --filter=@stocket/api /tmp/stocket-api \
   && cp -a dist drizzle drizzle.config.ts /tmp/stocket-api/

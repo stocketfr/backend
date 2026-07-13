@@ -1,6 +1,11 @@
 import { HttpServerError, HttpServerResponse } from '@effect/platform';
 import { Effect, Cause, ParseResult } from 'effect';
 import { TreeFormatter } from 'effect/ParseResult';
+import {
+  type ErrorCode,
+  errorCodeForHttpStatus,
+  isErrorCode,
+} from '@stocket/types/common';
 import { AppConfig, type AppConfigShape } from '../config/app-config';
 import { isAppError } from '../effect/domain-errors';
 import { getRequestContext } from './request-context';
@@ -56,6 +61,7 @@ const withRequestIdHeader = (response: HttpServerResponse.HttpServerResponse) =>
 const makeErrorEnvelope = (
   statusCode: number,
   error: string,
+  code: ErrorCode,
   messageKey: AnyMessageKey,
   path: string,
   locale: Parameters<typeof translateMessage>[0],
@@ -63,6 +69,7 @@ const makeErrorEnvelope = (
 ) => ({
   statusCode,
   error,
+  code,
   messageKey,
   ...(messageArgs ? { messageArgs } : {}),
   message: translateMessage(locale, messageKey, messageArgs),
@@ -91,6 +98,7 @@ const toErrorDetails = (
 ): {
   statusCode: number;
   error: string;
+  code: ErrorCode;
   messageKey: AnyMessageKey;
   messageArgs?: MessageArgs;
 } => {
@@ -100,6 +108,9 @@ const toErrorDetails = (
     return {
       statusCode: error.statusCode,
       error: getStatusName(error.statusCode),
+      code: isErrorCode(error.code)
+        ? error.code
+        : errorCodeForHttpStatus(error.statusCode),
       messageKey: isMasked ? 'errors.internalServerError' : error.messageKey,
       ...(isMasked || !error.messageArgs
         ? {}
@@ -111,6 +122,7 @@ const toErrorDetails = (
     return {
       statusCode: 400,
       error: getStatusName(400),
+      code: errorCodeForHttpStatus(400),
       messageKey: 'http.parseError',
       messageArgs: { details: TreeFormatter.formatErrorSync(error) },
     };
@@ -120,6 +132,7 @@ const toErrorDetails = (
     return {
       statusCode: 404,
       error: getStatusName(404),
+      code: errorCodeForHttpStatus(404),
       messageKey: 'http.routeNotFound',
       messageArgs: { method: error.request.method, path },
     };
@@ -129,6 +142,7 @@ const toErrorDetails = (
     return {
       statusCode: 400,
       error: getStatusName(400),
+      code: errorCodeForHttpStatus(400),
       messageKey: 'http.requestError',
       messageArgs: {
         details: messageFromUnknown(error, 'Invalid multipart body'),
@@ -140,6 +154,7 @@ const toErrorDetails = (
     return {
       statusCode: 400,
       error: getStatusName(400),
+      code: errorCodeForHttpStatus(400),
       messageKey: 'http.requestError',
       messageArgs: {
         details: error.description ?? error.message,
@@ -153,6 +168,7 @@ const toErrorDetails = (
       return {
         statusCode: 500,
         error: getStatusName(500),
+        code: errorCodeForHttpStatus(500),
         messageKey: 'errors.internalServerError',
       };
     }
@@ -160,6 +176,7 @@ const toErrorDetails = (
     return {
       statusCode: 500,
       error: getStatusName(500),
+      code: errorCodeForHttpStatus(500),
       messageKey: 'http.unexpectedError',
       messageArgs: { details: unexpectedMessage },
     };
@@ -168,6 +185,7 @@ const toErrorDetails = (
   return {
     statusCode: 500,
     error: getStatusName(500),
+    code: errorCodeForHttpStatus(500),
     messageKey: 'errors.internalServerError',
   };
 };
@@ -192,6 +210,7 @@ export const respondCause = <E>(cause: Cause.Cause<E>) =>
       makeErrorEnvelope(
         details.statusCode,
         details.error,
+        details.code,
         details.messageKey,
         path,
         locale,

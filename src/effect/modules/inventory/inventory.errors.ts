@@ -1,3 +1,4 @@
+import { ErrorCode } from '@stocket/types/common';
 import {
   BadRequestError,
   InternalError,
@@ -47,6 +48,7 @@ export class InventoryAreaLocationMismatch extends BadRequestError(
 
 export class InventoryAlreadyExists extends BadRequestError(
   'InventoryAlreadyExists',
+  ErrorCode.INVENTORY_DUPLICATE_LOCATION,
 )<{
   readonly productId: string;
   readonly locationId: string;
@@ -55,6 +57,7 @@ export class InventoryAlreadyExists extends BadRequestError(
 
 export class InventoryQuantityAdjustmentFailed extends BadRequestError(
   'InventoryQuantityAdjustmentFailed',
+  ErrorCode.INVENTORY_NEGATIVE_QUANTITY,
 )<{
   readonly id: string;
   readonly adjustment: number;
