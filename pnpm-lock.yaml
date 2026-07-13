@@ -80,11 +80,11 @@ importers:
         specifier: ^1.41.1
         version: 1.41.1
       '@stocket/emails':
-        specifier: npm:@stocketfr/emails@0.1.0-pr-27-1a3417a6e0264e6771f27477df75dec715ce4a23
-        version: '@stocketfr/emails@0.1.0-pr-27-1a3417a6e0264e6771f27477df75dec715ce4a23'
+        specifier: npm:@stocketfr/emails@0.1.0
+        version: '@stocketfr/emails@0.1.0'
       '@stocket/types':
-        specifier: npm:@stocketfr/types@1.8.0-pr-27-1a3417a6e0264e6771f27477df75dec715ce4a23
-        version: '@stocketfr/types@1.8.0-pr-27-1a3417a6e0264e6771f27477df75dec715ce4a23(effect@3.21.2)'
+        specifier: npm:@stocketfr/types@1.8.0
+        version: '@stocketfr/types@1.8.0(effect@3.21.2)'
       better-auth:
         specifier: 'catalog:'
         version: 1.6.14(@opentelemetry/api@1.9.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(kysely@0.29.2)(pg@8.20.0)(sql.js@1.14.1))(pg@8.20.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.2(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.27.7)(tsx@4.21.0)))
@@ -120,8 +120,8 @@ importers:
         specifier: ^10.4.0
         version: 10.4.0
       '@stocket/tsconfig':
-        specifier: npm:@stocketfr/tsconfig@1.3.2-pr-27-1a3417a6e0264e6771f27477df75dec715ce4a23
-        version: '@stocketfr/tsconfig@1.3.2-pr-27-1a3417a6e0264e6771f27477df75dec715ce4a23'
+        specifier: npm:@stocketfr/tsconfig@1.3.2
+        version: '@stocketfr/tsconfig@1.3.2'
       '@stryker-mutator/core':
         specifier: 9.6.1
         version: 9.6.1(@types/node@22.19.19)
@@ -1931,14 +1931,14 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@stocketfr/emails@0.1.0-pr-27-1a3417a6e0264e6771f27477df75dec715ce4a23':
-    resolution: {integrity: sha512-U+q8QEHEQQdhIF6bseyS9vn8TW+YQierHsWC7KoGXoaYKiZR+/gOJkusAu8heEStvIoLutMKRDqSAfqLrAB14Q==, tarball: https://npm.pkg.github.com/download/@stocketfr/emails/0.1.0-pr-27-1a3417a6e0264e6771f27477df75dec715ce4a23/bae2e528f4d0591d25debd70f48f2f5f5701f521}
+  '@stocketfr/emails@0.1.0':
+    resolution: {integrity: sha512-fyTvxgoodfHQi4M1ikRrBDUD5Yskw1I3fkG3LSQaUfTZsu3vec+OrGJulh0L5I9fVdxssVd4bAaP7DBzp0fwWQ==, tarball: https://npm.pkg.github.com/download/@stocketfr/emails/0.1.0/51e57bb50e9364891654b9ffd4228382c10e2f08}
 
-  '@stocketfr/tsconfig@1.3.2-pr-27-1a3417a6e0264e6771f27477df75dec715ce4a23':
-    resolution: {integrity: sha512-rOOP45f7uLQA2JqiWUJXHM7azU+dbSCuR9PuP/u2CTiI9OlCdDijZsUxezcF736s+VnvcgSPKmnaLs/mjqEw5Q==, tarball: https://npm.pkg.github.com/download/@stocketfr/tsconfig/1.3.2-pr-27-1a3417a6e0264e6771f27477df75dec715ce4a23/b6f95a8a7915fd7c13c0a83495dc678c52410769}
+  '@stocketfr/tsconfig@1.3.2':
+    resolution: {integrity: sha512-pztnZWEioR4h6ZdId0F/mY82GABwqR57NXPKwJ1ooOKU0IW5gAWr7kGieTCCFtbU326nRLeD/bRa5xR/YLkVbw==, tarball: https://npm.pkg.github.com/download/@stocketfr/tsconfig/1.3.2/91432ac5d004460855dca5fd74623364fff6a4c8}
 
-  '@stocketfr/types@1.8.0-pr-27-1a3417a6e0264e6771f27477df75dec715ce4a23':
-    resolution: {integrity: sha512-RppA7N3JwpohuVTPKDrWOrrAFRn5eKX6GEUQcd6VPT46I4urkDdZOpBhC34S/oPFnrMEXoxGkKv1jQ4phr6uKg==, tarball: https://npm.pkg.github.com/download/@stocketfr/types/1.8.0-pr-27-1a3417a6e0264e6771f27477df75dec715ce4a23/e825974f19f9d4d85443d0d607afa17389f1deca}
+  '@stocketfr/types@1.8.0':
+    resolution: {integrity: sha512-5+07iqB2xFFVii8T8rzJK+lyZ6eaw1D/8IKEovXVxXxw8Y7x2kqwwL//AJPDA/xMN/vUc4Ihf6K9b2jm3xFtOA==, tarball: https://npm.pkg.github.com/download/@stocketfr/types/1.8.0/81959acc1a2c6bb24d541dce6b5d5806da55a6de}
     peerDependencies:
       effect: ^3.19.0
 
@@ -5001,16 +5001,16 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@stocketfr/emails@0.1.0-pr-27-1a3417a6e0264e6771f27477df75dec715ce4a23':
+  '@stocketfr/emails@0.1.0':
     dependencies:
       '@react-email/components': 1.0.12(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@react-email/render': 2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
 
-  '@stocketfr/tsconfig@1.3.2-pr-27-1a3417a6e0264e6771f27477df75dec715ce4a23': {}
+  '@stocketfr/tsconfig@1.3.2': {}
 
-  '@stocketfr/types@1.8.0-pr-27-1a3417a6e0264e6771f27477df75dec715ce4a23(effect@3.21.2)':
+  '@stocketfr/types@1.8.0(effect@3.21.2)':
     dependencies:
       effect: 3.21.2
       zod: 4.3.6
