@@ -186,7 +186,7 @@ export function makeProductImportPreview(
   if (missingLocationRows > 0) {
     warnings.push(
       makeImportWarning(
-        `${missingLocationRows} rows have no storage location and will not create inventory records.`,
+        `${missingLocationRows} rows have no storage location. Smart Import will propose a visible needs-review destination before import.`,
         { field: 'location' },
       ),
     );
@@ -213,7 +213,7 @@ export function makeProductImportPreview(
   if (locationMappings.some((mapping) => mapping.action === 'create-area')) {
     warnings.push(
       makeImportWarning(
-        'Some storage values look like areas. Pick a default location before import.',
+        'Some storage values look like area paths. Smart Import will show their parent location in the proposed stock structure.',
         { field: 'location' },
       ),
     );
