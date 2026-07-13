@@ -1467,6 +1467,14 @@ SKU-1,Whisky,Bar,2,Warehouse
       }),
       EMPTY_TARGET_CONTEXT,
       undefined,
+      [
+        expect.objectContaining({
+          sourceRow: 2,
+          sku: 'SKU-1',
+          name: 'Whisky',
+          category_path: 'Bar',
+        }),
+      ],
     );
     expect(proposal.confidence).toBe(0.99);
     expect(proposal.categoryMappings).toEqual([

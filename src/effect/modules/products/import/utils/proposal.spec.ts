@@ -73,6 +73,16 @@ describe('makeProductImportProposal', () => {
         }),
       ]),
     );
+    expect(proposal.categoryMappings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourcePath: 'Uncategorized',
+          targetPath: 'Uncategorized',
+          action: 'default',
+          reviewRequired: false,
+        }),
+      ]),
+    );
     expect(proposal.locationMappings[0]).toMatchObject({
       action: 'use-existing-area',
       targetLocationId: 'loc-1',

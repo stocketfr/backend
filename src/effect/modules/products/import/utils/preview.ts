@@ -191,11 +191,13 @@ export function makeProductImportPreview(
       ),
     );
   }
-  const uncategorizedRows = categoryCounts.get('Uncategorized') ?? 0;
+  const uncategorizedRows = rows.filter(
+    (row) => normalizeCategoryPath(row.category_path) === 'Uncategorized',
+  ).length;
   if (uncategorizedRows > 0) {
     warnings.push(
       makeImportWarning(
-        `${uncategorizedRows} rows have no category path and need review.`,
+        `${uncategorizedRows} rows have no category path. Smart Import will infer one from product details or use Uncategorized.`,
         { field: 'category_path' },
       ),
     );

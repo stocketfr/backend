@@ -44,7 +44,7 @@ const inferTargetCategoryPath = (sourcePath: string): string => {
   const normalized = normalizeCategoryPath(sourcePath);
   const lower = normalized.toLowerCase();
 
-  if (normalized === 'Uncategorized') return 'Needs Review / Uncategorized';
+  if (normalized === 'Uncategorized') return 'Uncategorized';
   if (/\b(dental|toothbrush|toothpaste|mouthwash)\b/.test(lower)) {
     return 'Guest Accessories / Dental';
   }
@@ -107,22 +107,30 @@ const makeCategoryMappings = (
   );
 
   return preview.categoryMappings.map((mapping) => {
+    const usesUncategorizedFallback =
+      normalizeCategoryPath(mapping.sourcePath) === 'Uncategorized';
     const inferredTargetPath = inferTargetCategoryPath(mapping.sourcePath);
     const targetPath =
-      normalizeProductImportPath(inferredTargetPath) ??
-      'Needs Review / Uncategorized';
+      normalizeProductImportPath(inferredTargetPath) ?? 'Uncategorized';
     const existing =
       categoriesByPath.get(normalizedKey(targetPath)) ??
       categoriesByPath.get(normalizedKey(mapping.sourcePath));
     const metadata = {
       mappingKey: categoryDecisionKey(mapping.sourcePath),
-      confidence: existing ? 0.98 : context.truncated ? 0.55 : 0.82,
+      confidence: existing
+        ? 0.98
+        : usesUncategorizedFallback
+          ? 0.5
+          : context.truncated
+            ? 0.55
+            : 0.82,
       reason: existing
         ? 'Matches an existing tenant category path.'
-        : 'Uses the inferred category hierarchy from the CSV source.',
+        : usesUncategorizedFallback
+          ? 'No source category was provided; uses the explicit Uncategorized fallback.'
+          : 'Uses the inferred category hierarchy from the CSV source.',
       reviewRequired:
-        targetPath === 'Needs Review / Uncategorized' ||
-        (context.truncated === true && !existing),
+        !usesUncategorizedFallback && context.truncated === true && !existing,
       sourcePath: mapping.sourcePath,
       targetPath: existing?.path ?? targetPath,
       rowCount: mapping.rowCount,
@@ -132,10 +140,7 @@ const makeCategoryMappings = (
       ? { ...metadata, action: 'use-existing', targetCategoryId: existing.id }
       : {
           ...metadata,
-          action:
-            targetPath === 'Needs Review / Uncategorized'
-              ? 'default'
-              : 'create',
+          action: usesUncategorizedFallback ? 'default' : 'create',
         };
   });
 };
@@ -755,9 +760,6 @@ export function makeProductImportProposal(
   );
   const warnings = [
     ...preview.warnings,
-    makeImportWarning(
-      'This proposal is generated from structured CSV analysis and must be reviewed before import.',
-    ),
     ...(context.truncated
       ? [
           makeImportWarning(

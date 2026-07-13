@@ -13,6 +13,7 @@ import { makeOpenAiProductImportProposalRequest } from './llm-proposal/request';
 import { decodeOpenAiProposalResponse } from './llm-proposal/raw';
 import { sanitizeLlmProposal } from './llm-proposal/sanitizer';
 import { appendWarning, messageFromUnknown } from './llm-proposal/shared';
+import type { NormalizedProductImportRow } from './types';
 import { makeProductImportProposal } from './utils/proposal';
 
 type FetchLike = typeof fetch;
@@ -21,6 +22,7 @@ const callOpenAiForProposal = (
   preview: ProductImportPreviewDto,
   context: ProductImportTargetContextDto,
   guidance: ProductImportProposalGuidanceDto | undefined,
+  rows: readonly NormalizedProductImportRow[],
   config: OpenAiProductImportConfig,
   fetchImpl: FetchLike,
 ): Effect.Effect<ProductImportAiProposalV2Dto, unknown> => {
@@ -56,6 +58,7 @@ const callOpenAiForProposal = (
                 context,
                 guidance,
                 config,
+                rows,
               ),
             ),
           }),
@@ -79,7 +82,7 @@ const callOpenAiForProposal = (
         catch: (cause) => cause,
       });
       const rawProposal = yield* decodeOpenAiProposalResponse(json);
-      return sanitizeLlmProposal(rawProposal, preview, context, guidance);
+      return sanitizeLlmProposal(rawProposal, preview, context, guidance, rows);
     }).pipe(Effect.ensuring(Effect.sync(() => clearTimeout(timeout))));
   });
 };
@@ -92,11 +95,13 @@ export class ProductImportLlmProposer extends Effect.Service<ProductImportLlmPro
         preview: ProductImportPreviewDto,
         context: ProductImportTargetContextDto,
         guidance?: ProductImportProposalGuidanceDto,
+        rows: readonly NormalizedProductImportRow[] = [],
       ): Effect.Effect<ProductImportAiProposalV2Dto> =>
         callOpenAiForProposal(
           preview,
           context,
           guidance,
+          rows,
           getOpenAiProductImportConfig(),
           globalThis.fetch.bind(globalThis),
         ).pipe(
