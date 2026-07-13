@@ -1400,7 +1400,8 @@ Item,Shampoo,SORT-2,Bulgari,Green Tea,5,Bay C - Shelf 3
       expect.arrayContaining([
         expect.objectContaining({
           sourceLocation: 'Bay F - Shelf 2 - Bin A',
-          areaPath: 'Bay F / Shelf 2 / Bin A',
+          targetLocationName: 'Bay F',
+          areaPath: 'Shelf 2 / Bin A',
           action: 'create-area',
         }),
       ]),
