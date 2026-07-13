@@ -8,7 +8,15 @@ REST API for Stocket inventory management, built with Effect, Drizzle, Better Au
 - pnpm 10.28.0 via Corepack
 - PostgreSQL 16
 
-This repo is a pnpm workspace. A single `pnpm install` from the workspace root installs the API and local Stocket packages under `packages/`.
+This repo is a pnpm workspace. Shared Stocket packages are installed from GitHub Packages at immutable versions.
+
+GitHub Packages requires authentication. Create a classic GitHub token with
+`read:packages`, expose it as `GITHUB_PACKAGES_TOKEN`, and configure pnpm once:
+
+```bash
+pnpm config set --global @stocketfr:registry https://npm.pkg.github.com
+pnpm config set --global //npm.pkg.github.com/:_authToken "${GITHUB_PACKAGES_TOKEN}"
+```
 
 ## Getting Started
 
@@ -82,14 +90,15 @@ as a fallback for crashes between object upload/enqueue or settlement/cleanup.
 
 ## Shared Types
 
-Shared API contracts are linked into this workspace as `@stocket/types` from `../packages/types`.
+Shared API contracts are consumed as `@stocket/types`, backed by the versioned
+`@stocketfr/types` package in GitHub Packages.
 
 When request/response shapes change:
 
-1. update `../packages/types`
-2. run `pnpm --filter @stocket/types barrels`
-3. run `pnpm --filter @stocket/types build`
-4. use the workspace-linked package directly from the API
+1. update `stocketfr/packages` and add a Changeset
+2. use the package PR's immutable snapshot version for coordinated testing
+3. merge the package version PR to publish a stable release
+4. let Dependabot update the pinned package version
 
 ## Authentication
 

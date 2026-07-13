@@ -1,0 +1,15 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily
+      timezone: Europe/Paris
+    allow:
+      - dependency-name: "@stocket/*"
+    groups:
+      stocket-packages:
+        patterns:
+          - "@stocket/*"
+          - "@stocketfr/*"
