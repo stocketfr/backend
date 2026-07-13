@@ -184,9 +184,13 @@ export function makeProductImportPreview(
   }
   const missingLocationRows = rows.filter((row) => !row.location.trim()).length;
   if (missingLocationRows > 0) {
+    const missingLocationSubject =
+      missingLocationRows === 1
+        ? '1 row has'
+        : `${missingLocationRows} rows have`;
     warnings.push(
       makeImportWarning(
-        `${missingLocationRows} rows have no storage location. Smart Import will propose a visible needs-review destination before import.`,
+        `${missingLocationSubject} no storage location. Smart Import will propose whether to assign or skip inventory before import.`,
         { field: 'location' },
       ),
     );

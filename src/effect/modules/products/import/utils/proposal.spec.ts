@@ -5,6 +5,7 @@ import {
   locationDecisionKey,
   skuConflictDecisionKey,
 } from './proposal-keys';
+import { makeProductImportPreview } from './preview';
 import { makeProductImportProposal } from './proposal';
 
 const preview = (
@@ -127,6 +128,41 @@ describe('makeProductImportProposal', () => {
     );
 
     expect(proposal.missingLocationStrategy.rowCount).toBe(1);
+  });
+
+  it('warns neutrally and requires review when missing stock has no safe target', () => {
+    const importPreview = makeProductImportPreview(
+      [
+        {
+          sku: 'UNLOCATED-001',
+          name: 'Unlocated Product',
+          quantity: '1',
+          location: '',
+        },
+      ],
+      'normalized-products',
+    );
+    const proposal = makeProductImportProposal(importPreview, {
+      categories: [],
+      locations: [],
+      areas: [],
+    });
+
+    expect(importPreview.warnings).toContainEqual(
+      expect.objectContaining({
+        field: 'location',
+        message:
+          '1 row has no storage location. Smart Import will propose whether to assign or skip inventory before import.',
+      }),
+    );
+    expect(proposal.missingLocationStrategy).toEqual({
+      mappingKey: 'missing-location',
+      confidence: 0.65,
+      reason: 'No safe inventory destination could be inferred.',
+      reviewRequired: true,
+      rowCount: 1,
+      action: 'skip-inventory',
+    });
   });
 
   it('places missing stock under a real location created by the import', () => {
