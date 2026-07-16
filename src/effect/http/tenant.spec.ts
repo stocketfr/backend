@@ -4,6 +4,10 @@ import { describe, expect, it, vi } from 'vitest';
 import type { BetterAuthService } from '../platform/auth/better-auth';
 import { AppConfig } from '../platform/config/app-config';
 import {
+  CurrentRequestActor,
+  type RequestActor,
+} from '../platform/auth/request-actor';
+import {
   CurrentRequestContext,
   type RequestContext,
 } from '../platform/http/request-context';
@@ -177,6 +181,32 @@ describe('tenantContextMiddleware', () => {
     expect(response.status).toBe(200);
     expect(getSession).toHaveBeenCalledTimes(1);
     expect(requestContext.tenantId).toBe(DEFAULT_TENANT_ID);
+  });
+
+  it('provides the verified session and tenant as the request actor', async () => {
+    const getSession = vi.fn(async () => makeSession());
+    let capturedActor: RequestActor | undefined;
+    const captureActorApp = Effect.map(
+      Effect.serviceOption(CurrentRequestActor),
+      (actor) => {
+        capturedActor = actor._tag === 'Some' ? actor.value : undefined;
+        return okApp;
+      },
+    );
+    const effect = provideTestRequest(
+      tenantContextMiddleware(captureActorApp),
+      tenantUrl('/api/v1/products'),
+      getSession,
+      makeRequestContext('/api/v1/products'),
+    );
+
+    const response = await Effect.runPromise(effect);
+
+    expect(response.status).toBe(200);
+    expect(capturedActor).toMatchObject({
+      userId: TEST_USER_ID,
+      tenantId: DEFAULT_TENANT_ID,
+    });
   });
 
   it('rejects unknown hosts before loading a session', async () => {

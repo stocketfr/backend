@@ -24,6 +24,10 @@ import { securityHeadersMiddleware } from './security-headers';
 import { requestLoggingMiddleware } from './logging';
 import { AppApi } from './api';
 import { tenantContextMiddleware } from './tenant';
+import {
+  makeMcpRouter,
+  type McpApplicationServices,
+} from '../modules/mcp/router';
 
 const MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024;
 
@@ -127,6 +131,9 @@ export const buildHttpApp = Effect.gen(function* () {
   const appConfig = yield* AppConfig;
   const healthService = yield* HealthService;
   const builderApp = yield* makeApiBuilderApp(healthService);
+  const mcpRuntime = yield* Effect.runtime<McpApplicationServices>();
+  const mcp = makeMcpRouter(mcpRuntime);
+  yield* Effect.addFinalizer(() => Effect.promise(mcp.close));
 
   const appRouter = HttpRouter.empty.pipe(
     // Health routes handled by HttpApiBuilder (typed, schema-validated)
@@ -142,6 +149,7 @@ export const buildHttpApp = Effect.gen(function* () {
       },
     ),
     HttpRouter.concat(apiRouter),
+    HttpRouter.concat(mcp.router),
     HttpRouter.catchAllCause(respondCause),
   );
 

@@ -1,6 +1,10 @@
 import type { HttpApp } from '@effect/platform';
 import * as HttpServerRequest from '@effect/platform/HttpServerRequest';
 import { Effect } from 'effect';
+import {
+  CurrentRequestActor,
+  makeRequestActor,
+} from '../platform/auth/request-actor';
 import { requireSession } from '../platform/http/session';
 import { resolveRequestHost } from '../platform/tenancy/host';
 import {
@@ -65,7 +69,11 @@ export const tenantContextMiddleware = <E, R>(httpApp: HttpApp.Default<E, R>) =>
 
       yield* resolvePublicTenantForHost(host);
       const session = yield* requireSession;
-      yield* resolveTenantForHostAndSession(host, session);
-      return yield* httpApp;
+      const tenant = yield* resolveTenantForHostAndSession(host, session);
+      return yield* Effect.provideService(
+        httpApp,
+        CurrentRequestActor,
+        makeRequestActor(session, tenant),
+      );
     });
   });

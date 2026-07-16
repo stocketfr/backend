@@ -9,9 +9,11 @@ import {
 } from '../http/request-context';
 import { DEFAULT_TENANT_ID } from '../tenancy/tenant-constants';
 import { makeAuditLogWriter } from '../audit/index';
+import { CurrentRequestActor, type RequestActor } from '../auth/request-actor';
 
 const TEST_USER_ID = '00000000-0000-4000-a000-000000000001';
 const TEST_ENTITY_ID = '00000000-0000-4000-b000-000000000001';
+const TEST_ACTOR_TENANT_ID = '00000000-0000-4000-a000-000000000002';
 
 const makeSession = () => ({
   user: {
@@ -78,6 +80,8 @@ const runWriter = (
   options: {
     readonly session?: ReturnType<typeof makeSession> | null;
     readonly requestContext?: RequestContext;
+    readonly actor?: RequestActor;
+    readonly getSession?: ReturnType<typeof vi.fn>;
   } = {},
 ) =>
   Effect.runPromise(
@@ -94,7 +98,8 @@ const runWriter = (
           Layer.succeed(DrizzleDatabase, db as never),
           makeBetterAuthTestLayer({
             overrides: {
-              getSession: async () => options.session ?? null,
+              getSession:
+                options.getSession ?? (async () => options.session ?? null),
             } as never,
           }),
           makeRequestLayer(),
@@ -102,6 +107,9 @@ const runWriter = (
             CurrentRequestContext,
             options.requestContext ?? makeRequestContext(),
           ),
+          options.actor
+            ? Layer.succeed(CurrentRequestActor, options.actor)
+            : Layer.empty,
         ),
       ),
     ),
@@ -138,6 +146,31 @@ describe('makeAuditLogWriter', () => {
       expect.objectContaining({
         user_id: null,
         tenant_id: DEFAULT_TENANT_ID,
+      }),
+    );
+  });
+
+  it('uses the verified request actor without loading the session again', async () => {
+    const values = vi.fn(async () => undefined);
+    const getSession = vi.fn(async () => makeSession());
+    const db = makeDb(values);
+
+    await runWriter(db, {
+      getSession,
+      actor: {
+        userId: TEST_USER_ID,
+        tenantId: TEST_ACTOR_TENANT_ID,
+        tenantName: 'Actor workspace',
+        tenantSlug: 'actor-workspace',
+      },
+    });
+    await waitForCall(values);
+
+    expect(getSession).not.toHaveBeenCalled();
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: TEST_USER_ID,
+        tenant_id: TEST_ACTOR_TENANT_ID,
       }),
     );
   });

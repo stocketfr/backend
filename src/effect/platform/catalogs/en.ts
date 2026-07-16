@@ -84,6 +84,8 @@ export const enCatalog = {
   'locations.deleted': 'Location deleted successfully.',
   'locations.notFound': 'Location not found.',
   'locations.repositoryFailed': 'Location operation failed.',
+  'mcp.changedSinceConfirmation':
+    'This item changed while confirmation was open. Review its latest details and try again.',
   'notifications.preferencesUpdated': 'Notification preferences updated.',
   'notifications.repositoryFailed': 'Notification operation failed.',
   'notifications.sendFailed': 'Notification delivery failed.',

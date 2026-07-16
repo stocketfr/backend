@@ -9,7 +9,7 @@ import {
 
 export const requestLoggingMiddleware = <E, R>(
   httpApp: HttpApp.Default<E, R>,
-): HttpApp.Default<E, R | HttpServerRequest.HttpServerRequest> =>
+) =>
   Effect.flatMap(makeRequestContext, (requestContext) =>
     Effect.provideService(
       Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) => {

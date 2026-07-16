@@ -99,6 +99,8 @@ export const deCatalog: Record<MessageKey, string> = {
   'locations.deleted': 'Standort erfolgreich geloescht.',
   'locations.notFound': 'Standort nicht gefunden.',
   'locations.repositoryFailed': 'Der Standortvorgang ist fehlgeschlagen.',
+  'mcp.changedSinceConfirmation':
+    'Dieses Element wurde waehrend der Bestaetigung geaendert. Pruefen Sie die neuesten Angaben und versuchen Sie es erneut.',
   'notifications.preferencesUpdated':
     'Benachrichtigungseinstellungen aktualisiert.',
   'notifications.repositoryFailed':

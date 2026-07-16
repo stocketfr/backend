@@ -43,6 +43,7 @@ export const moduleCounterparts = [
   'notifications',
   'tasks',
   'e2e',
+  'mcp',
 ] as const;
 
 const migrationRouter = HttpRouter.empty.pipe(

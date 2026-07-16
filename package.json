@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1068.0",
+    "@effect/ai": "0.35.0",
     "@effect/cluster": "^0.59.0",
     "@effect/experimental": "^0.60.0",
     "@effect/opentelemetry": "^0.63.0",
@@ -43,6 +44,7 @@
     "@opentelemetry/resources": "^2.7.1",
     "@opentelemetry/sdk-trace-node": "^2.7.1",
     "@opentelemetry/semantic-conventions": "^1.41.1",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@stocket/emails": "npm:@stocketfr/emails@0.1.0",
     "@stocket/types": "npm:@stocketfr/types@1.8.0",
     "better-auth": "catalog:",

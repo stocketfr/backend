@@ -1,5 +1,5 @@
 import type { HttpServerRequest } from '@effect/platform';
-import { Context, Effect, Layer } from 'effect';
+import { Context, Effect, Layer, Option } from 'effect';
 import {
   type AuditAction,
   type AuditEntityType,
@@ -11,6 +11,7 @@ import type { LogPayload } from '../observability/messages';
 import { getOptionalSession } from '../http/session';
 import { getRequestContext } from '../http/request-context';
 import { DEFAULT_TENANT_ID } from '../tenancy/tenant-constants';
+import { CurrentRequestActor } from '../auth/request-actor';
 
 export interface AuditWriteParams {
   readonly action: AuditAction;
@@ -37,14 +38,19 @@ export const makeAuditLogWriter = Effect.gen(function* () {
 
   const writeAuditLog = (params: AuditWriteParams) =>
     Effect.gen(function* () {
-      const session = yield* getOptionalSession;
+      const actor = yield* Effect.serviceOption(CurrentRequestActor);
+      const session = Option.isSome(actor) ? null : yield* getOptionalSession;
       const requestContext = yield* getRequestContext;
 
       yield* Effect.tryPromise({
         try: () =>
           db.insert(auditLogs).values({
-            tenant_id: requestContext.tenantId ?? DEFAULT_TENANT_ID,
-            user_id: session?.user.id ?? null,
+            tenant_id: Option.isSome(actor)
+              ? actor.value.tenantId
+              : (requestContext.tenantId ?? DEFAULT_TENANT_ID),
+            user_id: Option.isSome(actor)
+              ? actor.value.userId
+              : (session?.user.id ?? null),
             action: params.action,
             entity_type: params.entityType,
             entity_id: params.entityId,

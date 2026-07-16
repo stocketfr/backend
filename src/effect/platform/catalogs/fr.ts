@@ -94,6 +94,8 @@ export const frCatalog: Record<MessageKey, string> = {
   'locations.deleted': 'Emplacement supprime avec succes.',
   'locations.notFound': 'Emplacement introuvable.',
   'locations.repositoryFailed': "L'operation sur lemplacement a echoue.",
+  'mcp.changedSinceConfirmation':
+    'Cet element a ete modifie pendant la confirmation. Verifiez ses dernieres informations et reessayez.',
   'notifications.preferencesUpdated':
     'Preferences de notification mises a jour.',
   'notifications.repositoryFailed': "L'operation de notification a echoue.",

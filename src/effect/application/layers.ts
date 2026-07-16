@@ -94,7 +94,7 @@ const withPlatform = <A, E, R>(layer: Layer.Layer<A, E, R>) =>
   layer.pipe(Layer.provide(platformLayer));
 
 export const makeHttpServerLayer = (port: number) =>
-  Layer.unwrapEffect(
+  Layer.unwrapScoped(
     buildHttpApp.pipe(
       Effect.map((app) =>
         HttpServer.serve(app).pipe(

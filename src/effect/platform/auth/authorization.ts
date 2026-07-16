@@ -13,6 +13,7 @@ import {
 } from '../effect/domain-errors';
 import { isPlatformHost, resolveRequestHost } from '../tenancy/host';
 import { requireSession } from '../http/session';
+import { CurrentRequestActor } from './request-actor';
 import {
   getRequestTenantId,
   resolveTenantForSession,
@@ -34,27 +35,58 @@ export class SuperAdminInfrastructureError extends InternalError(
   readonly cause?: unknown;
 }> {}
 
+const requirePermissionForIdentity = (
+  userId: string,
+  tenantId: string,
+  resource: Resource,
+  permission: Permission,
+) =>
+  Effect.gen(function* () {
+    const permissionProvider = yield* PermissionProvider;
+    const { permissions } = yield* permissionProvider.getPermissionsForUser(
+      userId,
+      tenantId,
+    );
+
+    yield* Effect.succeed(
+      permissions[resource]?.includes(permission) ?? false,
+    ).pipe(
+      Effect.filterOrFail(
+        Boolean,
+        () =>
+          new PermissionDenied({
+            messageKey: 'auth.permissionDenied',
+          }),
+      ),
+    );
+  });
+
 export const requirePermission = (resource: Resource, permission: Permission) =>
   Effect.gen(function* () {
     const session = yield* requireSession;
     const tenantId =
       (yield* getRequestTenantId) ??
       (yield* resolveTenantForSession(session)).tenantId;
-    const permissionProvider = yield* PermissionProvider;
-    const { permissions } = yield* permissionProvider.getPermissionsForUser(
+    yield* requirePermissionForIdentity(
       session.user.id,
       tenantId,
+      resource,
+      permission,
     );
-    const resourcePermissions = permissions[resource] ?? [];
-
-    if (!resourcePermissions.includes(permission)) {
-      return yield* Effect.fail(
-        new PermissionDenied({
-          messageKey: 'auth.permissionDenied',
-        }),
-      );
-    }
   });
+
+export const requireRequestActorPermission = (
+  resource: Resource,
+  permission: Permission,
+) =>
+  Effect.flatMap(CurrentRequestActor, (actor) =>
+    requirePermissionForIdentity(
+      actor.userId,
+      actor.tenantId,
+      resource,
+      permission,
+    ),
+  );
 
 export const requireSuperAdmin = Effect.gen(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest;

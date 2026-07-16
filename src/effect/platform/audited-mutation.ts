@@ -9,22 +9,19 @@ type EntityIdResolver<A> =
   | readonly string[]
   | ((result: A) => string | readonly string[]);
 
-interface BaseAuditedMutationOptions<A> {
+export interface AuditMutationOptions<A> {
   readonly action: AuditAction;
   readonly entityType: AuditEntityType;
   readonly entityId: EntityIdResolver<A>;
 }
 
-interface JsonAuditedMutationOptions<
-  A,
-  B = A,
-> extends BaseAuditedMutationOptions<A> {
+interface JsonAuditedMutationOptions<A, B = A> extends AuditMutationOptions<A> {
   readonly response?: 'json';
   readonly mapResponse?: (result: A) => B;
   readonly responseOptions?: HttpServerResponse.Options.WithContentType;
 }
 
-interface EmptyAuditedMutationOptions<A> extends BaseAuditedMutationOptions<A> {
+interface EmptyAuditedMutationOptions<A> extends AuditMutationOptions<A> {
   readonly response: 'empty';
   readonly responseOptions?: HttpServerResponse.Options.WithContent;
 }
@@ -41,13 +38,12 @@ const resolveEntityIds = <A>(
   return typeof resolved === 'string' ? [resolved] : resolved;
 };
 
-export const respondAuditedMutation = <A, E, R, B = A>(
+export const auditMutation = <A, E, R>(
   mutation: Effect.Effect<A, E, R>,
-  options: AuditedMutationOptions<A, B>,
+  options: AuditMutationOptions<A>,
 ) =>
-  Effect.gen(function* () {
-    const auditLogWriter = yield* AuditLogWriter;
-    const auditedMutation = mutation.pipe(
+  Effect.flatMap(AuditLogWriter, (auditLogWriter) =>
+    mutation.pipe(
       Effect.tap((result) =>
         Effect.forEach(
           resolveEntityIds(options.entityId, result),
@@ -60,7 +56,15 @@ export const respondAuditedMutation = <A, E, R, B = A>(
           { discard: true },
         ),
       ),
-    );
+    ),
+  );
+
+export const respondAuditedMutation = <A, E, R, B = A>(
+  mutation: Effect.Effect<A, E, R>,
+  options: AuditedMutationOptions<A, B>,
+) =>
+  Effect.gen(function* () {
+    const auditedMutation = auditMutation(mutation, options);
 
     if (options.response === 'empty') {
       return yield* respondEmpty(auditedMutation, options.responseOptions);
