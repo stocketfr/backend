@@ -392,13 +392,16 @@ const makeMissingLocationStrategy = (
   )?.targetLocationId;
   const metadata = {
     mappingKey: MISSING_LOCATION_DECISION_KEY,
-    confidence: onlyLocation || importedLocationName ? 0.9 : 0.65,
+    confidence:
+      onlyLocation || mappedExistingLocationId || importedLocationName
+        ? 0.9
+        : 0.65,
     reason: onlyLocation
       ? 'Keeps unlocated inventory visible beneath the only active location.'
-      : importedLocationName
-        ? 'Keeps unlocated inventory visible beneath a location created by this import.'
-        : mappedExistingLocationId
-          ? 'Keeps unlocated inventory visible beneath a location already selected by this import.'
+      : mappedExistingLocationId
+        ? 'Keeps unlocated inventory visible beneath a location already selected by this import.'
+        : importedLocationName
+          ? 'Keeps unlocated inventory visible beneath a location created by this import.'
           : 'No safe inventory destination could be inferred.',
     reviewRequired: true,
     rowCount,

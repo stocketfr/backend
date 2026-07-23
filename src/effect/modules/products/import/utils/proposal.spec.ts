@@ -211,6 +211,74 @@ describe('makeProductImportProposal', () => {
     });
   });
 
+  it('keeps missing-stock metadata aligned with its mapped existing destination', () => {
+    const existingLocationMapping = {
+      sourceLocation: 'Warehouse',
+      targetLocationName: 'Warehouse',
+      action: 'create-location' as const,
+      confidence: 0.8,
+      rowCount: 1,
+    };
+    const inventoryPreviews = [
+      {
+        row: 2,
+        sku: 'UNLOCATED-001',
+        location: '',
+        quantity: 1,
+        action: 'skip' as const,
+        reason: 'Missing location',
+      },
+    ];
+    const targetContext = {
+      categories: [],
+      locations: [
+        {
+          id: 'loc-warehouse',
+          name: 'Warehouse',
+          type: LocationType.WAREHOUSE,
+        },
+        {
+          id: 'loc-annex',
+          name: 'Annex',
+          type: LocationType.WAREHOUSE,
+        },
+      ],
+      areas: [],
+    };
+    const existingOnlyProposal = makeProductImportProposal(
+      preview({
+        locationMappings: [existingLocationMapping],
+        inventoryPreviews,
+      }),
+      targetContext,
+    );
+    const mixedProposal = makeProductImportProposal(
+      preview({
+        locationMappings: [
+          existingLocationMapping,
+          {
+            sourceLocation: 'North Store',
+            targetLocationName: 'North Store',
+            action: 'create-location',
+            confidence: 0.8,
+            rowCount: 1,
+          },
+        ],
+        inventoryPreviews,
+      }),
+      targetContext,
+    );
+
+    expect(existingOnlyProposal.missingLocationStrategy.confidence).toBe(0.9);
+    expect(mixedProposal.missingLocationStrategy).toMatchObject({
+      action: 'assign-review-area',
+      targetLocationId: 'loc-warehouse',
+      confidence: 0.9,
+      reason:
+        'Keeps unlocated inventory visible beneath a location already selected by this import.',
+    });
+  });
+
   it('deterministically proposes four editable bins beneath terminal shelves', () => {
     const proposal = makeProductImportProposal(
       preview({
