@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+run_as_root() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+cluster="$(pg_lsclusters --no-header | awk '$3 == 5432 { print $1, $2; exit }')"
+if [[ -z "$cluster" ]]; then
+  echo "No PostgreSQL cluster is configured on port 5432." >&2
+  exit 1
+fi
+
+if ! pg_isready --quiet --host localhost --port 5432; then
+  read -r version name <<< "$cluster"
+  echo "Starting PostgreSQL ${version}/${name}..."
+  run_as_root pg_ctlcluster "$version" "$name" start
+fi
+
+echo "Orb resume checks complete."

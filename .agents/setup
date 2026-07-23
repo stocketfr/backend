@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+node_version="22.17.1"
+
+run_as_root() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+run_as_postgres() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    runuser -u postgres -- "$@"
+  else
+    sudo -u postgres "$@"
+  fi
+}
+
+install_node() {
+  local installed_major=""
+  installed_major="$(node --version 2>/dev/null | sed -n 's/^v\([0-9][0-9]*\).*/\1/p' || true)"
+  if [[ "$installed_major" == "22" ]]; then
+    return
+  fi
+
+  echo "Installing Node.js ${node_version}..."
+  local architecture archive temporary_directory
+  case "$(uname -m)" in
+    x86_64) architecture="x64" ;;
+    aarch64 | arm64) architecture="arm64" ;;
+    *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+  esac
+  archive="node-v${node_version}-linux-${architecture}.tar.xz"
+  temporary_directory="$(mktemp -d)"
+  trap 'rm -rf -- "${temporary_directory:-}"' RETURN
+  curl --fail --location --silent --show-error \
+    "https://nodejs.org/dist/v${node_version}/${archive}" \
+    --output "${temporary_directory}/${archive}"
+  curl --fail --location --silent --show-error \
+    "https://nodejs.org/dist/v${node_version}/SHASUMS256.txt" \
+    --output "${temporary_directory}/SHASUMS256.txt"
+  (
+    cd "$temporary_directory"
+    grep "  ${archive}$" SHASUMS256.txt | sha256sum --check --status
+  )
+  run_as_root mkdir -p /usr/local/lib/nodejs
+  run_as_root tar -xJf "${temporary_directory}/${archive}" -C /usr/local/lib/nodejs
+  for executable in node npm npx corepack; do
+    run_as_root ln -sfn \
+      "/usr/local/lib/nodejs/node-v${node_version}-linux-${architecture}/bin/${executable}" \
+      "/usr/local/bin/${executable}"
+  done
+  hash -r
+}
+
+install_postgres() {
+  local installed_major=""
+  installed_major="$(pg_config --version 2>/dev/null | sed -n 's/^PostgreSQL \([0-9][0-9]*\).*/\1/p' || true)"
+  if [[ "$installed_major" =~ ^[0-9]+$ ]] && (( installed_major >= 16 )); then
+    return
+  fi
+
+  echo "Installing PostgreSQL 16..."
+  # shellcheck disable=SC1091
+  source /etc/os-release
+  run_as_root install -d -m 0755 /usr/share/postgresql-common/pgdg
+  curl --fail --location --silent --show-error \
+    https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    | run_as_root tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc >/dev/null
+  echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+    | run_as_root tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+  run_as_root apt-get update
+  run_as_root apt-get install -y postgresql-16 postgresql-client-16
+}
+
+postgres_cluster() {
+  pg_lsclusters --no-header \
+    | awk '$3 == 5432 { print $1, $2; exit }'
+}
+
+start_postgres() {
+  local cluster version name
+  cluster="$(postgres_cluster)"
+  if [[ -z "$cluster" ]]; then
+    echo "No PostgreSQL cluster is configured on port 5432." >&2
+    exit 1
+  fi
+  read -r version name <<< "$cluster"
+  if ! pg_isready --quiet --host localhost --port 5432; then
+    echo "Starting PostgreSQL ${version}/${name}..."
+    run_as_root pg_ctlcluster "$version" "$name" start
+  fi
+}
+
+configure_postgres() {
+  local cluster version name settings
+  cluster="$(postgres_cluster)"
+  read -r version name <<< "$cluster"
+  settings="$(run_as_postgres psql --quiet --tuples-only --no-align --dbname postgres \
+    --command "SELECT current_setting('fsync') || ',' || current_setting('synchronous_commit') || ',' || current_setting('full_page_writes')")"
+  if [[ "$settings" != "off,off,off" ]]; then
+    echo "Tuning PostgreSQL for ephemeral orb storage..."
+    run_as_postgres psql --quiet --dbname postgres <<'SQL'
+ALTER SYSTEM SET fsync = 'off';
+ALTER SYSTEM SET synchronous_commit = 'off';
+ALTER SYSTEM SET full_page_writes = 'off';
+SQL
+    run_as_root pg_ctlcluster "$version" "$name" restart
+  fi
+
+  run_as_postgres psql --quiet --dbname postgres \
+    --command "ALTER ROLE postgres WITH PASSWORD 'postgres'"
+  if ! run_as_postgres psql --quiet --tuples-only --no-align --dbname postgres \
+    --command "SELECT 1 FROM pg_database WHERE datname = 'stocket_inventory'" \
+    | grep -qx 1; then
+    run_as_postgres createdb stocket_inventory
+  fi
+}
+
+install_infisical() {
+  if command -v infisical >/dev/null 2>&1; then
+    return
+  fi
+  echo "Installing Infisical CLI..."
+  if [[ "$(id -u)" -eq 0 ]]; then
+    curl -1sLf https://artifacts-cli.infisical.com/setup.deb.sh | bash
+  else
+    curl -1sLf https://artifacts-cli.infisical.com/setup.deb.sh | sudo -E bash
+  fi
+  run_as_root apt-get update
+  run_as_root apt-get install -y infisical
+}
+
+install_dependencies() {
+  local auth_token="${GITHUB_PACKAGES_TOKEN:-${NODE_AUTH_TOKEN:-}}"
+  if [[ -z "$auth_token" ]] && command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    auth_token="$(gh auth token)"
+  fi
+  if [[ -z "$auth_token" ]]; then
+    echo "GitHub Packages authentication is required." >&2
+    echo "Set GITHUB_PACKAGES_TOKEN to a token with read:packages access, or authenticate gh." >&2
+    exit 1
+  fi
+
+  local npm_config
+  npm_config="$(mktemp)"
+  chmod 600 "$npm_config"
+  trap 'rm -f -- "${npm_config:-}"' RETURN
+  printf '%s\n' \
+    '@stocketfr:registry=https://npm.pkg.github.com' \
+    "//npm.pkg.github.com/:_authToken=${auth_token}" \
+    > "$npm_config"
+  echo "Installing pnpm dependencies..."
+  NPM_CONFIG_USERCONFIG="$npm_config" pnpm install --frozen-lockfile
+}
+
+echo "Preparing Stocket API orb..."
+run_as_root apt-get update
+run_as_root apt-get install -y ca-certificates curl xz-utils
+install_node
+corepack enable
+corepack prepare pnpm@10.28.0 --activate
+install_postgres
+start_postgres
+configure_postgres
+install_infisical
+cd "$repo_root"
+install_dependencies
+echo "Orb setup complete."
