@@ -3,9 +3,32 @@ import type {
   ProductImportPreviewDto,
   ProductImportTargetContextDto,
 } from '@stocket/types/products';
+import type { NormalizedProductImportRow } from '../types';
 import { categoryDecisionKey } from '../utils/proposal-keys';
 import type { RawLlmProposal } from './raw';
 import { sanitizeLlmProposal } from './sanitizer';
+
+const normalizedRow = (
+  sourceRow: number,
+  name: string,
+): NormalizedProductImportRow => ({
+  sourceRow,
+  sku: `SKU-${sourceRow}`,
+  name,
+  category_path: 'Uncategorized',
+  reorder_point: '0',
+  quantity: '1',
+  location: '',
+  unit: '',
+  standard_price: '',
+  barcode: '',
+  description: '',
+  notes: '',
+  is_active: 'true',
+  is_perishable: 'false',
+  expiry_date: '',
+  photo_urls: [],
+});
 
 const preview: ProductImportPreviewDto = {
   format: 'sortly-items',
@@ -111,6 +134,137 @@ const rawProposal = (): RawLlmProposal => ({
 });
 
 describe('sanitizeLlmProposal', () => {
+  it('turns an unknowable category into an explicit automatic fallback', () => {
+    const uncategorizedWarning = {
+      severity: 'warning' as const,
+      field: 'category_path',
+      message:
+        '2 rows have no category path. Smart Import will infer one from product details or use Uncategorized.',
+    };
+    const uncategorizedPreview: ProductImportPreviewDto = {
+      ...preview,
+      categoryMappings: [
+        {
+          sourcePath: 'Uncategorized',
+          targetPath: 'Uncategorized',
+          action: 'default',
+          rowCount: 2,
+        },
+      ],
+      warnings: [uncategorizedWarning],
+    };
+    const raw = rawProposal();
+    const proposal = sanitizeLlmProposal(
+      {
+        ...raw,
+        categoryMappings: [
+          {
+            sourcePath: 'Uncategorized',
+            targetCategoryId: null,
+            targetPath: 'Needs Review / Uncategorized',
+            action: 'default',
+            confidence: 0.2,
+            reason: 'The examples are mixed.',
+            reviewRequired: true,
+          },
+        ],
+        warnings: [],
+      },
+      uncategorizedPreview,
+      { ...context, categories: [] },
+    );
+
+    expect(proposal.categoryMappings).toEqual([
+      expect.objectContaining({
+        sourcePath: 'Uncategorized',
+        targetPath: 'Uncategorized',
+        action: 'default',
+        reviewRequired: false,
+      }),
+    ]);
+    expect(proposal.warnings).toContainEqual(uncategorizedWarning);
+  });
+
+  it('rejects a shared inferred category when Uncategorized evidence is incomplete', () => {
+    const uncategorizedPreview: ProductImportPreviewDto = {
+      ...preview,
+      totalRows: 9,
+      itemRows: 9,
+      importableRows: 9,
+      categoryMappings: [
+        {
+          sourcePath: 'Uncategorized',
+          targetPath: 'Uncategorized',
+          action: 'default',
+          rowCount: 9,
+        },
+      ],
+    };
+    const raw = rawProposal();
+    const proposal = sanitizeLlmProposal(
+      {
+        ...raw,
+        categoryMappings: [
+          {
+            sourcePath: 'Uncategorized',
+            targetCategoryId: 'cat-1',
+            targetPath: 'Guest Accessories / Dental',
+            action: 'use-existing',
+            confidence: 0.99,
+            reason: 'The first examples looked dental.',
+            reviewRequired: false,
+          },
+        ],
+      },
+      uncategorizedPreview,
+      context,
+      undefined,
+      Array.from({ length: 9 }, (_, index) =>
+        normalizedRow(index + 2, `Product ${index + 1}`),
+      ),
+    );
+
+    expect(proposal.categoryMappings).toEqual([
+      expect.objectContaining({
+        sourcePath: 'Uncategorized',
+        action: 'default',
+        targetPath: 'Uncategorized',
+        reviewRequired: false,
+      }),
+    ]);
+  });
+
+  it('does not let a default action silently discard a known source category', () => {
+    const raw = rawProposal();
+    const proposal = sanitizeLlmProposal(
+      {
+        ...raw,
+        categoryMappings: [
+          {
+            sourcePath: 'Accessories / Dental',
+            targetCategoryId: null,
+            targetPath: 'Uncategorized',
+            action: 'default',
+            confidence: 0.4,
+            reason: 'Could not decide.',
+            reviewRequired: false,
+          },
+        ],
+      },
+      preview,
+      context,
+    );
+
+    expect(proposal.categoryMappings).toEqual([
+      expect.objectContaining({
+        sourcePath: 'Accessories / Dental',
+        action: 'use-existing',
+        targetCategoryId: 'cat-1',
+        reviewRequired: true,
+      }),
+    ]);
+  });
+
   it('drops hallucinated sources, IDs, and suppliers while preserving coverage', () => {
     const proposal = sanitizeLlmProposal(rawProposal(), preview, context);
 
@@ -216,6 +370,71 @@ describe('sanitizeLlmProposal', () => {
       targetLocationName: 'Warehouse',
       targetAreaId: 'area-1',
       areaPath: 'Bay I / Shelf 3',
+    });
+  });
+
+  it('rejects a missing-stock location that the model did not map', () => {
+    const importPreview: ProductImportPreviewDto = {
+      ...preview,
+      locationMappings: [
+        {
+          sourceLocation: 'North Store',
+          targetLocationName: 'North Store',
+          action: 'create-location',
+          confidence: 0.8,
+          rowCount: 1,
+        },
+      ],
+      inventoryPreviews: [
+        {
+          row: 2,
+          sku: 'UNLOCATED-001',
+          location: '',
+          quantity: 1,
+          action: 'skip',
+          reason: 'Missing location',
+        },
+      ],
+    };
+    const raw = rawProposal();
+    const [rawLocation] = raw.locationMappings;
+    if (!rawLocation) throw new Error('Expected raw location mapping');
+
+    const proposal = sanitizeLlmProposal(
+      {
+        ...raw,
+        missingLocationStrategy: {
+          action: 'assign-review-area',
+          targetLocationId: null,
+          targetLocationName: 'Invented Holding Location',
+          targetAreaId: null,
+          areaPath: 'Unassigned / Needs Review',
+          confidence: 0.9,
+          reason: 'Temporary holding location.',
+          reviewRequired: false,
+        },
+        locationMappings: [
+          {
+            ...rawLocation,
+            sourceLocation: 'North Store',
+            targetLocationId: null,
+            targetLocationName: 'North Store',
+            targetAreaId: null,
+            areaPath: null,
+            action: 'create-location',
+          },
+        ],
+      },
+      importPreview,
+      { categories: [], locations: [], areas: [] },
+    );
+
+    expect(proposal.missingLocationStrategy).toMatchObject({
+      action: 'assign-review-area',
+      targetLocationName: 'North Store',
+    });
+    expect(proposal.missingLocationStrategy).not.toMatchObject({
+      targetLocationName: 'Invented Holding Location',
     });
   });
 

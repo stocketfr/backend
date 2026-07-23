@@ -1400,7 +1400,8 @@ Item,Shampoo,SORT-2,Bulgari,Green Tea,5,Bay C - Shelf 3
       expect.arrayContaining([
         expect.objectContaining({
           sourceLocation: 'Bay F - Shelf 2 - Bin A',
-          areaPath: 'Bay F / Shelf 2 / Bin A',
+          targetLocationName: 'Bay F',
+          areaPath: 'Shelf 2 / Bin A',
           action: 'create-area',
         }),
       ]),
@@ -1467,6 +1468,14 @@ SKU-1,Whisky,Bar,2,Warehouse
       }),
       EMPTY_TARGET_CONTEXT,
       undefined,
+      [
+        expect.objectContaining({
+          sourceRow: 2,
+          sku: 'SKU-1',
+          name: 'Whisky',
+          category_path: 'Bar',
+        }),
+      ],
     );
     expect(proposal.confidence).toBe(0.99);
     expect(proposal.categoryMappings).toEqual([

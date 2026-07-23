@@ -12,10 +12,12 @@ import type {
   ProductImportTargetContextDto,
   ProductImportWarningDto,
 } from '@stocket/types/products';
+import type { NormalizedProductImportRow } from '../types';
 import {
   applyProductImportGuidanceLocks,
   makeProductImportProposal,
 } from '../utils/proposal';
+import { normalizeCategoryPath } from '../utils/csv';
 import type { RawLlmProposal } from './raw';
 import {
   normalizeProductImportAreaName,
@@ -23,8 +25,10 @@ import {
   normalizeProductImportPath,
   normalizeProductImportSku,
 } from '../utils/proposal-values';
+import { PRODUCT_IMPORT_CATEGORY_EVIDENCE_MAX_EXAMPLES } from './shared';
 
 const mapEntry = <K, V>(key: K, value: V): readonly [K, V] => [key, value];
+const normalizedKey = (value: string): string => value.trim().toLowerCase();
 
 const clampConfidence = (value: number, fallback: number): number =>
   Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : fallback;
@@ -55,9 +59,7 @@ const sanitizeWarnings = (
   preview: ProductImportPreviewDto,
   fallback: ProductImportAiProposalV2Dto,
 ): ProductImportWarningDto[] => {
-  const requiredPreviewWarnings = preview.warnings.filter(
-    (warning) => warning.severity === 'error',
-  );
+  const requiredPreviewWarnings = preview.warnings;
   const proposalWarnings = fallback.warnings.filter(
     (warning) =>
       !preview.warnings.some(
@@ -76,16 +78,22 @@ const sanitizeWarnings = (
       },
     ];
   });
-  return [...requiredPreviewWarnings, ...proposalWarnings, ...sanitized].slice(
-    0,
-    40,
-  );
+  const seen = new Set<string>();
+  return [...requiredPreviewWarnings, ...proposalWarnings, ...sanitized]
+    .filter((warning) => {
+      const key = `${warning.row ?? ''}:${warning.field ?? ''}:${warning.severity}:${warning.message}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 40);
 };
 
 const sanitizeCategoryMapping = (
   raw: RawLlmProposal['categoryMappings'][number],
   fallback: ProductImportCategoryMappingV2Dto,
   categoriesById: ReadonlyMap<string, ProductImportCategoryTargetDto>,
+  hasCompleteEvidence: boolean,
 ): ProductImportCategoryMappingV2Dto => {
   const targetPath = normalizeProductImportPath(raw.targetPath);
   const metadata = {
@@ -97,6 +105,13 @@ const sanitizeCategoryMapping = (
     targetPath: targetPath ?? fallback.targetPath,
     rowCount: fallback.rowCount,
   };
+  if (
+    normalizeCategoryPath(fallback.sourcePath) === 'Uncategorized' &&
+    raw.action !== 'default' &&
+    !hasCompleteEvidence
+  ) {
+    return fallback;
+  }
   if (raw.action === 'use-existing' && raw.targetCategoryId) {
     const category = categoriesById.get(raw.targetCategoryId);
     if (!category) return { ...fallback, reviewRequired: true };
@@ -107,9 +122,32 @@ const sanitizeCategoryMapping = (
       targetCategoryId: category.id,
     };
   }
-  if (raw.action === 'create' || raw.action === 'default') {
+  if (raw.action === 'default') {
+    if (normalizeCategoryPath(fallback.sourcePath) !== 'Uncategorized') {
+      return { ...fallback, reviewRequired: true };
+    }
+    const existingFallback = [...categoriesById.values()].find(
+      (category) => normalizedKey(category.path) === 'uncategorized',
+    );
+    if (existingFallback) {
+      return {
+        ...metadata,
+        reviewRequired: false,
+        targetPath: existingFallback.path,
+        action: 'use-existing',
+        targetCategoryId: existingFallback.id,
+      };
+    }
+    return {
+      ...metadata,
+      reviewRequired: false,
+      targetPath: 'Uncategorized',
+      action: 'default',
+    };
+  }
+  if (raw.action === 'create') {
     return targetPath
-      ? { ...metadata, targetPath, action: raw.action }
+      ? { ...metadata, targetPath, action: 'create' }
       : { ...fallback, reviewRequired: true };
   }
   return { ...fallback, reviewRequired: true };
@@ -206,6 +244,7 @@ const sanitizeMissingLocationStrategy = (
   fallback: ProductImportAiProposalV2Dto['missingLocationStrategy'],
   locationsById: ReadonlyMap<string, ProductImportLocationTargetDto>,
   areasById: ReadonlyMap<string, ProductImportAreaTargetDto>,
+  locationMappings: readonly ProductImportLocationMappingV2Dto[],
 ): ProductImportAiProposalV2Dto['missingLocationStrategy'] => {
   const metadata = {
     mappingKey: fallback.mappingKey,
@@ -242,6 +281,14 @@ const sanitizeMissingLocationStrategy = (
   const targetLocationName = raw.targetLocationName
     ? normalizeProductImportLocationName(raw.targetLocationName)
     : undefined;
+  const proposedLocationNames = new Set(
+    locationMappings.flatMap((mapping) =>
+      mapping.targetLocationName &&
+      (mapping.action === 'create-location' || mapping.action === 'create-area')
+        ? [normalizedKey(mapping.targetLocationName)]
+        : [],
+    ),
+  );
   if (raw.action === 'assign-review-area' && areaPath) {
     const location = raw.targetLocationId
       ? locationsById.get(raw.targetLocationId)
@@ -254,7 +301,10 @@ const sanitizeMissingLocationStrategy = (
         areaPath,
       };
     }
-    if (targetLocationName) {
+    if (
+      targetLocationName &&
+      proposedLocationNames.has(normalizedKey(targetLocationName))
+    ) {
       return {
         ...metadata,
         action: 'assign-review-area',
@@ -302,6 +352,7 @@ export const sanitizeLlmProposal = (
   preview: ProductImportPreviewDto,
   context: ProductImportTargetContextDto,
   guidance?: ProductImportProposalGuidanceDto,
+  rows: readonly NormalizedProductImportRow[] = [],
 ): ProductImportAiProposalV2Dto => {
   const fallback = makeProductImportProposal(preview, context);
   const categoriesById = new Map(
@@ -318,10 +369,27 @@ export const sanitizeLlmProposal = (
       mapEntry(mapping.sourcePath, mapping),
     ),
   );
+  const categoryEvidenceCounts = new Map<string, number>();
+  for (const row of rows) {
+    const sourcePath = normalizeCategoryPath(row.category_path);
+    categoryEvidenceCounts.set(
+      sourcePath,
+      (categoryEvidenceCounts.get(sourcePath) ?? 0) + 1,
+    );
+  }
   const categoryMappings = fallback.categoryMappings.map((mapping) => {
     const rawMapping = rawCategoriesBySource.get(mapping.sourcePath);
+    const evidenceCount = categoryEvidenceCounts.get(mapping.sourcePath) ?? 0;
+    const hasCompleteEvidence =
+      evidenceCount > 0 &&
+      evidenceCount <= PRODUCT_IMPORT_CATEGORY_EVIDENCE_MAX_EXAMPLES;
     return rawMapping
-      ? sanitizeCategoryMapping(rawMapping, mapping, categoriesById)
+      ? sanitizeCategoryMapping(
+          rawMapping,
+          mapping,
+          categoriesById,
+          hasCompleteEvidence,
+        )
       : mapping;
   });
   const rawLocationsBySource = new Map(
@@ -384,6 +452,7 @@ export const sanitizeLlmProposal = (
         fallback.missingLocationStrategy,
         locationsById,
         areasById,
+        locationMappings,
       ),
       categoryMappings,
       supplierMappings: [],

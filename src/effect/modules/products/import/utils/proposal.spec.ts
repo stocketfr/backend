@@ -5,6 +5,7 @@ import {
   locationDecisionKey,
   skuConflictDecisionKey,
 } from './proposal-keys';
+import { makeProductImportPreview } from './preview';
 import { makeProductImportProposal } from './proposal';
 
 const preview = (
@@ -73,6 +74,16 @@ describe('makeProductImportProposal', () => {
         }),
       ]),
     );
+    expect(proposal.categoryMappings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourcePath: 'Uncategorized',
+          targetPath: 'Uncategorized',
+          action: 'default',
+          reviewRequired: false,
+        }),
+      ]),
+    );
     expect(proposal.locationMappings[0]).toMatchObject({
       action: 'use-existing-area',
       targetLocationId: 'loc-1',
@@ -119,6 +130,155 @@ describe('makeProductImportProposal', () => {
     expect(proposal.missingLocationStrategy.rowCount).toBe(1);
   });
 
+  it('warns neutrally and requires review when missing stock has no safe target', () => {
+    const importPreview = makeProductImportPreview(
+      [
+        {
+          sku: 'UNLOCATED-001',
+          name: 'Unlocated Product',
+          quantity: '1',
+          location: '',
+        },
+      ],
+      'normalized-products',
+    );
+    const proposal = makeProductImportProposal(importPreview, {
+      categories: [],
+      locations: [],
+      areas: [],
+    });
+
+    expect(importPreview.warnings).toContainEqual(
+      expect.objectContaining({
+        field: 'location',
+        message:
+          '1 row has no storage location. Smart Import will propose whether to assign or skip inventory before import.',
+      }),
+    );
+    expect(proposal.missingLocationStrategy).toEqual({
+      mappingKey: 'missing-location',
+      confidence: 0.65,
+      reason: 'No safe inventory destination could be inferred.',
+      reviewRequired: true,
+      rowCount: 1,
+      action: 'skip-inventory',
+    });
+  });
+
+  it('places missing stock under a real location created by the import', () => {
+    const proposal = makeProductImportProposal(
+      preview({
+        locationMappings: [
+          {
+            sourceLocation: 'North Store',
+            targetLocationName: 'North Store',
+            action: 'create-location',
+            confidence: 0.8,
+            rowCount: 1,
+          },
+          {
+            sourceLocation: 'Bay I - Shelf 3',
+            areaPath: 'Bay I / Shelf 3',
+            action: 'create-area',
+            confidence: 0.9,
+            rowCount: 1,
+          },
+        ],
+        inventoryPreviews: [
+          {
+            row: 2,
+            sku: 'UNLOCATED-001',
+            location: '',
+            quantity: 1,
+            action: 'skip',
+            reason: 'Missing location',
+          },
+        ],
+      }),
+      { categories: [], locations: [], areas: [] },
+    );
+
+    expect(proposal.missingLocationStrategy).toMatchObject({
+      action: 'assign-review-area',
+      targetLocationName: 'North Store',
+      areaPath: 'Unassigned / Needs Review',
+    });
+    expect(
+      proposal.locationMappings.map((mapping) => mapping.targetLocationName),
+    ).not.toContain('Imported Inventory');
+    expect(proposal.missingLocationStrategy).not.toMatchObject({
+      targetLocationName: 'Imported Inventory',
+    });
+  });
+
+  it('keeps missing-stock metadata aligned with its mapped existing destination', () => {
+    const existingLocationMapping = {
+      sourceLocation: 'Warehouse',
+      targetLocationName: 'Warehouse',
+      action: 'create-location' as const,
+      confidence: 0.8,
+      rowCount: 1,
+    };
+    const inventoryPreviews = [
+      {
+        row: 2,
+        sku: 'UNLOCATED-001',
+        location: '',
+        quantity: 1,
+        action: 'skip' as const,
+        reason: 'Missing location',
+      },
+    ];
+    const targetContext = {
+      categories: [],
+      locations: [
+        {
+          id: 'loc-warehouse',
+          name: 'Warehouse',
+          type: LocationType.WAREHOUSE,
+        },
+        {
+          id: 'loc-annex',
+          name: 'Annex',
+          type: LocationType.WAREHOUSE,
+        },
+      ],
+      areas: [],
+    };
+    const existingOnlyProposal = makeProductImportProposal(
+      preview({
+        locationMappings: [existingLocationMapping],
+        inventoryPreviews,
+      }),
+      targetContext,
+    );
+    const mixedProposal = makeProductImportProposal(
+      preview({
+        locationMappings: [
+          existingLocationMapping,
+          {
+            sourceLocation: 'North Store',
+            targetLocationName: 'North Store',
+            action: 'create-location',
+            confidence: 0.8,
+            rowCount: 1,
+          },
+        ],
+        inventoryPreviews,
+      }),
+      targetContext,
+    );
+
+    expect(existingOnlyProposal.missingLocationStrategy.confidence).toBe(0.9);
+    expect(mixedProposal.missingLocationStrategy).toMatchObject({
+      action: 'assign-review-area',
+      targetLocationId: 'loc-warehouse',
+      confidence: 0.9,
+      reason:
+        'Keeps unlocated inventory visible beneath a location already selected by this import.',
+    });
+  });
+
   it('deterministically proposes four editable bins beneath terminal shelves', () => {
     const proposal = makeProductImportProposal(
       preview({
@@ -147,7 +307,8 @@ describe('makeProductImportProposal', () => {
     );
 
     expect(proposal.locationMappings[0]).toMatchObject({
-      areaPath: 'Bay I / Shelf 3',
+      targetLocationName: 'Bay I',
+      areaPath: 'Shelf 3',
       childAreas: [
         { name: 'Bin 1' },
         { name: 'Bin 2' },

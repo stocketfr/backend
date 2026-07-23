@@ -314,6 +314,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
           const { parsed, format } =
             yield* parseAndDetectProductImportFormat(options);
           const preview = makeProductImportPreview(parsed.records, format);
+          const rows = normalizeProductImportRecords(parsed.records, format);
           const context = yield* planningContext.load();
           const baseline = makeProductImportProposal(preview, context);
           const guidance = yield* validateProductImportGuidance(
@@ -321,7 +322,7 @@ export class ProductImportService extends Effect.Service<ProductImportService>()
             baseline,
             context,
           );
-          return yield* llmProposer.propose(preview, context, guidance);
+          return yield* llmProposer.propose(preview, context, guidance, rows);
         }).pipe(trace.span('proposeImportPlan'));
 
       return {

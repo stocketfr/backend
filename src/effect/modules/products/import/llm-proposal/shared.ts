@@ -1,5 +1,7 @@
 import type { ProductImportAiProposalV2Dto } from '@stocket/types/products';
 
+export const PRODUCT_IMPORT_CATEGORY_EVIDENCE_MAX_EXAMPLES = 8;
+
 export const messageFromUnknown = (
   value: unknown,
   fallback: string,

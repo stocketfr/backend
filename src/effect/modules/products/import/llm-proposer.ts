@@ -13,6 +13,7 @@ import { makeOpenAiProductImportProposalRequest } from './llm-proposal/request';
 import { decodeOpenAiProposalResponse } from './llm-proposal/raw';
 import { sanitizeLlmProposal } from './llm-proposal/sanitizer';
 import { appendWarning, messageFromUnknown } from './llm-proposal/shared';
+import type { NormalizedProductImportRow } from './types';
 import { makeProductImportProposal } from './utils/proposal';
 
 type FetchLike = typeof fetch;
@@ -21,14 +22,19 @@ const callOpenAiForProposal = (
   preview: ProductImportPreviewDto,
   context: ProductImportTargetContextDto,
   guidance: ProductImportProposalGuidanceDto | undefined,
+  rows: readonly NormalizedProductImportRow[],
   config: OpenAiProductImportConfig,
   fetchImpl: FetchLike,
 ): Effect.Effect<ProductImportAiProposalV2Dto, unknown> => {
   if (!config.apiKey) {
-    return Effect.succeed(
-      appendWarning(
-        makeProductImportProposal(preview, context, guidance),
-        'AI proposal unavailable because OPENAI_API_KEY is not configured.',
+    const message =
+      'AI proposal unavailable because OPENAI_API_KEY is not configured.';
+    return Effect.logWarning(message).pipe(
+      Effect.as(
+        appendWarning(
+          makeProductImportProposal(preview, context, guidance),
+          message,
+        ),
       ),
     );
   }
@@ -52,6 +58,7 @@ const callOpenAiForProposal = (
                 context,
                 guidance,
                 config,
+                rows,
               ),
             ),
           }),
@@ -75,7 +82,7 @@ const callOpenAiForProposal = (
         catch: (cause) => cause,
       });
       const rawProposal = yield* decodeOpenAiProposalResponse(json);
-      return sanitizeLlmProposal(rawProposal, preview, context, guidance);
+      return sanitizeLlmProposal(rawProposal, preview, context, guidance, rows);
     }).pipe(Effect.ensuring(Effect.sync(() => clearTimeout(timeout))));
   });
 };
@@ -88,22 +95,27 @@ export class ProductImportLlmProposer extends Effect.Service<ProductImportLlmPro
         preview: ProductImportPreviewDto,
         context: ProductImportTargetContextDto,
         guidance?: ProductImportProposalGuidanceDto,
+        rows: readonly NormalizedProductImportRow[] = [],
       ): Effect.Effect<ProductImportAiProposalV2Dto> =>
         callOpenAiForProposal(
           preview,
           context,
           guidance,
+          rows,
           getOpenAiProductImportConfig(),
           globalThis.fetch.bind(globalThis),
         ).pipe(
-          Effect.catchAll((cause) =>
-            Effect.succeed(
-              appendWarning(
-                makeProductImportProposal(preview, context, guidance),
-                `AI proposal unavailable: ${messageFromUnknown(cause, String(cause))}`,
+          Effect.catchAll((cause) => {
+            const message = `AI proposal unavailable: ${messageFromUnknown(cause, String(cause))}`;
+            return Effect.logWarning(message).pipe(
+              Effect.as(
+                appendWarning(
+                  makeProductImportProposal(preview, context, guidance),
+                  message,
+                ),
               ),
-            ),
-          ),
+            );
+          }),
         );
 
       return { propose };

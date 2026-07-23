@@ -36,7 +36,7 @@ export function getOpenAiProductImportConfig(
     timeoutMs: parsePositiveInteger(
       'PRODUCT_IMPORT_LLM_TIMEOUT_MS',
       readOptionalEnv('PRODUCT_IMPORT_LLM_TIMEOUT_MS', env),
-      15000,
+      60000,
     ),
   };
 }

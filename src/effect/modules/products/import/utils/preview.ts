@@ -184,18 +184,24 @@ export function makeProductImportPreview(
   }
   const missingLocationRows = rows.filter((row) => !row.location.trim()).length;
   if (missingLocationRows > 0) {
+    const missingLocationSubject =
+      missingLocationRows === 1
+        ? '1 row has'
+        : `${missingLocationRows} rows have`;
     warnings.push(
       makeImportWarning(
-        `${missingLocationRows} rows have no storage location and will not create inventory records.`,
+        `${missingLocationSubject} no storage location. Smart Import will propose whether to assign or skip inventory before import.`,
         { field: 'location' },
       ),
     );
   }
-  const uncategorizedRows = categoryCounts.get('Uncategorized') ?? 0;
+  const uncategorizedRows = rows.filter(
+    (row) => normalizeCategoryPath(row.category_path) === 'Uncategorized',
+  ).length;
   if (uncategorizedRows > 0) {
     warnings.push(
       makeImportWarning(
-        `${uncategorizedRows} rows have no category path and need review.`,
+        `${uncategorizedRows} rows have no category path. Smart Import will infer one from product details or use Uncategorized.`,
         { field: 'category_path' },
       ),
     );
@@ -211,7 +217,7 @@ export function makeProductImportPreview(
   if (locationMappings.some((mapping) => mapping.action === 'create-area')) {
     warnings.push(
       makeImportWarning(
-        'Some storage values look like areas. Pick a default location before import.',
+        'Some storage values look like area paths. Smart Import will show their parent location in the proposed stock structure.',
         { field: 'location' },
       ),
     );
