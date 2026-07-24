@@ -15,7 +15,6 @@ import {
 } from '@stocket/types/products';
 import { respondAuditedMutation } from '../../platform/audited-mutation';
 import {
-  emptyInput,
   jsonBody,
   pathParams,
   pathParamsAndJsonBody,
@@ -43,15 +42,24 @@ const PermanentQuery = Schema.Struct({
   }),
 });
 
+const ProductLookupQuery = Schema.Struct({
+  page: ProductQuerySchema.fields.page,
+  limit: ProductQuerySchema.fields.limit,
+  search: ProductQuerySchema.fields.search,
+  is_active: ProductQuerySchema.fields.is_active,
+  sort_by: ProductQuerySchema.fields.sort_by,
+  sort_order: ProductQuerySchema.fields.sort_order,
+});
+
 export const productsRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
     '/all',
     tenantRoute({
       permissions: [[Resource.PRODUCTS, Permission.READ]],
-      decode: emptyInput,
-      handler: () =>
+      decode: queryParams(ProductQuerySchema),
+      handler: ({ input: query }) =>
         Effect.flatMap(ProductsService, (productsService) =>
-          productsService.findAll(),
+          productsService.findAllPaginated(query),
         ),
     }),
   ),
@@ -93,10 +101,13 @@ export const productsRouter = HttpRouter.empty.pipe(
     '/category/:categoryId/tree',
     tenantRoute({
       permissions: [[Resource.PRODUCTS, Permission.READ]],
-      decode: pathParams(CategoryPathParams),
-      handler: ({ input: { categoryId } }) =>
+      decode: pathParamsAndQueryParams(CategoryPathParams, ProductLookupQuery),
+      handler: ({ input: { path, query } }) =>
         Effect.flatMap(ProductsService, (productsService) =>
-          productsService.findByCategoryTree(categoryId),
+          productsService.findByCategoryTree(path.categoryId, {
+            ...query,
+            include_deleted: false,
+          }),
         ),
     }),
   ),
@@ -104,10 +115,13 @@ export const productsRouter = HttpRouter.empty.pipe(
     '/category/:categoryId',
     tenantRoute({
       permissions: [[Resource.PRODUCTS, Permission.READ]],
-      decode: pathParams(CategoryPathParams),
-      handler: ({ input: { categoryId } }) =>
+      decode: pathParamsAndQueryParams(CategoryPathParams, ProductLookupQuery),
+      handler: ({ input: { path, query } }) =>
         Effect.flatMap(ProductsService, (productsService) =>
-          productsService.findByCategory(categoryId),
+          productsService.findByCategory(path.categoryId, {
+            ...query,
+            include_deleted: false,
+          }),
         ),
     }),
   ),

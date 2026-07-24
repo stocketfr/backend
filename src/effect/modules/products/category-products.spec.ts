@@ -46,10 +46,18 @@ const product = (
 const makeRepository = (
   overrides: Partial<ProductCategoryRepository> = {},
 ): ProductCategoryRepository => ({
-  findByCategoryId: () => Effect.succeed([product()]),
-  findByCategoryIds: () => Effect.succeed([product()]),
+  findByCategoryIdsPaginated: () =>
+    Effect.succeed({
+      data: [product()],
+      total: 1,
+      page: 1,
+      limit: 20,
+      total_pages: 1,
+    }),
   ...overrides,
 });
+
+const query = { page: 1, limit: 20 } as any;
 
 describe('makeProductCategoryWorkflows', () => {
   it.effect('finds products in one category after validating it', () =>
@@ -64,10 +72,11 @@ describe('makeProductCategoryWorkflows', () => {
         findAllDescendantIds: () => Effect.succeed([]),
       });
 
-      const result = yield* workflows.findByCategory('cat-1');
+      const result = yield* workflows.findByCategory('cat-1', query);
 
       expect(checked).toEqual(['cat-1']);
-      expect(result).toMatchObject([{ id: 'prod-1', sku: 'SKU-001' }]);
+      expect(result.data).toMatchObject([{ id: 'prod-1', sku: 'SKU-001' }]);
+      expect(result.meta).toMatchObject({ total: 1, page: 1, limit: 20 });
     }),
   );
 
@@ -76,17 +85,23 @@ describe('makeProductCategoryWorkflows', () => {
       let queriedIds: readonly string[] = [];
       const workflows = makeProductCategoryWorkflows({
         repository: makeRepository({
-          findByCategoryIds: (categoryIds) =>
+          findByCategoryIdsPaginated: (categoryIds) =>
             Effect.sync(() => {
               queriedIds = categoryIds;
-              return [product()];
+              return {
+                data: [product()],
+                total: 1,
+                page: 1,
+                limit: 20,
+                total_pages: 1,
+              };
             }),
         }),
         checkCategoryExists: () => Effect.void,
         findAllDescendantIds: () => Effect.succeed(['cat-2']),
       });
 
-      yield* workflows.findByCategoryTree('cat-1');
+      yield* workflows.findByCategoryTree('cat-1', query);
 
       expect(queriedIds).toEqual(['cat-1', 'cat-2']);
     }),
@@ -97,10 +112,16 @@ describe('makeProductCategoryWorkflows', () => {
       let queried = false;
       const workflows = makeProductCategoryWorkflows({
         repository: makeRepository({
-          findByCategoryId: () =>
+          findByCategoryIdsPaginated: () =>
             Effect.sync(() => {
               queried = true;
-              return [product()];
+              return {
+                data: [product()],
+                total: 1,
+                page: 1,
+                limit: 20,
+                total_pages: 1,
+              };
             }),
         }),
         checkCategoryExists: () =>
@@ -113,7 +134,9 @@ describe('makeProductCategoryWorkflows', () => {
         findAllDescendantIds: () => Effect.succeed([]),
       });
 
-      const error = yield* Effect.flip(workflows.findByCategory('missing'));
+      const error = yield* Effect.flip(
+        workflows.findByCategory('missing', query),
+      );
 
       expect(error).toMatchObject({ _tag: 'CategoryNotFound' });
       expect(queried).toBe(false);

@@ -89,26 +89,24 @@ export class ProductsService extends Effect.Service<ProductsService>()(
           toPaginatedResponse(result, toProductResponseDto),
         ).pipe(trace.span('findAllPaginated'));
 
-      const findAll = () =>
-        Effect.map(repository.findAll(), (products) =>
-          products.map(toProductResponseDto),
-        ).pipe(trace.span('findAll'));
-
       const findOne = (id: string, includeDeleted = false) =>
         Effect.map(
           getProductOrFail(id, includeDeleted),
           toProductResponseDto,
         ).pipe(trace.span('findOne', { attributes: { id } }));
 
-      const findByCategory = (categoryId: string) =>
-        productCategoryWorkflows.findByCategory(categoryId).pipe(
+      const findByCategory = (categoryId: string, query: ProductQueryDto) =>
+        productCategoryWorkflows.findByCategory(categoryId, query).pipe(
           trace.span('findByCategory', {
             attributes: { categoryId },
           }),
         );
 
-      const findByCategoryTree = (categoryId: string) =>
-        productCategoryWorkflows.findByCategoryTree(categoryId).pipe(
+      const findByCategoryTree = (
+        categoryId: string,
+        query: ProductQueryDto,
+      ) =>
+        productCategoryWorkflows.findByCategoryTree(categoryId, query).pipe(
           trace.span('findByCategoryTree', {
             attributes: { categoryId },
           }),
@@ -186,7 +184,6 @@ export class ProductsService extends Effect.Service<ProductsService>()(
 
       return {
         findAllPaginated,
-        findAll,
         findOne,
         findByCategory,
         findByCategoryTree,

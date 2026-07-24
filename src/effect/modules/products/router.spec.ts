@@ -124,9 +124,14 @@ describe('productsRouter', () => {
   // GET /products/all
   // -------------------------------------------------------------------
   describe('GET /products/all', () => {
+    const paginated = {
+      data: [makeProductResponse()],
+      meta: { total: 1, page: 1, limit: 20, total_pages: 1 },
+    };
+
     it('rejects without PRODUCTS:read permission', async () => {
       const { handler } = makeProductsRouterHarness({
-        service: { findAll: () => Effect.succeed([makeProductResponse()]) },
+        service: { findAllPaginated: () => Effect.succeed(paginated) },
         permissions: {},
       });
 
@@ -138,7 +143,7 @@ describe('productsRouter', () => {
 
     it('returns 401 when the session is absent', async () => {
       const { handler } = makeProductsRouterHarness({
-        service: { findAll: () => Effect.succeed([]) },
+        service: { findAllPaginated: () => Effect.succeed(paginated) },
         permissions: readOnly,
         session: null,
       });
@@ -149,10 +154,10 @@ describe('productsRouter', () => {
       expect(response.status).toBe(401);
     });
 
-    it('returns the unpaginated product list on success', async () => {
-      const findAll = vi.fn(() => Effect.succeed([makeProductResponse()]));
+    it('keeps the legacy route bounded and paginated', async () => {
+      const findAllPaginated = vi.fn(() => Effect.succeed(paginated));
       const { handler } = makeProductsRouterHarness({
-        service: { findAll },
+        service: { findAllPaginated },
         permissions: readOnly,
       });
 
@@ -160,19 +165,19 @@ describe('productsRouter', () => {
         new Request('http://localhost/products/all'),
       );
       expect(response.status).toBe(200);
-      const body = (await response.json()) as any;
-      expect(body).toHaveLength(1);
-      expect(body[0]).toMatchObject({ id: PRODUCT_ID });
-      expect(findAll).toHaveBeenCalledTimes(1);
+      await expect(response.json()).resolves.toMatchObject(paginated);
+      expect(findAllPaginated).toHaveBeenCalledWith(
+        expect.objectContaining({ page: 1, limit: 20 }),
+      );
     });
 
     it('maps infrastructure failure → 500', async () => {
       const { handler } = makeProductsRouterHarness({
         service: {
-          findAll: () =>
+          findAllPaginated: () =>
             Effect.fail(
               new ProductsInfrastructureError({
-                action: 'findAll',
+                action: 'findAllPaginated',
                 messageKey: 'products.infrastructureError',
               }),
             ),
@@ -218,6 +223,18 @@ describe('productsRouter', () => {
       expect(response.status).toBe(400);
     });
 
+    it('rejects limit=101', async () => {
+      const { handler } = makeProductsRouterHarness({
+        service: { findAllPaginated: () => Effect.succeed(paginated) },
+        permissions: readOnly,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/products?limit=101'),
+      );
+      expect(response.status).toBe(400);
+    });
+
     it('returns the paginated payload on success', async () => {
       const findAllPaginated = vi.fn(() => Effect.succeed(paginated));
       const { handler } = makeProductsRouterHarness({
@@ -226,14 +243,16 @@ describe('productsRouter', () => {
       });
 
       const response = await handler(
-        new Request('http://localhost/products?page=1&limit=20'),
+        new Request('http://localhost/products?page=2&limit=10&search=whisky'),
       );
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toMatchObject({
         data: [{ id: PRODUCT_ID }],
         meta: { total: 1 },
       });
-      expect(findAllPaginated).toHaveBeenCalledTimes(1);
+      expect(findAllPaginated).toHaveBeenCalledWith(
+        expect.objectContaining({ page: 2, limit: 10, search: 'whisky' }),
+      );
     });
 
     it('maps infrastructure failure → 500', async () => {
@@ -362,9 +381,14 @@ describe('productsRouter', () => {
   // GET /products/category/:categoryId/tree
   // -------------------------------------------------------------------
   describe('GET /products/category/:categoryId/tree', () => {
+    const paginated = {
+      data: [makeProductResponse()],
+      meta: { total: 1, page: 2, limit: 10, total_pages: 1 },
+    };
+
     it('rejects without PRODUCTS:read permission', async () => {
       const { handler } = makeProductsRouterHarness({
-        service: { findByCategoryTree: () => Effect.succeed([]) },
+        service: { findByCategoryTree: () => Effect.succeed(paginated) },
         permissions: {},
       });
 
@@ -376,7 +400,7 @@ describe('productsRouter', () => {
 
     it('returns 400 when categoryId is not a UUID', async () => {
       const { handler } = makeProductsRouterHarness({
-        service: { findByCategoryTree: () => Effect.succeed([]) },
+        service: { findByCategoryTree: () => Effect.succeed(paginated) },
         permissions: readOnly,
       });
 
@@ -388,7 +412,7 @@ describe('productsRouter', () => {
 
     it('returns the product list on success', async () => {
       const findByCategoryTree = vi.fn(() =>
-        Effect.succeed([makeProductResponse()]),
+        Effect.succeed(paginated),
       );
       const { handler } = makeProductsRouterHarness({
         service: { findByCategoryTree },
@@ -396,12 +420,17 @@ describe('productsRouter', () => {
       });
 
       const response = await handler(
-        new Request(`http://localhost/products/category/${CATEGORY_ID}/tree`),
+        new Request(
+          `http://localhost/products/category/${CATEGORY_ID}/tree?page=2&limit=10&search=whisky`,
+        ),
       );
 
       expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toHaveLength(1);
-      expect(findByCategoryTree).toHaveBeenCalledWith(CATEGORY_ID);
+      await expect(response.json()).resolves.toMatchObject(paginated);
+      expect(findByCategoryTree).toHaveBeenCalledWith(
+        CATEGORY_ID,
+        expect.objectContaining({ page: 2, limit: 10, search: 'whisky' }),
+      );
     });
 
     it('maps CategoryNotFound → 404', async () => {
@@ -429,9 +458,14 @@ describe('productsRouter', () => {
   // GET /products/category/:categoryId
   // -------------------------------------------------------------------
   describe('GET /products/category/:categoryId', () => {
+    const paginated = {
+      data: [makeProductResponse()],
+      meta: { total: 1, page: 2, limit: 10, total_pages: 1 },
+    };
+
     it('rejects without PRODUCTS:read permission', async () => {
       const { handler } = makeProductsRouterHarness({
-        service: { findByCategory: () => Effect.succeed([]) },
+        service: { findByCategory: () => Effect.succeed(paginated) },
         permissions: {},
       });
 
@@ -443,7 +477,7 @@ describe('productsRouter', () => {
 
     it('returns 400 when categoryId is not a UUID', async () => {
       const { handler } = makeProductsRouterHarness({
-        service: { findByCategory: () => Effect.succeed([]) },
+        service: { findByCategory: () => Effect.succeed(paginated) },
         permissions: readOnly,
       });
 
@@ -455,7 +489,7 @@ describe('productsRouter', () => {
 
     it('returns the product list on success', async () => {
       const findByCategory = vi.fn(() =>
-        Effect.succeed([makeProductResponse()]),
+        Effect.succeed(paginated),
       );
       const { handler } = makeProductsRouterHarness({
         service: { findByCategory },
@@ -463,12 +497,17 @@ describe('productsRouter', () => {
       });
 
       const response = await handler(
-        new Request(`http://localhost/products/category/${CATEGORY_ID}`),
+        new Request(
+          `http://localhost/products/category/${CATEGORY_ID}?page=2&limit=10&search=whisky`,
+        ),
       );
 
       expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toHaveLength(1);
-      expect(findByCategory).toHaveBeenCalledWith(CATEGORY_ID);
+      await expect(response.json()).resolves.toMatchObject(paginated);
+      expect(findByCategory).toHaveBeenCalledWith(
+        CATEGORY_ID,
+        expect.objectContaining({ page: 2, limit: 10, search: 'whisky' }),
+      );
     });
 
     it('maps infrastructure failure → 500', async () => {

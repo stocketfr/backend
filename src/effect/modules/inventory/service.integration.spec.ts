@@ -1,5 +1,7 @@
 import { Effect, Layer } from 'effect';
 import { randomUUID } from 'node:crypto';
+import { SortOrder } from '@stocket/types/common';
+import { InventorySortField } from '@stocket/types/inventory';
 import {
   getTestDb,
   closeTestDb,
@@ -153,8 +155,11 @@ describe('InventoryService Integration', () => {
       const result = await run(
         Effect.flatMap(InventoryService, (svc) =>
           Effect.gen(function* () {
-            const all = yield* svc.findByProduct(product.id);
-            const inv = all[0]!;
+            const all = yield* svc.findByProduct(product.id, {
+              page: 1,
+              limit: 20,
+            } as any);
+            const inv = all.data[0]!;
 
             const after = yield* svc.adjustQuantity(inv.id, {
               adjustment: -20,
@@ -182,8 +187,11 @@ describe('InventoryService Integration', () => {
       const error = await fail(
         Effect.flatMap(InventoryService, (svc) =>
           Effect.gen(function* () {
-            const all = yield* svc.findByProduct(product.id);
-            return yield* svc.adjustQuantity(all[0]!.id, {
+            const all = yield* svc.findByProduct(product.id, {
+              page: 1,
+              limit: 20,
+            } as any);
+            return yield* svc.adjustQuantity(all.data[0]!.id, {
               adjustment: -10,
             } as any);
           }),
@@ -205,14 +213,51 @@ describe('InventoryService Integration', () => {
 
       const result = await run(
         Effect.flatMap(InventoryService, (svc) =>
-          svc.findByProduct(product.id),
+          svc.findByProduct(product.id, { page: 1, limit: 20 } as any),
         ),
       );
 
-      expect(result).toHaveLength(1);
-      expect(result[0]!.product_id).toBe(product.id);
-      expect(result[0]!.product).toMatchObject({ name: product.name });
-      expect(result[0]!.location).toMatchObject({ name: location.name });
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]!.product_id).toBe(product.id);
+      expect(result.data[0]!.product).toMatchObject({ name: product.name });
+      expect(result.data[0]!.location).toMatchObject({ name: location.name });
+    });
+
+    it('bounds a representative 125-row inventory tenant payload', async () => {
+      const category = await seedCategory(db);
+      const location = await seedLocation(db);
+      for (let index = 0; index < 125; index += 1) {
+        const product = await seedProduct(db, {
+          category_id: category.id,
+          sku: `INVENTORY-LARGE-${index.toString().padStart(3, '0')}`,
+        });
+        await seedInventory(db, {
+          product_id: product.id,
+          location_id: location.id,
+          quantity: index,
+        });
+      }
+
+      const result = await run(
+        Effect.flatMap(InventoryService, (svc) =>
+          svc.findAllPaginated({
+            page: 1,
+            limit: 100,
+            sort_by: InventorySortField.QUANTITY,
+            sort_order: SortOrder.ASC,
+          }),
+        ),
+      );
+
+      expect(result.meta).toMatchObject({
+        total: 125,
+        limit: 100,
+        total_pages: 2,
+      });
+      expect(result.data).toHaveLength(100);
+      expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(
+        256 * 1024,
+      );
     });
   });
 
@@ -318,9 +363,12 @@ describe('InventoryService Integration', () => {
       const error = await fail(
         Effect.flatMap(InventoryService, (svc) =>
           Effect.gen(function* () {
-            const all = yield* svc.findByProduct(product.id);
-            yield* svc.delete(all[0]!.id);
-            return yield* svc.findOne(all[0]!.id);
+            const all = yield* svc.findByProduct(product.id, {
+              page: 1,
+              limit: 20,
+            } as any);
+            yield* svc.delete(all.data[0]!.id);
+            return yield* svc.findOne(all.data[0]!.id);
           }),
         ),
       );

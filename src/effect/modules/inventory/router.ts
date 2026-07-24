@@ -14,6 +14,7 @@ import {
   emptyInput,
   jsonBody,
   pathParams,
+  pathParamsAndQueryParams,
   pathParamsAndJsonBody,
   queryParams,
   tenantRouteContext,
@@ -25,6 +26,14 @@ import { InventoryService } from './service';
 const InventoryPathParams = Schema.Struct({ id: InventoryIdSchema });
 const ProductPathParams = Schema.Struct({ productId: Schema.UUID });
 const LocationPathParams = Schema.Struct({ locationId: Schema.UUID });
+
+const InventoryLookupQuery = Schema.Struct({
+  page: InventoryQuerySchema.fields.page,
+  limit: InventoryQuerySchema.fields.limit,
+  search: InventoryQuerySchema.fields.search,
+  sort_by: InventoryQuerySchema.fields.sort_by,
+  sort_order: InventoryQuerySchema.fields.sort_order,
+});
 
 export const inventoryRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
@@ -42,10 +51,10 @@ export const inventoryRouter = HttpRouter.empty.pipe(
     '/all',
     tenantRoute({
       permissions: [[Resource.INVENTORY, Permission.READ]],
-      decode: emptyInput,
-      handler: () =>
+      decode: queryParams(InventoryQuerySchema),
+      handler: ({ input: query }) =>
         Effect.flatMap(InventoryService, (inventoryService) =>
-          inventoryService.findAll(),
+          inventoryService.findAllPaginated(query),
         ),
     }),
   ),
@@ -53,10 +62,10 @@ export const inventoryRouter = HttpRouter.empty.pipe(
     '/product/:productId',
     tenantRoute({
       permissions: [[Resource.INVENTORY, Permission.READ]],
-      decode: pathParams(ProductPathParams),
-      handler: ({ input: { productId } }) =>
+      decode: pathParamsAndQueryParams(ProductPathParams, InventoryLookupQuery),
+      handler: ({ input: { path, query } }) =>
         Effect.flatMap(InventoryService, (inventoryService) =>
-          inventoryService.findByProduct(productId),
+          inventoryService.findByProduct(path.productId, query),
         ),
     }),
   ),
@@ -64,10 +73,10 @@ export const inventoryRouter = HttpRouter.empty.pipe(
     '/location/:locationId',
     tenantRoute({
       permissions: [[Resource.INVENTORY, Permission.READ]],
-      decode: pathParams(LocationPathParams),
-      handler: ({ input: { locationId } }) =>
+      decode: pathParamsAndQueryParams(LocationPathParams, InventoryLookupQuery),
+      handler: ({ input: { path, query } }) =>
         Effect.flatMap(InventoryService, (inventoryService) =>
-          inventoryService.findByLocation(locationId),
+          inventoryService.findByLocation(path.locationId, query),
         ),
     }),
   ),

@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import { eq, asc, sql, type SQL } from 'drizzle-orm';
+import { eq, asc, inArray, sql, type SQL } from 'drizzle-orm';
 import { makeTenantCrud } from '../../platform/db/tenant-crud';
 import { categories } from '../../platform/db/schema';
 import { TenantQuery } from '../../platform/tenancy/tenant-query';
@@ -84,25 +84,34 @@ export class CategoriesRepository extends Effect.Service<CategoriesRepository>()
 
         findAllDescendantIds: (parentId: string) =>
           Effect.gen(function* () {
-            const where = yield* scopedWhere();
-            return yield* tryAsync('find descendant categories', async () => {
-              const allCategories = await db
-                .select({ id: categories.id, parent_id: categories.parent_id })
-                .from(categories)
-                .where(where);
+            const visited = new Set([parentId]);
+            const descendantIds: string[] = [];
+            let parentIds = [parentId];
 
-              const childIds: string[] = [];
-              const findChildren = (currentParentId: string) => {
-                for (const category of allCategories) {
-                  if (category.parent_id === currentParentId) {
-                    childIds.push(category.id);
-                    findChildren(category.id);
-                  }
+            while (parentIds.length > 0) {
+              const where = yield* scopedWhere(
+                inArray(categories.parent_id, parentIds),
+              );
+              const children = yield* tryAsync(
+                'find descendant categories',
+                () =>
+                  db
+                    .select({ id: categories.id })
+                    .from(categories)
+                    .where(where),
+              );
+              const nextParentIds: string[] = [];
+              for (const child of children) {
+                if (!visited.has(child.id)) {
+                  visited.add(child.id);
+                  descendantIds.push(child.id);
+                  nextParentIds.push(child.id);
                 }
-              };
-              findChildren(parentId);
-              return childIds;
-            });
+              }
+              parentIds = nextParentIds;
+            }
+
+            return descendantIds;
           }),
       }),
     }),

@@ -107,3 +107,33 @@ All `/api/v1/*` endpoints require Better Auth authentication except the health c
 ```bash
 curl -H "Authorization: Bearer <token>" http://localhost:8080/api/v1/products
 ```
+
+## Catalog and inventory pagination
+
+Product and inventory collection reads use stable page-based pagination. The
+default page size is 20 and the maximum accepted `limit` is 100. Results use a
+deterministic record-ID tie-breaker after the requested sort, so records with
+equal sort values do not move unpredictably between pages.
+
+- Use `GET /api/v1/products?page=1&limit=20&search=...` for product pickers.
+- Use `GET /api/v1/inventory?page=1&limit=20&search=...` for inventory lists.
+- Filter inventory with `product_id`, `location_id`, or `area_id`; filter
+  products with `category_id` or `primary_supplier_id`.
+- Resolve an already selected record with `GET /api/v1/products/:id` or
+  `GET /api/v1/inventory/:id` instead of loading a collection.
+
+The legacy `/products/all` and `/inventory/all` routes remain compatibility
+aliases, but now return the same bounded `{ data, meta }` response as the
+canonical collection routes. The legacy `/products/category/:categoryId`,
+`/products/category/:categoryId/tree`, `/inventory/product/:productId`, and
+`/inventory/location/:locationId` routes are also paginated. Consumers must
+follow `meta.page` / `meta.total_pages` or migrate to the canonical filtered
+collection routes; no product or inventory collection route returns all tenant
+records in one response.
+
+The integration guardrail uses representative 125-record tenants for both
+collections. A maximum-size request returns 100 records, reports two pages, and
+keeps the serialized first-page payload below 256 KiB. Each base collection read
+uses one tenant-scoped count query and one tenant-scoped limited data query;
+inventory area paths add only batched lookups for area IDs present on that page
+and their ancestors.

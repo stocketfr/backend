@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import { eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { asc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import {
   resolvePaginationWindow,
   toRepositoryPaginatedResult,
@@ -36,27 +36,15 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
         const activeConditions = (includeDeleted = false): SQL[] =>
           includeDeleted ? [] : [isNull(products.deleted_at)];
 
-        const findAll = (includeDeleted = false) =>
-          Effect.gen(function* () {
-            const where = yield* scopedWhere(
-              ...activeConditions(includeDeleted),
-            );
-            return yield* tryAsync(
-              'list all products with relations',
-              async () => {
-                const rows = await selectProductWithJoins(db)
-                  .where(where)
-                  .orderBy(sql`products."name" ASC`);
-                return rows.map(mapProductRow);
-              },
-            );
-          });
-
-        const findAllPaginated = (query: ProductQueryDto) =>
+        const findPaginated = (
+          query: ProductQueryDto,
+          additionalConditions: readonly SQL[] = [],
+        ) =>
           Effect.gen(function* () {
             const where = yield* scopedWhere(
               ...activeConditions(query.include_deleted === true),
               ...buildProductFilters(query),
+              ...additionalConditions,
             );
             return yield* tryAsync('list products with relations', async () => {
               const { page, limit, skip } = resolvePaginationWindow(
@@ -71,7 +59,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
 
               const rows = await selectProductWithJoins(db)
                 .where(where)
-                .orderBy(getProductOrderBy(query))
+                .orderBy(getProductOrderBy(query), asc(products.id))
                 .offset(skip)
                 .limit(limit);
 
@@ -83,6 +71,9 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
               );
             });
           });
+
+        const findAllPaginated = (query: ProductQueryDto) =>
+          findPaginated(query);
 
         const findById = (id: string, includeDeleted = false) =>
           Effect.gen(function* () {
@@ -167,48 +158,26 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
             );
           });
 
-        const findByCategoryId = (categoryId: string) =>
-          Effect.gen(function* () {
-            const where = yield* scopedWhere(
-              eq(products.category_id, categoryId),
-              isNull(products.deleted_at),
-            );
-            return yield* tryAsync('find products by category', async () => {
-              const rows = await selectProductWithJoins(db)
-                .where(where)
-                .orderBy(sql`products."name" ASC`);
-              return rows.map(mapProductRow);
-            });
-          });
-
-        const findByCategoryIds = (categoryIds: readonly string[]) =>
-          Effect.gen(function* () {
-            if (categoryIds.length === 0) {
-              return [];
-            }
-
-            const where = yield* scopedWhere(
-              inArray(products.category_id, [...categoryIds]),
-              isNull(products.deleted_at),
-            );
-            return yield* tryAsync('find products by categories', async () => {
-              const rows = await selectProductWithJoins(db)
-                .where(where)
-                .orderBy(sql`products."name" ASC`);
-              return rows.map(mapProductRow);
-            });
-          });
+        const findByCategoryIdsPaginated = (
+          categoryIds: readonly string[],
+          query: ProductQueryDto,
+        ) =>
+          categoryIds.length === 0
+            ? Effect.succeed(
+                toRepositoryPaginatedResult([], 0, query.page, query.limit),
+              )
+            : findPaginated(query, [
+                inArray(products.category_id, [...categoryIds]),
+              ]);
 
         return {
-          findAll,
           findAllPaginated,
           findById,
           findByIds,
           existsById,
           findBySku,
           findBySkus,
-          findByCategoryId,
-          findByCategoryIds,
+          findByCategoryIdsPaginated,
         };
       },
     }),

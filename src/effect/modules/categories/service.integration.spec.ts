@@ -1,4 +1,5 @@
 import { Effect, Layer } from 'effect';
+import { eq } from 'drizzle-orm';
 import {
   getTestDb,
   closeTestDb,
@@ -9,6 +10,7 @@ import {
 import { seedCategory } from '../../testing/seed';
 import { DrizzleDatabase, type DrizzleDb } from '../../platform/db/drizzle';
 import { CurrentRequestContext } from '../../platform/http/request-context';
+import { categories } from '../../platform/db/schema';
 import { CategoriesService } from './service';
 
 let db: DrizzleDb;
@@ -225,6 +227,33 @@ describe('CategoriesService Integration', () => {
       expect(ids).toContain(child.id);
       expect(ids).toContain(grandchild.id);
       expect(ids).toHaveLength(2);
+    });
+
+    it('ignores unrelated categories and terminates on malformed cycles', async () => {
+      const root = await seedCategory(db, { name: 'Root' });
+      const child = await seedCategory(db, {
+        name: 'Child',
+        parent_id: root.id,
+      });
+      const grandchild = await seedCategory(db, {
+        name: 'Grandchild',
+        parent_id: child.id,
+      });
+      for (let index = 0; index < 50; index += 1) {
+        await seedCategory(db, { name: `Unrelated ${index}` });
+      }
+      await db
+        .update(categories)
+        .set({ parent_id: grandchild.id })
+        .where(eq(categories.id, root.id));
+
+      const ids = await run(
+        Effect.flatMap(CategoriesService, (svc) =>
+          svc.findAllDescendantIds(root.id),
+        ),
+      );
+
+      expect(ids).toEqual([child.id, grandchild.id]);
     });
   });
 

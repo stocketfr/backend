@@ -173,23 +173,91 @@ describe('inventoryRouter', () => {
       );
       expect(response.status).toBe(400);
     });
-  });
 
-  describe('GET /inventory/product/:productId', () => {
-    it('returns the inventory list for the product', async () => {
+    it('rejects limit=101', async () => {
       const handler = makeHandler({
         service: {
-          findByProduct: () => Effect.succeed([makeInventoryDto()]),
+          findAllPaginated: () => Effect.die('should not be called'),
         } as any,
       });
 
       const response = await handler(
-        new Request(`http://localhost/inventory/product/${TEST_PRODUCT_ID}`),
+        new Request('http://localhost/inventory?limit=101'),
+      );
+      expect(response.status).toBe(400);
+    });
+
+    it('passes search, page, and limit to the service', async () => {
+      const findAllPaginated = vi.fn(() =>
+        Effect.succeed({
+          data: [makeInventoryDto()],
+          meta: { total: 1, page: 2, limit: 10, total_pages: 1 },
+        }),
+      );
+      const handler = makeHandler({
+        service: { findAllPaginated } as any,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/inventory?page=2&limit=10&search=juice'),
+      );
+      expect(response.status).toBe(200);
+      expect(findAllPaginated).toHaveBeenCalledWith(
+        expect.objectContaining({ page: 2, limit: 10, search: 'juice' }),
+      );
+    });
+  });
+
+  describe('GET /inventory/all', () => {
+    it('keeps the legacy route bounded and paginated', async () => {
+      const payload = {
+        data: [makeInventoryDto()],
+        meta: { total: 1, page: 1, limit: 20, total_pages: 1 },
+      };
+      const findAllPaginated = vi.fn(() => Effect.succeed(payload));
+      const handler = makeHandler({
+        service: { findAllPaginated } as any,
+      });
+
+      const response = await handler(
+        new Request('http://localhost/inventory/all'),
+      );
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        data: [{ id: TEST_INVENTORY_ID }],
+        meta: payload.meta,
+      });
+      expect(findAllPaginated).toHaveBeenCalledWith(
+        expect.objectContaining({ page: 1, limit: 20 }),
+      );
+    });
+  });
+
+  describe('GET /inventory/product/:productId', () => {
+    it('returns the inventory list for the product', async () => {
+      const findByProduct = vi.fn(() =>
+        Effect.succeed({
+          data: [makeInventoryDto()],
+          meta: { total: 1, page: 2, limit: 10, total_pages: 1 },
+        }),
+      );
+      const handler = makeHandler({
+        service: { findByProduct } as any,
+      });
+
+      const response = await handler(
+        new Request(
+          `http://localhost/inventory/product/${TEST_PRODUCT_ID}?page=2&limit=10&search=juice`,
+        ),
       );
       expect(response.status).toBe(200);
       const body = (await response.json()) as any;
-      expect(body).toHaveLength(1);
-      expect(body[0].product_id).toBe(TEST_PRODUCT_ID);
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].product_id).toBe(TEST_PRODUCT_ID);
+      expect(findByProduct).toHaveBeenCalledWith(
+        TEST_PRODUCT_ID,
+        expect.objectContaining({ page: 2, limit: 10, search: 'juice' }),
+      );
     });
 
     it('returns 400 when productId is not a UUID', async () => {
@@ -203,6 +271,29 @@ describe('inventoryRouter', () => {
         new Request('http://localhost/inventory/product/not-a-uuid'),
       );
       expect(response.status).toBe(400);
+    });
+  });
+
+  describe('GET /inventory/location/:locationId', () => {
+    it('passes bounded lookup query to the service', async () => {
+      const findByLocation = vi.fn(() =>
+        Effect.succeed({
+          data: [makeInventoryDto()],
+          meta: { total: 1, page: 3, limit: 5, total_pages: 1 },
+        }),
+      );
+      const handler = makeHandler({ service: { findByLocation } as any });
+
+      const response = await handler(
+        new Request(
+          `http://localhost/inventory/location/${TEST_LOCATION_ID}?page=3&limit=5&search=warehouse`,
+        ),
+      );
+      expect(response.status).toBe(200);
+      expect(findByLocation).toHaveBeenCalledWith(
+        TEST_LOCATION_ID,
+        expect.objectContaining({ page: 3, limit: 5, search: 'warehouse' }),
+      );
     });
   });
 
@@ -246,6 +337,20 @@ describe('inventoryRouter', () => {
   });
 
   describe('GET /inventory/:id', () => {
+    it('returns the selected inventory record', async () => {
+      const handler = makeHandler({
+        service: { findOne: () => Effect.succeed(makeInventoryDto()) } as any,
+      });
+
+      const response = await handler(
+        new Request(`http://localhost/inventory/${TEST_INVENTORY_ID}`),
+      );
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        id: TEST_INVENTORY_ID,
+      });
+    });
+
     it('returns 404 when the service reports InventoryNotFound', async () => {
       const handler = makeHandler({
         service: {

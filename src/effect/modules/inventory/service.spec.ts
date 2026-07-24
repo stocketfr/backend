@@ -71,10 +71,6 @@ const makeMockRepository = (
       total_pages: 1,
     }),
   ),
-  findAll: vi.fn().mockReturnValue(Effect.succeed([makeInventoryEntity()])),
-  findAllWithRelations: vi
-    .fn()
-    .mockReturnValue(Effect.succeed([makeInventoryEntity()])),
   findById: vi.fn().mockReturnValue(Effect.succeed(makeInventoryEntity())),
   findByIdWithRelations: vi
     .fn()
@@ -82,13 +78,7 @@ const makeMockRepository = (
   findByProductId: vi
     .fn()
     .mockReturnValue(Effect.succeed([makeInventoryEntity()])),
-  findByProductIdWithRelations: vi
-    .fn()
-    .mockReturnValue(Effect.succeed([makeInventoryEntity()])),
   findByLocationId: vi
-    .fn()
-    .mockReturnValue(Effect.succeed([makeInventoryEntity()])),
-  findByLocationIdWithRelations: vi
     .fn()
     .mockReturnValue(Effect.succeed([makeInventoryEntity()])),
   findByProductAndLocationWithRelations: vi
@@ -138,6 +128,7 @@ const makeMockAreasService = (
 ) =>
   ({
     findAll: vi.fn().mockReturnValue(Effect.succeed([])),
+    findByIdsWithAncestors: vi.fn().mockReturnValue(Effect.succeed([])),
     findById: vi.fn().mockReturnValue(Effect.succeed(makeAreaDto())),
     ...overrides,
   }) as any;
@@ -199,7 +190,7 @@ describe('Effect InventoryService', () => {
         ),
       });
       const areasService = makeMockAreasService({
-        findAll: vi.fn().mockReturnValue(
+        findByIdsWithAncestors: vi.fn().mockReturnValue(
           Effect.succeed([
             makeAreaDto({ id: 'bay-e', name: 'Bay E' }),
             makeAreaDto({
@@ -222,17 +213,9 @@ describe('Effect InventoryService', () => {
       );
 
       expect(result.data[0]?.area?.path).toBe('Bay E / Shelf 3');
-      expect(areasService.findAll).toHaveBeenCalledWith({});
-    });
-  });
-
-  describe('findAll', () => {
-    it('returns all inventory items', async () => {
-      const service = await buildService();
-      const result = await run(service.findAll());
-
-      expect(result).toHaveLength(1);
-      expect(result[0]).toMatchObject({ id: 'inventory-1' });
+      expect(areasService.findByIdsWithAncestors).toHaveBeenCalledWith([
+        'shelf-3',
+      ]);
     });
   });
 
@@ -282,12 +265,16 @@ describe('Effect InventoryService', () => {
       const repository = makeMockRepository();
       const service = await buildService(repository);
 
-      const result = await run(service.findByProduct('product-1'));
-
-      expect(result).toHaveLength(1);
-      expect(repository.findByProductIdWithRelations).toHaveBeenCalledWith(
-        'product-1',
+      const result = await run(
+        service.findByProduct('product-1', { page: 2, limit: 10 } as any),
       );
+
+      expect(result.data).toHaveLength(1);
+      expect(repository.findAllPaginatedWithRelations).toHaveBeenCalledWith({
+        page: 2,
+        limit: 10,
+        product_id: 'product-1',
+      });
     });
 
     it('fails when product does not exist', async () => {
@@ -296,7 +283,9 @@ describe('Effect InventoryService', () => {
       });
       const service = await buildService(undefined, productsService);
 
-      const error = await fail(service.findByProduct('missing'));
+      const error = await fail(
+        service.findByProduct('missing', { page: 1, limit: 20 } as any),
+      );
       expect(error).toMatchObject({ _tag: 'InventoryProductNotFound' });
     });
   });
@@ -306,12 +295,16 @@ describe('Effect InventoryService', () => {
       const repository = makeMockRepository();
       const service = await buildService(repository);
 
-      const result = await run(service.findByLocation('location-1'));
-
-      expect(result).toHaveLength(1);
-      expect(repository.findByLocationIdWithRelations).toHaveBeenCalledWith(
-        'location-1',
+      const result = await run(
+        service.findByLocation('location-1', { page: 1, limit: 20 } as any),
       );
+
+      expect(result.data).toHaveLength(1);
+      expect(repository.findAllPaginatedWithRelations).toHaveBeenCalledWith({
+        page: 1,
+        limit: 20,
+        location_id: 'location-1',
+      });
     });
 
     it('fails when location does not exist', async () => {
@@ -324,7 +317,9 @@ describe('Effect InventoryService', () => {
         locationsService,
       );
 
-      const error = await fail(service.findByLocation('missing'));
+      const error = await fail(
+        service.findByLocation('missing', { page: 1, limit: 20 } as any),
+      );
       expect(error).toMatchObject({ _tag: 'InventoryLocationNotFound' });
     });
   });

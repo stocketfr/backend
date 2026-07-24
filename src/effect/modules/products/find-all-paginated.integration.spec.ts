@@ -174,4 +174,35 @@ describe('ProductsService findAllPaginated filter matrix', () => {
       middle.id,
     ]);
   });
+
+  it('bounds and stably orders a representative 125-product tenant', async () => {
+    const category = await seedCategory(db);
+    for (let index = 0; index < 125; index += 1) {
+      await seedProduct(db, {
+        category_id: category.id,
+        sku: `LARGE-${index.toString().padStart(3, '0')}`,
+        name: 'Same sort value',
+      });
+    }
+
+    const [firstPage, secondPage] = await Promise.all([
+      listProducts({ page: 1, limit: 100 }),
+      listProducts({ page: 2, limit: 100 }),
+    ]);
+    const ids = [...firstPage.data, ...secondPage.data].map(
+      (product) => product.id,
+    );
+
+    expect(firstPage.meta).toMatchObject({
+      total: 125,
+      limit: 100,
+      total_pages: 2,
+    });
+    expect(firstPage.data).toHaveLength(100);
+    expect(secondPage.data).toHaveLength(25);
+    expect(ids).toEqual([...ids].sort());
+    expect(Buffer.byteLength(JSON.stringify(firstPage))).toBeLessThan(
+      256 * 1024,
+    );
+  });
 });

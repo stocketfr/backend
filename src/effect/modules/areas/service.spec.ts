@@ -23,6 +23,7 @@ const makeMockAreasRepository = (overrides: Record<string, Mock> = {}) => ({
   create: vi.fn().mockReturnValue(Effect.succeed(makeAreaEntity())),
   findAll: vi.fn().mockReturnValue(Effect.succeed([makeAreaEntity()])),
   findById: vi.fn().mockReturnValue(Effect.succeed(makeAreaEntity())),
+  findByIds: vi.fn().mockReturnValue(Effect.succeed([makeAreaEntity()])),
   findByIdWithChildren: vi
     .fn()
     .mockReturnValue(Effect.succeed(makeAreaEntity({ children: [] }))),
@@ -169,6 +170,34 @@ describe('Effect AreasService', () => {
 
       const error = await fail(service.findById('missing'));
       expect(error).toMatchObject({ _tag: 'AreaNotFound' });
+    });
+  });
+
+  describe('findByIdsWithAncestors', () => {
+    it('loads only requested areas and their ancestors in bounded batches', async () => {
+      const findByIds = vi
+        .fn()
+        .mockReturnValueOnce(
+          Effect.succeed([
+            makeAreaEntity({
+              id: 'shelf-1',
+              name: 'Shelf 1',
+              parent_id: 'zone-1',
+            }),
+          ]),
+        )
+        .mockReturnValueOnce(
+          Effect.succeed([
+            makeAreaEntity({ id: 'zone-1', name: 'Zone 1', parent_id: null }),
+          ]),
+        );
+      const service = await buildService(makeMockAreasRepository({ findByIds }));
+
+      const result = await run(service.findByIdsWithAncestors(['shelf-1']));
+
+      expect(result.map((area) => area.id)).toEqual(['shelf-1', 'zone-1']);
+      expect(findByIds).toHaveBeenNthCalledWith(1, ['shelf-1']);
+      expect(findByIds).toHaveBeenNthCalledWith(2, ['zone-1']);
     });
   });
 

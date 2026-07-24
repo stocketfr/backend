@@ -63,6 +63,30 @@ export class AreasService extends Effect.Service<AreasService>()(
           trace.span('findById', { attributes: { id } }),
         );
 
+      const findByIdsWithAncestors = (ids: readonly string[]) =>
+        Effect.gen(function* () {
+          const areasById = new Map<string, AreaResponseDto>();
+          let pendingIds = [...new Set(ids)];
+
+          while (pendingIds.length > 0) {
+            const loaded = yield* repository.findByIds(pendingIds);
+            for (const area of loaded) {
+              areasById.set(area.id, toAreaResponseDto(area));
+            }
+            pendingIds = [
+              ...new Set(
+                loaded.flatMap((area) =>
+                  area.parent_id && !areasById.has(area.parent_id)
+                    ? [area.parent_id]
+                    : [],
+                ),
+              ),
+            ];
+          }
+
+          return [...areasById.values()];
+        }).pipe(trace.span('findByIdsWithAncestors'));
+
       const findByIdWithChildren = (
         id: string,
       ): Effect.Effect<
@@ -99,6 +123,7 @@ export class AreasService extends Effect.Service<AreasService>()(
         create,
         findAll,
         findById,
+        findByIdsWithAncestors,
         findByIdWithChildren,
         update,
         delete: remove,

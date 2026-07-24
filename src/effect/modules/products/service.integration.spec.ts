@@ -1,4 +1,6 @@
 import { Effect, Layer } from 'effect';
+import { SortOrder } from '@stocket/types/common';
+import { ProductSortField } from '@stocket/types/products';
 import {
   getTestDb,
   closeTestDb,
@@ -31,6 +33,14 @@ const run = <A, E>(effect: Effect.Effect<A, E, ProductsService>) =>
 
 const fail = <A, E>(effect: Effect.Effect<A, E, ProductsService>) =>
   Effect.runPromise(Effect.flip(effect.pipe(Effect.provide(TestLayer))));
+
+const defaultProductQuery = {
+  page: 1,
+  limit: 20,
+  sort_by: ProductSortField.NAME,
+  sort_order: SortOrder.ASC,
+  include_deleted: false,
+};
 
 describe('ProductsService Integration', () => {
   describe('create', () => {
@@ -180,7 +190,10 @@ describe('ProductsService Integration', () => {
 
       const result = await run(
         Effect.flatMap(ProductsService, (svc) =>
-          Effect.flatMap(svc.findAll(), (all) => svc.findOne(all[0]!.id)),
+          Effect.flatMap(
+            svc.findAllPaginated(defaultProductQuery),
+            (all) => svc.findOne(all.data[0]!.id),
+          ),
         ),
       );
 
@@ -245,12 +258,14 @@ describe('ProductsService Integration', () => {
         ),
       );
 
-      // Should not appear in findAll (default excludes deleted)
+      // Should not appear in the default paginated query (excludes deleted)
       const allAfterDelete = await run(
-        Effect.flatMap(ProductsService, (svc) => svc.findAll()),
+        Effect.flatMap(ProductsService, (svc) =>
+          svc.findAllPaginated(defaultProductQuery),
+        ),
       );
       expect(
-        allAfterDelete.find((p: any) => p.id === product.id),
+        allAfterDelete.data.find((p: any) => p.id === product.id),
       ).toBeUndefined();
 
       // Restore
@@ -262,10 +277,12 @@ describe('ProductsService Integration', () => {
 
       // Should appear again
       const allAfterRestore = await run(
-        Effect.flatMap(ProductsService, (svc) => svc.findAll()),
+        Effect.flatMap(ProductsService, (svc) =>
+          svc.findAllPaginated(defaultProductQuery),
+        ),
       );
       expect(
-        allAfterRestore.find((p: any) => p.id === product.id),
+        allAfterRestore.data.find((p: any) => p.id === product.id),
       ).toBeTruthy();
     });
 
@@ -289,11 +306,13 @@ describe('ProductsService Integration', () => {
       await seedProduct(db, { category_id: catB.id, name: 'In B' });
 
       const result = await run(
-        Effect.flatMap(ProductsService, (svc) => svc.findByCategory(catA.id)),
+        Effect.flatMap(ProductsService, (svc) =>
+          svc.findByCategory(catA.id, defaultProductQuery),
+        ),
       );
 
-      expect(result).toHaveLength(1);
-      expect(result[0]!.name).toBe('In A');
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]!.name).toBe('In A');
     });
 
     it('findByCategoryTree returns products from parent and child categories', async () => {
@@ -307,12 +326,12 @@ describe('ProductsService Integration', () => {
 
       const result = await run(
         Effect.flatMap(ProductsService, (svc) =>
-          svc.findByCategoryTree(parent.id),
+          svc.findByCategoryTree(parent.id, defaultProductQuery),
         ),
       );
 
-      expect(result).toHaveLength(2);
-      const names = result.map((p: any) => p.name).sort();
+      expect(result.data).toHaveLength(2);
+      const names = result.data.map((p: any) => p.name).sort();
       expect(names).toEqual(['Merlot', 'Water']);
     });
   });

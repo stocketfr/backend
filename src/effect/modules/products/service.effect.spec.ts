@@ -85,12 +85,10 @@ const defaultPaginatedResult = {
 
 const defaultRepoMethods: Partial<ProductsRepository> = {
   findAllPaginated: () => Effect.succeed(defaultPaginatedResult),
-  findAll: () => Effect.succeed([makeProductEntity()]),
   findById: () => Effect.succeed(makeProductEntity()),
   findBySku: () => Effect.succeed(null),
   findBySkus: () => Effect.succeed([]),
-  findByCategoryId: () => Effect.succeed([makeProductEntity()]),
-  findByCategoryIds: () => Effect.succeed([makeProductEntity()]),
+  findByCategoryIdsPaginated: () => Effect.succeed(defaultPaginatedResult),
   findByIds: () => Effect.succeed([makeProductEntity()]),
   findDeletedByIds: () =>
     Effect.succeed([makeProductEntity({ deleted_at: new Date() })]),
@@ -184,17 +182,6 @@ describe('ProductsService', () => {
     );
   });
 
-  describe('findAll', () => {
-    it.effect('returns all products', () =>
-      withService((svc) =>
-        Effect.gen(function* () {
-          const result = yield* svc.findAll();
-          expect(result).toHaveLength(1);
-        }),
-      ),
-    );
-  });
-
   describe('findOne', () => {
     it.effect('returns a product', () =>
       withService((svc) =>
@@ -221,8 +208,12 @@ describe('ProductsService', () => {
     it.effect('returns products by category', () =>
       withService((svc) =>
         Effect.gen(function* () {
-          const result = yield* svc.findByCategory('cat-1');
-          expect(result).toHaveLength(1);
+          const result = yield* svc.findByCategory('cat-1', {
+            page: 1,
+            limit: 20,
+          } as any);
+          expect(result.data).toHaveLength(1);
+          expect(result.meta).toMatchObject({ total: 1, page: 1 });
         }),
       ),
     );
@@ -231,7 +222,9 @@ describe('ProductsService', () => {
       withService(
         (svc) =>
           Effect.gen(function* () {
-            const error = yield* Effect.flip(svc.findByCategory('missing'));
+            const error = yield* Effect.flip(
+              svc.findByCategory('missing', { page: 1, limit: 20 } as any),
+            );
             expect(error).toMatchObject({ _tag: 'CategoryNotFound' });
           }),
         undefined,
@@ -244,8 +237,11 @@ describe('ProductsService', () => {
     it.effect('returns products from category tree', () =>
       withService((svc) =>
         Effect.gen(function* () {
-          const result = yield* svc.findByCategoryTree('cat-1');
-          expect(result).toHaveLength(1);
+          const result = yield* svc.findByCategoryTree('cat-1', {
+            page: 1,
+            limit: 20,
+          } as any);
+          expect(result.data).toHaveLength(1);
         }),
       ),
     );

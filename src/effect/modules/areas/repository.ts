@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import { eq, and, asc, isNull, sql, type SQL } from 'drizzle-orm';
+import { eq, and, asc, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import type {
   CreateAreaDto,
   UpdateAreaDto,
@@ -163,6 +163,19 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
           });
         });
 
+      const findByIds = (ids: readonly string[]) =>
+        ids.length === 0
+          ? Effect.succeed([])
+          : Effect.gen(function* () {
+              const where = yield* tenantQuery.whereTenant(
+                areas,
+                inArray(areas.id, [...ids]),
+              );
+              return yield* tryAsync('load areas by ids', () =>
+                db.select().from(areas).where(where),
+              );
+            });
+
       const findByIdWithChildren = (id: string) =>
         Effect.gen(function* () {
           const tenantScope = yield* currentTenantScope;
@@ -289,6 +302,7 @@ export class AreasRepository extends Effect.Service<AreasRepository>()(
         create,
         findAll,
         findById,
+        findByIds,
         findByIdWithChildren,
         findHierarchyByLocationId,
         update,

@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type {
   InventoryQueryDto,
   InventorySummaryDto,
@@ -62,7 +62,7 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
 
               const rows = await selectInventoryWithJoins(db)
                 .where(where)
-                .orderBy(orderBy)
+                .orderBy(orderBy, asc(inventory.id))
                 .offset(skip)
                 .limit(limit);
 
@@ -75,17 +75,6 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
             });
           });
 
-        const findAllWithRelations = () =>
-          Effect.gen(function* () {
-            const where = yield* scopedWhere();
-            return yield* tryAsync('list all inventory', async () => {
-              const rows = await selectInventoryWithJoins(db)
-                .where(where)
-                .orderBy(desc(inventory.updated_at));
-              return rows.map(mapInventoryRow);
-            });
-          });
-
         const findByIdWithRelations = (id: string) =>
           Effect.gen(function* () {
             const where = yield* scopedWhereId(id);
@@ -94,32 +83,6 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
                 .where(where)
                 .limit(1);
               return rows[0] ? mapInventoryRow(rows[0]) : null;
-            });
-          });
-
-        const findByProductIdWithRelations = (productId: string) =>
-          Effect.gen(function* () {
-            const where = yield* scopedWhere(
-              eq(inventory.product_id, productId),
-            );
-            return yield* tryAsync('find inventory by product', async () => {
-              const rows = await selectInventoryWithJoins(db)
-                .where(where)
-                .orderBy(desc(inventory.updated_at));
-              return rows.map(mapInventoryRow);
-            });
-          });
-
-        const findByLocationIdWithRelations = (locationId: string) =>
-          Effect.gen(function* () {
-            const where = yield* scopedWhere(
-              eq(inventory.location_id, locationId),
-            );
-            return yield* tryAsync('find inventory by location', async () => {
-              const rows = await selectInventoryWithJoins(db)
-                .where(where)
-                .orderBy(desc(inventory.updated_at));
-              return rows.map(mapInventoryRow);
             });
           });
 
@@ -197,10 +160,7 @@ export class InventoryRepository extends Effect.Service<InventoryRepository>()(
 
         return {
           findAllPaginatedWithRelations,
-          findAllWithRelations,
           findByIdWithRelations,
-          findByProductIdWithRelations,
-          findByLocationIdWithRelations,
           findByProductAndLocationWithRelations,
           adjustQuantity,
           findSummary,
