@@ -17,20 +17,30 @@ export const McpInvocation = Context.GenericTag<McpInvocation>(
   '@stocket/effect/mcp/McpInvocation',
 );
 
-interface McpToolSafetyBase {
+interface McpToolPolicyBase {
   readonly effect: string;
+}
+
+export interface McpQueryPolicy extends McpToolPolicyBase {
+  readonly kind: 'query';
+  readonly confirmation: 'never';
+}
+
+interface McpCommandPolicyBase extends McpToolPolicyBase {
+  readonly kind: 'command';
   readonly reversible: 'yes' | 'best-effort' | 'no';
   readonly undoTool?: string;
 }
 
-export interface McpToolSafetyWithoutConfirmation extends McpToolSafetyBase {
+export interface McpCommandPolicyWithoutConfirmation extends McpCommandPolicyBase {
   readonly confirmation: 'never';
 }
 
-export interface McpToolSafetyWithRequiredConfirmation extends McpToolSafetyBase {
+export interface McpCommandPolicyWithRequiredConfirmation extends McpCommandPolicyBase {
   readonly confirmation: 'required';
 }
 
-export type McpToolSafety =
-  | McpToolSafetyWithoutConfirmation
-  | McpToolSafetyWithRequiredConfirmation;
+export type McpToolPolicy =
+  | McpQueryPolicy
+  | McpCommandPolicyWithoutConfirmation
+  | McpCommandPolicyWithRequiredConfirmation;

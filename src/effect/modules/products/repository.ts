@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import { eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { eq, gte, inArray, isNull, lt, sql, type SQL } from 'drizzle-orm';
 import {
   resolvePaginationWindow,
   toRepositoryPaginatedResult,
@@ -7,7 +7,10 @@ import {
 import { makeTenantCrud } from '../../platform/db/tenant-crud';
 import { products } from '../../platform/db/schema';
 import { TenantQuery } from '../../platform/tenancy/tenant-query';
-import { ProductsInfrastructureError } from './products.errors';
+import {
+  ProductArchiveConflict,
+  ProductsInfrastructureError,
+} from './products.errors';
 import {
   buildProductFilters,
   getProductOrderBy,
@@ -199,6 +202,40 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
             });
           });
 
+        const archive = (id: string, userId: string, expectedUpdatedAt: Date) =>
+          Effect.gen(function* () {
+            const expectedUpdatedBefore = new Date(
+              expectedUpdatedAt.getTime() + 1,
+            );
+            const where = yield* scopedWhereId(
+              id,
+              isNull(products.deleted_at),
+              gte(products.updated_at, expectedUpdatedAt),
+              lt(products.updated_at, expectedUpdatedBefore),
+            );
+            const archived = yield* tryAsync('archive product', async () => {
+              const archivedAt = new Date();
+              const rows = await db
+                .update(products)
+                .set({
+                  deleted_at: archivedAt,
+                  deleted_by: userId,
+                  updated_at: archivedAt,
+                })
+                .where(where)
+                .returning({ id: products.id });
+              return rows[0] !== undefined;
+            });
+            if (!archived) {
+              return yield* Effect.fail(
+                new ProductArchiveConflict({
+                  productId: id,
+                  messageKey: 'products.changedSinceArchivePreview',
+                }),
+              );
+            }
+          });
+
         return {
           findAll,
           findAllPaginated,
@@ -209,6 +246,7 @@ export class ProductsRepository extends Effect.Service<ProductsRepository>()(
           findBySkus,
           findByCategoryId,
           findByCategoryIds,
+          archive,
         };
       },
     }),

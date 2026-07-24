@@ -1,11 +1,8 @@
 import { Effect } from 'effect';
-import { Permission, Resource } from '@stocket/types/auth';
 import { AuditAction, AuditEntityType } from '@stocket/types/audit-logs';
 import { auditMutation } from '../../../platform/audited-mutation';
-import { requireRequestActorPermission } from '../../../platform/auth/authorization';
 import { CurrentRequestActor } from '../../../platform/auth/request-actor';
 import { ProductsService } from '../../products/service';
-import { McpConfirmationConflict } from '../mcp.errors';
 import {
   toMcpProduct,
   toMcpProductsPage,
@@ -21,16 +18,6 @@ import type {
   ProductMutationResult,
   UpdateProductInput,
 } from './schemas';
-
-const requireProductsRead = requireRequestActorPermission(
-  Resource.PRODUCTS,
-  Permission.READ,
-);
-
-const requireProductsWrite = requireRequestActorPermission(
-  Resource.PRODUCTS,
-  Permission.WRITE,
-);
 
 const archiveUndo = (id: string, name: string) => ({
   tool: 'products_archive' as const,
@@ -49,20 +36,27 @@ const restoreUndo = (id: string, name: string) => ({
 
 interface ProductArchiveState {
   readonly product: McpProduct;
+  readonly expectedUpdatedAt: Date;
 }
 
 export const prepareProductArchive = ({ id }: ProductIdInput) =>
   Effect.gen(function* () {
-    yield* requireProductsWrite;
     const products = yield* ProductsService;
-    const product = toMcpProduct(yield* products.findOne(id));
+    const productResponse = yield* products.findOne(id);
+    const product = toMcpProduct(productResponse);
 
     return {
       request: {
         message: `Move “${product.name}” (${product.sku}) to trash? It will disappear from normal product lists, but you can restore it later.`,
         confirmLabel: 'Move to trash',
       },
-      state: { product },
+      state: {
+        product,
+        expectedUpdatedAt:
+          typeof productResponse.updated_at === 'string'
+            ? new Date(productResponse.updated_at)
+            : productResponse.updated_at,
+      },
     };
   });
 
@@ -80,9 +74,8 @@ export const rejectProductArchive = (
 });
 
 export const productToolHandlers = {
-  products_list: (input: ListProductsInput) =>
+  products_search: (input: ListProductsInput) =>
     Effect.gen(function* () {
-      yield* requireProductsRead;
       const products = yield* ProductsService;
       const page = yield* products.findAllPaginated(toProductQuery(input));
       return toMcpProductsPage(page);
@@ -90,7 +83,6 @@ export const productToolHandlers = {
 
   products_get: ({ id, include_archived }: GetProductInput) =>
     Effect.gen(function* () {
-      yield* requireProductsRead;
       const products = yield* ProductsService;
       const product = yield* products.findOne(id, include_archived);
       return { product: toMcpProduct(product) };
@@ -98,7 +90,6 @@ export const productToolHandlers = {
 
   products_create: (input: CreateProductInput) =>
     Effect.gen(function* () {
-      yield* requireProductsWrite;
       const actor = yield* CurrentRequestActor;
       const products = yield* ProductsService;
       const product = yield* auditMutation(
@@ -120,7 +111,6 @@ export const productToolHandlers = {
 
   products_update: ({ id, changes }: UpdateProductInput) =>
     Effect.gen(function* () {
-      yield* requireProductsWrite;
       const actor = yield* CurrentRequestActor;
       const products = yield* ProductsService;
       const before = yield* products.findOne(id);
@@ -149,27 +139,17 @@ export const productToolHandlers = {
 
   products_archive: ({ id }: ProductIdInput, state: ProductArchiveState) =>
     Effect.gen(function* () {
-      // Confirmation can remain open for an arbitrary amount of time. Apply
-      // permission changes and reject a stale preview immediately before the
-      // write rather than treating the original check as an authorization lease.
-      yield* requireProductsWrite;
       const actor = yield* CurrentRequestActor;
       const products = yield* ProductsService;
-      const current = yield* products.findOne(id);
-      if (toMcpProduct(current).updated_at !== state.product.updated_at) {
-        return yield* Effect.fail(
-          new McpConfirmationConflict({
-            resourceId: id,
-            messageKey: 'mcp.changedSinceConfirmation',
-          }),
-        );
-      }
 
-      yield* auditMutation(products.delete(id, actor.userId, false), {
-        action: AuditAction.DELETE,
-        entityType: AuditEntityType.PRODUCT,
-        entityId: id,
-      });
+      yield* auditMutation(
+        products.archive(id, actor.userId, state.expectedUpdatedAt),
+        {
+          action: AuditAction.DELETE,
+          entityType: AuditEntityType.PRODUCT,
+          entityId: id,
+        },
+      );
       const archived = yield* products.findOne(id, true);
 
       return {
@@ -182,7 +162,6 @@ export const productToolHandlers = {
 
   products_restore: ({ id }: ProductIdInput) =>
     Effect.gen(function* () {
-      yield* requireProductsWrite;
       const products = yield* ProductsService;
       const product = yield* auditMutation(products.restore(id), {
         action: AuditAction.RESTORE,

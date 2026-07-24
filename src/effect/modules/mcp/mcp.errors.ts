@@ -1,7 +1,3 @@
-import { ConflictError } from '../../platform/effect/domain-errors';
+import { InternalError } from '../../platform/effect/domain-errors';
 
-export class McpConfirmationConflict extends ConflictError(
-  'McpConfirmationConflict',
-)<{
-  readonly resourceId: string;
-}> {}
+export class McpToolTimeout extends InternalError('McpToolTimeout') {}

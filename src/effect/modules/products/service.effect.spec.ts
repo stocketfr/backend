@@ -99,6 +99,7 @@ const defaultRepoMethods: Partial<ProductsRepository> = {
   update: () => Effect.succeed(makeProductEntity()),
   updateMany: () => Effect.succeed(['prod-1']),
   softDelete: () => Effect.void,
+  archive: () => Effect.succeed(undefined),
   softDeleteMany: () => Effect.succeed(['prod-1']),
   restore: () => Effect.void,
   restoreMany: () => Effect.succeed(['prod-1']),
@@ -702,6 +703,30 @@ describe('ProductsService', () => {
           softDeleteMany: () => Effect.succeed(['prod-2']),
         },
       ),
+    );
+  });
+
+  describe('archive', () => {
+    it.effect(
+      'delegates the expected version and actor to the repository',
+      () => {
+        const expectedUpdatedAt = new Date('2026-01-01T00:00:00.000Z');
+        let received: readonly [string, string, Date] | undefined;
+
+        return withService(
+          (svc) =>
+            Effect.gen(function* () {
+              yield* svc.archive('prod-1', 'user-1', expectedUpdatedAt);
+              expect(received).toEqual(['prod-1', 'user-1', expectedUpdatedAt]);
+            }),
+          {
+            archive: (id, userId, version) => {
+              received = [id, userId, version];
+              return Effect.succeed(undefined);
+            },
+          },
+        );
+      },
     );
   });
 

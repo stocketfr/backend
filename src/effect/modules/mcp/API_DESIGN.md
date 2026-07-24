@@ -152,9 +152,9 @@ Naming rules:
   already consumed the old name; and
 - publish a generated contract manifest so CI detects accidental changes.
 
-Before broader release, rename `products_list` to `products_search`. If the
-current internal name has already shipped to a client, retain it as a temporary
-alias; otherwise migrate it directly.
+The initial internal `products_list` name was migrated directly to
+`products_search` before external release. Keep the search name stable; add a
+versioned parallel tool rather than silently changing a shipped contract.
 
 The endpoint version and tool-contract version are independent:
 
@@ -215,16 +215,16 @@ server keeps the complete typed catalog and direct execution path.
 
 ## One definition per capability
 
-The current product implementation proves the transport and Effect adapter,
-but its contract is spread across `toolkit.ts`, `handlers.ts`, and `index.ts`.
-That split should not be copied into dozens of modules.
+The product implementation proves the transport and Effect adapter while
+co-locating each capability's Tool, access requirement, policy, and handler
+registration in `products/tools.ts`. New domains should use the same feature
+composition instead of recreating toolkit, dependency, and registration lists.
 
 Introduce typed factories with one registration per capability:
 
 ```ts
 defineMcpQuery({
   tool,
-  catalog,
   access,
   policy,
   run,
@@ -232,17 +232,15 @@ defineMcpQuery({
 
 defineMcpCommand({
   tool,
-  catalog,
   access,
   policy,
-  operation,
+  run,
 });
 
 defineMcpFeature({
   domain: 'products',
   contractVersion: 1,
-  tools,
-  resources,
+  registrations,
 });
 
 composeMcpRegistry(productsMcp, locationsMcp, inventoryMcp);
@@ -1201,8 +1199,8 @@ non-confusing catalog.
    annotations, access checks, and runtime requirements from definitions.
 3. Compose feature packs into a Map registry; add permission/feature-filtered
    paginated discovery and a generated manifest.
-4. Rename `products_list` to `products_search` before external release and
-   return summaries/cursors from search.
+4. Keep `products_search` concise and stable; add opaque cursor pagination
+   before the catalog requires traversal beyond the current bounded pages.
 5. Build the platform `change-sets` module and transactional operation
    registry. Do not add bulk commands before its database integration suite
    passes.

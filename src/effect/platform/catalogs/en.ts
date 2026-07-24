@@ -86,6 +86,13 @@ export const enCatalog = {
   'locations.repositoryFailed': 'Location operation failed.',
   'mcp.changedSinceConfirmation':
     'This item changed while confirmation was open. Review its latest details and try again.',
+  'mcp.actionUnavailable': 'This action is not available.',
+  'mcp.invalidInput':
+    'The action input is invalid. Check the supplied identifiers and field values, then try again.',
+  'mcp.invalidResult':
+    'Stocket could not verify the final result. Refresh the affected data before trying again; the action may already have been applied.',
+  'mcp.requestFailed': 'Stocket could not finish this request.',
+  'mcp.toolTimedOut': 'The action took too long and was stopped. Try again.',
   'notifications.preferencesUpdated': 'Notification preferences updated.',
   'notifications.repositoryFailed': 'Notification operation failed.',
   'notifications.sendFailed': 'Notification delivery failed.',
@@ -136,6 +143,8 @@ export const enCatalog = {
     'Imported {processedRows} of {totalRows} rows.',
   'products.importProgressStarting': 'Product import is starting.',
   'products.importUnsupportedFormat': 'Unsupported product import CSV headers.',
+  'products.changedSinceArchivePreview':
+    'This product changed before it could be archived. Review its latest details and try again.',
   'products.infrastructureFailed': 'Product operation failed.',
   'products.notDeleted': 'Product is not deleted.',
   'products.notFound': 'Product not found.',

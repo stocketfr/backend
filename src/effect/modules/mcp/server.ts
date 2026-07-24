@@ -15,7 +15,10 @@ import { Effect, Schema } from 'effect';
 import type { CapturedRequestScope } from '../../platform/auth/request-actor';
 import type { McpConfirmationDecision, McpInvocation } from './types';
 
-const SESSION_IDLE_MILLISECONDS = 30 * 60 * 1_000;
+const DEFAULT_SESSION_IDLE_MILLISECONDS = 30 * 60 * 1_000;
+const DEFAULT_SESSION_CLEANUP_INTERVAL_MILLISECONDS = 60 * 1_000;
+const DEFAULT_MAX_SESSIONS_PER_PRINCIPAL = 5;
+const DEFAULT_MAX_SESSIONS = 500;
 
 const ConfirmationContentSchema = Schema.Struct({
   confirm: Schema.Boolean,
@@ -24,12 +27,25 @@ const ConfirmationContentSchema = Schema.Struct({
 type ToolHandlerExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
 export interface McpToolExecutor {
+  readonly list: (
+    scope: unknown,
+    signal: AbortSignal,
+  ) => Promise<readonly Tool[]>;
   readonly execute: (
     scope: unknown,
     invocation: McpInvocation,
     name: string,
     input: unknown,
+    signal: AbortSignal,
   ) => Promise<CallToolResult>;
+}
+
+export interface McpHttpBridgeOptions {
+  readonly sessionIdleMilliseconds?: number;
+  readonly cleanupIntervalMilliseconds?: number;
+  readonly maxSessionsPerPrincipal?: number;
+  readonly maxSessions?: number;
+  readonly now?: () => number;
 }
 
 interface SessionPrincipal {
@@ -168,7 +184,7 @@ const requestConfirmation = (
   confirmLabel: string,
 ): Effect.Effect<McpConfirmationDecision> =>
   Effect.tryPromise({
-    try: async () => {
+    try: async (signal) => {
       const result = await server.elicitInput(
         {
           mode: 'form',
@@ -186,7 +202,7 @@ const requestConfirmation = (
         },
         {
           relatedRequestId: extra.requestId,
-          signal: extra.signal,
+          signal: AbortSignal.any([extra.signal, signal]),
         },
       );
 
@@ -210,10 +226,7 @@ const makeInvocation = (
     requestConfirmation(server, extra, message, confirmLabel),
 });
 
-const makeSessionServer = (
-  tools: readonly Tool[],
-  executor: McpToolExecutor,
-) => {
+const makeSessionServer = (executor: McpToolExecutor) => {
   const server = new Server(
     { name: 'stocket', version: '0.1.0' },
     {
@@ -224,8 +237,13 @@ const makeSessionServer = (
     },
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, () => ({
-    tools: [...tools],
+  server.setRequestHandler(ListToolsRequestSchema, async (_request, extra) => ({
+    tools: [
+      ...(await executor.list(
+        extra.authInfo?.extra?.requestScope,
+        extra.signal,
+      )),
+    ],
   }));
   server.setRequestHandler(CallToolRequestSchema, (request, extra) =>
     executor.execute(
@@ -233,6 +251,7 @@ const makeSessionServer = (
       makeInvocation(server, extra),
       request.params.name,
       request.params.arguments ?? {},
+      extra.signal,
     ),
   );
 
@@ -248,23 +267,76 @@ export interface McpHttpBridge {
 }
 
 export const makeMcpHttpBridge = (
-  tools: readonly Tool[],
   executor: McpToolExecutor,
+  options: McpHttpBridgeOptions = {},
 ): McpHttpBridge => {
   const sessions = new Map<string, SessionEntry>();
+  const pendingSessionsByPrincipal = new Map<string, number>();
+  const sessionIdleMilliseconds =
+    options.sessionIdleMilliseconds ?? DEFAULT_SESSION_IDLE_MILLISECONDS;
+  const cleanupIntervalMilliseconds =
+    options.cleanupIntervalMilliseconds ??
+    DEFAULT_SESSION_CLEANUP_INTERVAL_MILLISECONDS;
+  const maxSessionsPerPrincipal =
+    options.maxSessionsPerPrincipal ?? DEFAULT_MAX_SESSIONS_PER_PRINCIPAL;
+  const maxSessions = options.maxSessions ?? DEFAULT_MAX_SESSIONS;
+  const now = options.now ?? Date.now;
+  let pendingSessionCount = 0;
+
+  const principalKey = ({ userId, tenantId }: SessionPrincipal) =>
+    JSON.stringify([tenantId, userId]);
+
+  const closeEntry = async (entry: SessionEntry) => {
+    await Promise.allSettled([entry.server.close(), entry.transport.close()]);
+  };
 
   const closeExpiredSessions = async () => {
-    const expiresBefore = Date.now() - SESSION_IDLE_MILLISECONDS;
+    const expiresBefore = now() - sessionIdleMilliseconds;
     const expired = [...sessions.entries()].filter(
-      ([, entry]) => entry.lastSeenAt < expiresBefore,
+      ([, entry]) => entry.lastSeenAt <= expiresBefore,
     );
 
     await Promise.allSettled(
       expired.map(async ([sessionId, entry]) => {
         sessions.delete(sessionId);
-        await entry.server.close();
+        await closeEntry(entry);
       }),
     );
+  };
+
+  const cleanupTimer = setInterval(() => {
+    void closeExpiredSessions();
+  }, cleanupIntervalMilliseconds);
+  cleanupTimer.unref();
+
+  const reserveSession = (principal: SessionPrincipal) => {
+    const key = principalKey(principal);
+    const activeForPrincipal = [...sessions.values()].filter((entry) =>
+      samePrincipal(entry.principal, principal),
+    ).length;
+    const pendingForPrincipal = pendingSessionsByPrincipal.get(key) ?? 0;
+
+    if (
+      sessions.size + pendingSessionCount >= maxSessions ||
+      activeForPrincipal + pendingForPrincipal >= maxSessionsPerPrincipal
+    ) {
+      return false;
+    }
+
+    pendingSessionCount += 1;
+    pendingSessionsByPrincipal.set(key, pendingForPrincipal + 1);
+    return true;
+  };
+
+  const releaseSessionReservation = (principal: SessionPrincipal) => {
+    const key = principalKey(principal);
+    const pendingForPrincipal = pendingSessionsByPrincipal.get(key) ?? 0;
+    pendingSessionCount -= 1;
+    if (pendingForPrincipal <= 1) {
+      pendingSessionsByPrincipal.delete(key);
+    } else {
+      pendingSessionsByPrincipal.set(key, pendingForPrincipal - 1);
+    }
   };
 
   const startSession = async (
@@ -288,7 +360,15 @@ export const makeMcpHttpBridge = (
     }
 
     const principal = principalFromScope(scope);
-    const server = makeSessionServer(tools, executor);
+    if (!reserveSession(principal)) {
+      return jsonRpcError(
+        429,
+        -32002,
+        'Too many active MCP sessions. Close an existing session or try again later.',
+      );
+    }
+
+    const server = makeSessionServer(executor);
     const rawHost = request.headers.get('host');
     const rawOrigin = request.headers.get('origin');
     const transport = new WebStandardStreamableHTTPServerTransport({
@@ -312,7 +392,7 @@ export const makeMcpHttpBridge = (
       transport,
       principal,
       requestBinding,
-      lastSeenAt: Date.now(),
+      lastSeenAt: now(),
     };
 
     try {
@@ -323,13 +403,18 @@ export const makeMcpHttpBridge = (
       });
 
       if (!transport.sessionId) {
-        await server.close();
+        await closeEntry(entry);
       }
 
       return response;
     } catch {
-      await server.close();
+      if (transport.sessionId) {
+        sessions.delete(transport.sessionId);
+      }
+      await closeEntry(entry);
       return jsonRpcError(500, -32603, 'Could not start the MCP session.');
+    } finally {
+      releaseSessionReservation(principal);
     }
   };
 
@@ -356,7 +441,7 @@ export const makeMcpHttpBridge = (
       return invalidRequestBinding();
     }
 
-    entry.lastSeenAt = Date.now();
+    entry.lastSeenAt = now();
     try {
       return await entry.transport.handleRequest(request, {
         authInfo: toAuthInfo(scope),
@@ -394,9 +479,10 @@ export const makeMcpHttpBridge = (
       return startSession(request, scope, bindingResult.binding);
     },
     close: async () => {
+      clearInterval(cleanupTimer);
       const entries = [...sessions.values()];
       sessions.clear();
-      await Promise.allSettled(entries.map(({ server }) => server.close()));
+      await Promise.allSettled(entries.map(closeEntry));
     },
   };
 };

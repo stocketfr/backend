@@ -69,8 +69,7 @@ const isAllowedOrigin = (
 const getCorsHeaders = (origin: string): Record<string, string> => ({
   'access-control-allow-origin': origin,
   'access-control-allow-credentials': 'true',
-  'access-control-expose-headers':
-    'Mcp-Session-Id, MCP-Protocol-Version, X-Request-Id',
+  'access-control-expose-headers': 'X-Request-Id',
   vary: 'Origin',
 });
 

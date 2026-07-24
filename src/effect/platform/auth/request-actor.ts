@@ -1,4 +1,3 @@
-import { HttpServerRequest } from '@effect/platform';
 import { Context, Effect, Layer, Option, Schema } from 'effect';
 import type { UserSession } from './user-session';
 import {
@@ -84,13 +83,6 @@ export const captureRequestScope = Effect.gen(function* () {
   } satisfies CapturedRequestScope;
 });
 
-const makeSyntheticRequest = (requestContext: RequestContext) =>
-  HttpServerRequest.fromWeb(
-    new Request(new URL(requestContext.path, 'http://mcp.internal'), {
-      method: requestContext.method,
-    }),
-  );
-
 export const requestScopeLayer = (scope: CapturedRequestScope) => {
   const requestContext: RequestContext = {
     ...scope.requestContext,
@@ -102,9 +94,5 @@ export const requestScopeLayer = (scope: CapturedRequestScope) => {
   return Layer.mergeAll(
     Layer.succeed(CurrentRequestActor, scope.actor),
     Layer.succeed(CurrentRequestContext, requestContext),
-    Layer.succeed(
-      HttpServerRequest.HttpServerRequest,
-      makeSyntheticRequest(requestContext),
-    ),
   );
 };

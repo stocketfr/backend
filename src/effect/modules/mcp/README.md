@@ -26,7 +26,7 @@ minutes without a request.
 
 The installed `@effect/ai` version also includes `McpServer.layerHttp`, but its
 native server currently negotiates protocol versions only through 2025-06-18.
-This module keeps Effect `Tool`, `Toolkit`, Schema, services, and runtime as the
+This module keeps Effect `Tool`, Schema, services, and runtime as the
 application model while using the official SDK bridge for MCP 2025-11-25,
 request-scoped authentication, session binding, output schemas, safety
 metadata, and confirmation elicitation. Re-evaluate the bridge when Effect's
@@ -48,8 +48,10 @@ remote MCP integration:
   without an Origin, such as native clients and some same-origin streams, use
   the destination origin. This prevents a sibling tenant site from reusing a
   session.
-- Tool handlers check the actor's current product permission on every call.
-  Holding a valid MCP session does not bypass authorization changes.
+- The shared registry filters `tools/list` by the actor's current permissions
+  and enforces the same access policy again on every call. Confirmed commands
+  recheck access after elicitation. Holding a valid MCP session does not bypass
+  authorization changes.
 - The real Better Auth session token is not copied into MCP SDK metadata.
 
 Supporting arbitrary remote MCP clients will require a proper OAuth-protected
@@ -65,6 +67,10 @@ intentionally fails closed if the Web request URL does not represent the public
 destination. Keep these headers stable for every request in an MCP session.
 
 Sessions and active transports currently live in the API process's memory.
+The bridge limits sessions to five per user/workspace and 500 per process,
+rejects excess initialization with `429`, and closes sessions after 30 idle
+minutes using both a periodic sweep and request-driven cleanup. Client
+cancellation interrupts the running Effect tool fiber.
 Horizontal scaling therefore requires sticky routing by `Mcp-Session-Id`, and
 sessions are lost on process restart. Before running without sticky routing,
 replace this with a shared session/transport design or redesign the endpoint
@@ -76,26 +82,27 @@ process-local.
 
 The module deliberately separates protocol concerns from business logic:
 
-| File                   | Responsibility                                                                                  |
-| ---------------------- | ----------------------------------------------------------------------------------------------- |
-| `products/schemas.ts`  | JSON-native Effect Schema inputs and structured outputs                                         |
-| `products/toolkit.ts`  | `@effect/ai` `Tool` definitions, descriptions, MCP hints, and Effect dependencies               |
-| `products/handlers.ts` | Authorization, service orchestration, audit requests, confirmation plans, and undo instructions |
-| `products/index.ts`    | Tool registration and Stocket-specific safety metadata                                          |
-| `tool.ts`              | Shared adapter from Effect tools to MCP descriptors and handlers                                |
-| `registry.ts`          | Root composition point for registrations exported by feature modules                            |
-| `server.ts`            | MCP SDK server, Streamable HTTP sessions, principal binding, and elicitation                    |
-| `router.ts`            | Captures the verified request scope and runs tools in the application Effect runtime            |
+| File                   | Responsibility                                                                                      |
+| ---------------------- | --------------------------------------------------------------------------------------------------- |
+| `products/schemas.ts`  | JSON-native Effect Schema inputs and structured outputs                                             |
+| `products/tools.ts`    | Co-located Tool, access policy, safety policy, and handler registration for each product capability |
+| `products/handlers.ts` | Service orchestration, audit requests, confirmation plans, and undo instructions                    |
+| `tool.ts`              | Typed factories, access enforcement, output validation, contract validation, and registry           |
+| `registry.ts`          | Root feature composition; its required Effect environment is inferred                               |
+| `server.ts`            | MCP SDK server, bounded Streamable HTTP sessions, principal binding, and elicitation                |
+| `router.ts`            | Restores verified request scope and bridges SDK cancellation into the application runtime           |
 
-`@effect/ai` tools are the source of truth for tool names, input schemas, output
-schemas, descriptions, annotations, and dependency requirements. The shared
-adapter turns those definitions into MCP SDK descriptors, decodes unknown tool
-input once with Effect Schema, validates structured output, and presents typed
-application errors without leaking infrastructure details. It also attaches
-`fr.stocket/safety` metadata describing the effect, confirmation requirement,
-and undo tool. Confirmation-required registrations use one typed adapter that
-always runs `prepare -> elicit -> execute`; a required-confirmation safety policy
-cannot be registered through the non-confirming adapter.
+Each feature's `tools.ts` is the source of truth for tool names, schemas,
+descriptions, MCP annotations, access requirements, safety policy, and handler.
+The shared factories derive output encoding from `tool.successSchema`, decode
+unknown input once, validate structured output, apply a bounded timeout, and
+present entity-neutral failures without leaking infrastructure details. They
+attach versioned `fr.stocket/tool` and `fr.stocket/safety` metadata. The root
+registry uses a name-indexed `Map`, validates names, duplicates, policy
+invariants, and undo references at startup, and exposes a stable serializable
+contract manifest. Confirmation-required registrations always run
+`prepare -> elicit -> reauthorize -> execute`; a required-confirmation policy
+cannot be registered through a non-confirming factory.
 
 MCP annotations such as `readOnlyHint` and `destructiveHint` help clients plan
 and present actions, but they are advisory. Authorization, confirmation, tenant
@@ -112,22 +119,24 @@ For a new tool:
 1. Define JSON-native input and output schemas in the feature's MCP `schemas.ts`.
    Reuse shared `@stocket/types` schemas when their wire representation fits.
    Do not reuse schemas that transform HTTP query strings into domain values.
-2. Add an `@effect/ai` `Tool` to the feature toolkit. Give it a stable,
-   namespaced name, a user-oriented description, accurate read-only,
-   destructive, idempotent, and open-world hints, plus its Effect service
-   dependencies.
+2. In the feature's `tools.ts`, add an `@effect/ai` `Tool` with a stable,
+   namespaced name, a user-oriented description, and accurate read-only,
+   destructive, idempotent, and open-world hints.
 3. Implement the handler against the owning feature service, never another
-   module's repository. Check the request actor's permission before reading or
-   writing. Use the existing audited-mutation boundary for mutations, but do
-   not treat the fire-and-forget audit log as an undo ledger.
-4. Register non-confirming tools through `implementMcpTool`. Register tools that
-   require confirmation through `implementConfirmedMcpTool`, with a preparation
-   step that captures the immutable preview state and an execution step that
-   rechecks authorization and state. Declare what users will observe, whether
-   the action is reversible, and the undo tool when one exists.
-5. Add the feature registrations to the MCP registry and add tests for schema
-   rejection, tenant and permission isolation, mutation behavior, confirmation
-   refusal/unavailability, and the returned undo instruction.
+   module's repository. Use the existing audited-mutation boundary for
+   mutations, but do not treat the fire-and-forget audit log as an undo ledger.
+4. Register the capability with `defineMcpQuery`, `defineMcpCommand`, or
+   `defineConfirmedMcpCommand`. Declare permissions once in `access` and what
+   users will observe, reversibility, confirmation, and the undo tool in
+   `policy`. Confirmed commands use a preparation step that captures immutable
+   preview state; the factory supplies the post-confirmation permission check.
+5. Export one `defineMcpFeature` from the domain and add it to
+   `composeMcpRegistry` in `registry.ts`. Dependencies are inferred from the
+   handlers; do not add parallel dependency arrays to the router or transport.
+6. Add tests for schema rejection, permission-filtered discovery, tenant and
+   permission isolation, mutation behavior, confirmation refusal/unavailability,
+   stale confirmation state, and returned undo instructions. Contract
+   validation tests must cover names and recovery references.
 
 Keep identity and workspace scope out of tool schemas. Keep pure representation
 translation in `mappers.ts`, orchestration in handlers/services, and persistence
@@ -138,7 +147,7 @@ contain the stable resource IDs needed for a follow-up action.
 
 | Tool               | Behavior                                               | Confirmation                                   | Current undo                                                               |
 | ------------------ | ------------------------------------------------------ | ---------------------------------------------- | -------------------------------------------------------------------------- |
-| `products_list`    | Search and page through products                       | None; read-only                                | Not applicable                                                             |
+| `products_search`  | Search and page through concise product summaries      | None; read-only                                | Not applicable                                                             |
 | `products_get`     | Read one product, optionally from trash                | None; read-only                                | Not applicable                                                             |
 | `products_create`  | Create one product                                     | None                                           | Move the new product to trash with `products_archive`                      |
 | `products_update`  | Change selected fields on one product                  | None currently; marked destructive for clients | Call `products_update` with the captured previous values; best-effort only |
@@ -161,9 +170,10 @@ and says it can be restored. The affirmative control is labeled “Move to
 trash,” not with an implementation term or raw command. If the client declines,
 dismisses, does not support elicitation, or returns invalid confirmation data,
 the handler makes no change and reports that confirmation is still required.
-After acceptance, it rechecks the actor's write permission and verifies the
-product's `updated_at` value still matches the preview before asking the product
-service to archive it.
+After acceptance, it rechecks the actor's write permission. The product service
+then archives with one tenant-scoped conditional `UPDATE` that requires the
+previewed `updated_at` value and a non-archived row; a mismatch changes nothing
+and returns a typed conflict.
 
 Future prompts, especially for bulk actions, should always state:
 
@@ -196,8 +206,8 @@ useful now, but they are not yet a durable undo system:
 - the instruction is returned to the caller rather than stored as a committed
   change set;
 - update undo is best-effort and can overwrite a later human or AI edit;
-- the single-product archive freshness check is not an atomic conditional write,
-  so a narrow concurrent-write race remains;
+- single-product archive freshness is enforced atomically, but update undo is
+  still not protected by an equivalent version check;
 - the original mutation and its inverse snapshot are not committed in one
   database transaction;
 - a process failure or lost chat result can lose the convenient Undo action;

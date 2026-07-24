@@ -145,6 +145,11 @@ export class ProductsService extends Effect.Service<ProductsService>()(
           .delete(id, userId, permanent)
           .pipe(trace.span('delete', { attributes: { id } }));
 
+      const archive = (id: string, userId: string, expectedUpdatedAt: Date) =>
+        repository
+          .archive(id, userId, expectedUpdatedAt)
+          .pipe(trace.span('archive', { attributes: { id } }));
+
       const bulkDelete = (bulkDto: BulkDeleteDto, userId?: string) =>
         productBulkWorkflows
           .bulkDelete(bulkDto, userId)
@@ -195,6 +200,7 @@ export class ProductsService extends Effect.Service<ProductsService>()(
         update,
         bulkUpdateStatus,
         delete: remove,
+        archive,
         bulkDelete,
         restore,
         bulkRestore,

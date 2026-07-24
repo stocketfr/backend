@@ -1,4 +1,5 @@
 import { Effect, Layer } from 'effect';
+import { eq } from 'drizzle-orm';
 import {
   getTestDb,
   closeTestDb,
@@ -12,6 +13,7 @@ import {
   TEST_USER_ID,
 } from '../../testing/seed';
 import type { DrizzleDb } from '../../platform/db/drizzle';
+import { products } from '../../platform/db/schema';
 import { ProductsService } from './service';
 
 let db: DrizzleDb;
@@ -234,6 +236,61 @@ describe('ProductsService Integration', () => {
   });
 
   describe('soft delete and restore', () => {
+    it('archives only when the expected version matches', async () => {
+      const category = await seedCategory(db);
+      const product = await seedProduct(db, {
+        category_id: category.id,
+      });
+      const current = await run(
+        Effect.flatMap(ProductsService, (svc) => svc.findOne(product.id)),
+      );
+      const expectedUpdatedAt =
+        typeof current.updated_at === 'string'
+          ? new Date(current.updated_at)
+          : current.updated_at;
+
+      await run(
+        Effect.flatMap(ProductsService, (svc) =>
+          svc.archive(product.id, TEST_USER_ID, expectedUpdatedAt),
+        ),
+      );
+
+      const [archived] = await db
+        .select()
+        .from(products)
+        .where(eq(products.id, product.id));
+      expect(archived?.deleted_by).toBe(TEST_USER_ID);
+      expect(archived?.deleted_at).toEqual(archived?.updated_at);
+    });
+
+    it('rejects a stale archive without changing the product', async () => {
+      const category = await seedCategory(db);
+      const updatedAt = new Date('2026-02-01T12:00:00.000Z');
+      const product = await seedProduct(db, {
+        category_id: category.id,
+        updated_at: updatedAt,
+      });
+
+      const error = await fail(
+        Effect.flatMap(ProductsService, (svc) =>
+          svc.archive(
+            product.id,
+            TEST_USER_ID,
+            new Date('2026-01-01T12:00:00.000Z'),
+          ),
+        ),
+      );
+
+      expect(error._tag).toBe('ProductArchiveConflict');
+      const [unchanged] = await db
+        .select()
+        .from(products)
+        .where(eq(products.id, product.id));
+      expect(unchanged?.deleted_at).toBeNull();
+      expect(unchanged?.deleted_by).toBeNull();
+      expect(unchanged?.updated_at).toEqual(updatedAt);
+    });
+
     it('soft-deletes and then restores a product', async () => {
       const category = await seedCategory(db);
       const product = await seedProduct(db, { category_id: category.id });

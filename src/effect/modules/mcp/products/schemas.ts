@@ -48,6 +48,16 @@ export const McpProductSchema = Schema.Struct({
   updated_at: Schema.String,
 });
 
+export const McpProductSummarySchema = Schema.Struct({
+  id: ProductIdSchema,
+  sku: Schema.String,
+  name: Schema.String,
+  category: Schema.NullOr(CategorySummarySchema),
+  is_active: Schema.Boolean,
+  archived_at: NullableString,
+  updated_at: Schema.String,
+});
+
 export const ProductIdInputSchema = Schema.Struct({
   id: ProductIdSchema.annotations({
     description: 'The product ID returned by Stocket.',
@@ -154,7 +164,7 @@ export const GetProductResultSchema = Schema.Struct({
 });
 
 export const ListProductsResultSchema = Schema.Struct({
-  products: Schema.Array(McpProductSchema),
+  products: Schema.Array(McpProductSummarySchema),
   pagination: Schema.Struct({
     page: Schema.Number,
     limit: Schema.Number,
@@ -189,6 +199,9 @@ export type UpdateProductInput = Schema.Schema.Type<
   typeof UpdateProductInputSchema
 >;
 export type McpProduct = Schema.Schema.Type<typeof McpProductSchema>;
+export type McpProductSummary = Schema.Schema.Type<
+  typeof McpProductSummarySchema
+>;
 export type ProductMutationResult = Schema.Schema.Type<
   typeof ProductMutationResultSchema
 >;

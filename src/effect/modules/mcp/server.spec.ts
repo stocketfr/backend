@@ -4,6 +4,7 @@ import type { CapturedRequestScope } from '../../platform/auth/request-actor';
 import {
   makeMcpHttpBridge,
   type McpHttpBridge,
+  type McpHttpBridgeOptions,
   type McpToolExecutor,
 } from './server';
 
@@ -24,9 +25,9 @@ interface RequestOptions {
 
 const tools = [
   {
-    name: 'products_list',
-    title: 'List products',
-    description: 'Lists products in the current workspace.',
+    name: 'products_search',
+    title: 'Find products',
+    description: 'Searches products in the current workspace.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -134,25 +135,36 @@ const callToolRequest = (sessionId: string) =>
       id: 3,
       method: 'tools/call',
       params: {
-        name: 'products_list',
+        name: 'products_search',
         arguments: { page: 2 },
       },
     },
     { sessionId, protocolVersion: PROTOCOL_VERSION },
   );
 
+const cancelToolRequest = (sessionId: string) =>
+  makePostRequest(
+    {
+      jsonrpc: '2.0',
+      method: 'notifications/cancelled',
+      params: { requestId: 3, reason: 'Cancelled by test client' },
+    },
+    { sessionId, protocolVersion: PROTOCOL_VERSION },
+  );
+
 const bridges: McpHttpBridge[] = [];
 
-const makeHarness = () => {
+const makeHarness = (options: McpHttpBridgeOptions = {}) => {
+  const list = vi.fn<McpToolExecutor['list']>(async () => tools);
   const execute = vi.fn<McpToolExecutor['execute']>(
     async () =>
       ({
         content: [{ type: 'text', text: 'Products returned.' }],
       }) satisfies CallToolResult,
   );
-  const bridge = makeMcpHttpBridge(tools, { execute });
+  const bridge = makeMcpHttpBridge({ list, execute }, options);
   bridges.push(bridge);
-  return { bridge, execute };
+  return { bridge, execute, list };
 };
 
 const initialize = async (
@@ -192,20 +204,22 @@ afterEach(async () => {
 
 describe('makeMcpHttpBridge', () => {
   it('initializes a stateful session and lists the available tools', async () => {
-    const { bridge, execute } = makeHarness();
+    const { bridge, execute, list } = makeHarness();
     const sessionId = await initialize(bridge);
+    const currentScope = makeScope();
 
     const response = await bridge.handleRequest(
       listToolsRequest(sessionId),
-      makeScope(),
+      currentScope,
     );
     const body = await response.text();
 
     expect(response.status).toBe(200);
     expect(response.headers.get('mcp-session-id')).toBe(sessionId);
-    expect(body).toContain('"name":"products_list"');
-    expect(body).toContain('"title":"List products"');
+    expect(body).toContain('"name":"products_search"');
+    expect(body).toContain('"title":"Find products"');
     expect(execute).not.toHaveBeenCalled();
+    expect(list).toHaveBeenCalledWith(currentScope, expect.any(AbortSignal));
   });
 
   it('routes tool calls with the authenticated scope from the current request', async () => {
@@ -231,8 +245,9 @@ describe('makeMcpHttpBridge', () => {
       expect.objectContaining({
         requestConfirmation: expect.any(Function),
       }),
-      'products_list',
+      'products_search',
       { page: 2 },
+      expect.any(AbortSignal),
     );
   });
 
@@ -397,5 +412,101 @@ describe('makeMcpHttpBridge', () => {
     await expect(response.text()).resolves.toContain(
       'MCP session not found or expired.',
     );
+  });
+
+  it('bounds active sessions per user and workspace', async () => {
+    const { bridge } = makeHarness({
+      maxSessionsPerPrincipal: 1,
+      maxSessions: 10,
+    });
+    await initialize(bridge);
+
+    const response = await bridge.handleRequest(
+      initializeRequest(),
+      makeScope(),
+    );
+
+    expect(response.status).toBe(429);
+    await expect(response.text()).resolves.toContain(
+      'Too many active MCP sessions',
+    );
+  });
+
+  it('bounds active sessions across the server', async () => {
+    const { bridge } = makeHarness({
+      maxSessionsPerPrincipal: 5,
+      maxSessions: 1,
+    });
+    await initialize(bridge);
+
+    const response = await bridge.handleRequest(
+      initializeRequest(),
+      makeScope(OTHER_USER_ID, OTHER_TENANT_ID),
+    );
+
+    expect(response.status).toBe(429);
+    await expect(response.text()).resolves.toContain(
+      'Too many active MCP sessions',
+    );
+  });
+
+  it('periodically closes sessions after their idle deadline', async () => {
+    let now = 0;
+    const { bridge } = makeHarness({
+      sessionIdleMilliseconds: 10,
+      cleanupIntervalMilliseconds: 5,
+      now: () => now,
+    });
+    const sessionId = await initialize(bridge);
+
+    now = 11;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    now = 0;
+
+    const response = await bridge.handleRequest(
+      listToolsRequest(sessionId),
+      makeScope(),
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it('forwards client cancellation to an active tool call', async () => {
+    let signal: AbortSignal | undefined;
+    const execute = vi.fn<McpToolExecutor['execute']>(
+      async (_scope, _invocation, _name, _input, requestSignal) => {
+        signal = requestSignal;
+        await new Promise<void>((_resolve, reject) => {
+          requestSignal.addEventListener(
+            'abort',
+            () => reject(requestSignal.reason),
+            { once: true },
+          );
+        });
+        return { content: [] };
+      },
+    );
+    const bridge = makeMcpHttpBridge({
+      list: async () => tools,
+      execute,
+    });
+    bridges.push(bridge);
+    const sessionId = await initialize(bridge);
+
+    const callResponse = bridge.handleRequest(
+      callToolRequest(sessionId),
+      makeScope(),
+    );
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+
+    const cancellationResponse = await bridge.handleRequest(
+      cancelToolRequest(sessionId),
+      makeScope(),
+    );
+
+    expect(cancellationResponse.status).toBe(202);
+    await vi.waitFor(() => expect(signal?.aborted).toBe(true));
+    const response = await callResponse;
+    await response.body?.cancel();
   });
 });

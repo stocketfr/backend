@@ -1,4 +1,3 @@
-import { HttpServerRequest } from '@effect/platform';
 import { describe, expect, it, vi } from '@effect/vitest';
 import { Effect, Layer, Schema } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
@@ -14,8 +13,8 @@ import {
   type RequestActor,
 } from '../../../platform/auth/request-actor';
 import { CurrentRequestContext } from '../../../platform/http/request-context';
-import { makeBetterAuthTestLayer } from '../../../testing/better-auth-test';
 import { makeTestLayer } from '../../../testing/utils';
+import { ProductArchiveConflict } from '../../products/products.errors';
 import { ProductsService } from '../../products/service';
 import { McpInvocation, type McpConfirmationDecision } from '../types';
 import { productMcpRegistry } from './index';
@@ -72,15 +71,6 @@ const permissions = (canWrite: boolean): UserPermissions => ({
   },
 });
 
-const requestLayer = Layer.succeed(
-  HttpServerRequest.HttpServerRequest,
-  HttpServerRequest.fromWeb(
-    new Request('https://test-workspace.example.com/api/v1/mcp', {
-      method: 'POST',
-    }),
-  ),
-);
-
 interface ArchiveTestOptions {
   readonly canWrite?: boolean;
   readonly revokeAfterConfirmation?: boolean;
@@ -93,20 +83,23 @@ const runArchive = (
 ) => {
   const canWrite = options.canWrite ?? true;
   const current = product();
-  const afterConfirmation = product({
-    updated_at: options.changeAfterConfirmation
-      ? new Date('2026-07-15T11:30:00.000Z')
-      : current.updated_at,
-  });
   const archived = product({
     deleted_at: new Date('2026-07-15T12:00:00.000Z'),
   });
   const findOne = vi
     .fn()
     .mockReturnValueOnce(Effect.succeed(current))
-    .mockReturnValueOnce(Effect.succeed(afterConfirmation))
     .mockReturnValueOnce(Effect.succeed(archived));
-  const remove = vi.fn(() => Effect.void);
+  const archive = vi.fn(() =>
+    options.changeAfterConfirmation
+      ? Effect.fail(
+          new ProductArchiveConflict({
+            productId: PRODUCT_ID,
+            messageKey: 'products.changedSinceArchivePreview',
+          }),
+        )
+      : Effect.succeed(undefined),
+  );
   const requestConfirmation = vi.fn(() => Effect.succeed(decision));
   const getPermissionsForUser = vi.fn(() =>
     Effect.succeed(permissions(canWrite)),
@@ -119,7 +112,7 @@ const runArchive = (
   const log = vi.fn(() => Effect.void);
 
   const layer = Layer.mergeAll(
-    makeTestLayer(ProductsService)({ findOne, delete: remove }),
+    makeTestLayer(ProductsService)({ findOne, archive }),
     makeTestLayer(PermissionProvider)({ getPermissionsForUser }),
     makeTestLayer(AuditLogWriter)({ log }),
     Layer.succeed(CurrentRequestActor, actor),
@@ -134,8 +127,6 @@ const runArchive = (
       tenantSlug: actor.tenantSlug,
     }),
     Layer.succeed(McpInvocation, { requestConfirmation }),
-    makeBetterAuthTestLayer(),
-    requestLayer,
   );
 
   const effect = productMcpRegistry
@@ -145,7 +136,7 @@ const runArchive = (
   return {
     effect,
     findOne,
-    remove,
+    archive,
     requestConfirmation,
     getPermissionsForUser,
     log,
@@ -167,7 +158,7 @@ describe('MCP product archive handler', () => {
 
       expect(result.status).toBe('cancelled');
       expect(result.message).toBe('Nothing was changed.');
-      expect(test.remove).not.toHaveBeenCalled();
+      expect(test.archive).not.toHaveBeenCalled();
       expect(test.log).not.toHaveBeenCalled();
       expect(test.findOne).toHaveBeenCalledTimes(1);
     });
@@ -181,7 +172,7 @@ describe('MCP product archive handler', () => {
       const result = yield* decodeMutationResult(callResult);
 
       expect(result.status).toBe('confirmation_required');
-      expect(test.remove).not.toHaveBeenCalled();
+      expect(test.archive).not.toHaveBeenCalled();
       expect(test.log).not.toHaveBeenCalled();
     });
   });
@@ -195,7 +186,11 @@ describe('MCP product archive handler', () => {
         const callResult = yield* test.effect;
         const result = yield* decodeMutationResult(callResult);
 
-        expect(test.remove).toHaveBeenCalledWith(PRODUCT_ID, USER_ID, false);
+        expect(test.archive).toHaveBeenCalledWith(
+          PRODUCT_ID,
+          USER_ID,
+          new Date('2026-07-01T10:00:00.000Z'),
+        );
         expect(test.log).toHaveBeenCalledWith({
           action: AuditAction.DELETE,
           entityType: AuditEntityType.PRODUCT,
@@ -223,7 +218,7 @@ describe('MCP product archive handler', () => {
 
         expect(result.isError).toBe(true);
         expect(JSON.stringify(result.content)).toContain(
-          'Insufficient permissions',
+          'This action is not available',
         );
         expect(test.getPermissionsForUser).toHaveBeenCalledWith(
           USER_ID,
@@ -231,7 +226,7 @@ describe('MCP product archive handler', () => {
         );
         expect(test.findOne).not.toHaveBeenCalled();
         expect(test.requestConfirmation).not.toHaveBeenCalled();
-        expect(test.remove).not.toHaveBeenCalled();
+        expect(test.archive).not.toHaveBeenCalled();
       });
     },
   );
@@ -249,7 +244,7 @@ describe('MCP product archive handler', () => {
         expect(result.isError).toBe(true);
         expect(test.requestConfirmation).toHaveBeenCalledOnce();
         expect(test.getPermissionsForUser).toHaveBeenCalledTimes(2);
-        expect(test.remove).not.toHaveBeenCalled();
+        expect(test.archive).not.toHaveBeenCalled();
         expect(test.log).not.toHaveBeenCalled();
       });
     },
@@ -265,9 +260,9 @@ describe('MCP product archive handler', () => {
 
       expect(result.isError).toBe(true);
       expect(JSON.stringify(result.content)).toContain(
-        'changed while confirmation was open',
+        'changed before it could be archived',
       );
-      expect(test.remove).not.toHaveBeenCalled();
+      expect(test.archive).toHaveBeenCalledOnce();
       expect(test.log).not.toHaveBeenCalled();
     });
   });

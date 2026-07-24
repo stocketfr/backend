@@ -115,6 +115,30 @@ const runWriter = (
     ),
   );
 
+const runActorWriterWithoutHttp = (
+  db: ReturnType<typeof makeDb>,
+  actor: RequestActor,
+  requestContext: RequestContext,
+) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const writer = yield* makeAuditLogWriter;
+      yield* writer.log({
+        action: AuditAction.CREATE,
+        entityType: AuditEntityType.INVENTORY,
+        entityId: TEST_ENTITY_ID,
+      });
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.succeed(DrizzleDatabase, db as never),
+          Layer.succeed(CurrentRequestActor, actor),
+          Layer.succeed(CurrentRequestContext, requestContext),
+        ),
+      ),
+    ),
+  );
+
 describe('makeAuditLogWriter', () => {
   it('persists audit fields from request and session context', async () => {
     const values = vi.fn(async () => undefined);
@@ -171,6 +195,34 @@ describe('makeAuditLogWriter', () => {
       expect.objectContaining({
         user_id: TEST_USER_ID,
         tenant_id: TEST_ACTOR_TENANT_ID,
+      }),
+    );
+  });
+
+  it('logs actor attribution without HTTP or Better Auth services', async () => {
+    const values = vi.fn(async () => undefined);
+    const db = makeDb(values);
+
+    await runActorWriterWithoutHttp(
+      db,
+      {
+        userId: TEST_USER_ID,
+        tenantId: TEST_ACTOR_TENANT_ID,
+        tenantName: 'Actor workspace',
+        tenantSlug: 'actor-workspace',
+      },
+      makeRequestContext({
+        tenantId: TEST_ACTOR_TENANT_ID,
+        ip: '198.51.100.42',
+      }),
+    );
+    await waitForCall(values);
+
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: TEST_USER_ID,
+        tenant_id: TEST_ACTOR_TENANT_ID,
+        ip_address: '198.51.100.42',
       }),
     );
   });

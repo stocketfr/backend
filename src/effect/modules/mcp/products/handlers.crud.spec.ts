@@ -1,4 +1,3 @@
-import { HttpServerRequest } from '@effect/platform';
 import { describe, expect, it, vi } from '@effect/vitest';
 import { type Context, Effect, Layer, Schema } from 'effect';
 import { Permission, Resource } from '@stocket/types/auth';
@@ -18,7 +17,6 @@ import {
   type RequestActor,
 } from '../../../platform/auth/request-actor';
 import { CurrentRequestContext } from '../../../platform/http/request-context';
-import { makeBetterAuthTestLayer } from '../../../testing/better-auth-test';
 import { makeTestLayer } from '../../../testing/utils';
 import { ProductsService } from '../../products/service';
 import { McpInvocation } from '../types';
@@ -86,15 +84,6 @@ const permissions = (...grants: Permission[]): UserPermissions => ({
   },
 });
 
-const requestLayer = Layer.succeed(
-  HttpServerRequest.HttpServerRequest,
-  HttpServerRequest.fromWeb(
-    new Request('https://test-workspace.example.com/api/v1/mcp', {
-      method: 'POST',
-    }),
-  ),
-);
-
 interface HarnessOptions {
   readonly products: Partial<Context.Tag.Service<typeof ProductsService>>;
   readonly userPermissions?: UserPermissions;
@@ -125,8 +114,6 @@ const makeHarness = ({
     Layer.succeed(McpInvocation, {
       requestConfirmation: () => Effect.succeed('unavailable'),
     }),
-    makeBetterAuthTestLayer(),
-    requestLayer,
   );
 
   return {
@@ -176,7 +163,7 @@ describe('MCP product CRUD handlers', () => {
       });
 
       return Effect.gen(function* () {
-        const callResult = yield* test.execute('products_list', {
+        const callResult = yield* test.execute('products_search', {
           page: 2,
           limit: 25,
           search: '  green widget  ',
@@ -221,16 +208,16 @@ describe('MCP product CRUD handlers', () => {
             {
               id: PRODUCT_ID,
               category: { id: CATEGORY_ID, name: 'Widgets' },
-              primary_supplier: {
-                id: SUPPLIER_ID,
-                name: 'Widget Supply',
-              },
               archived_at: '2026-07-10T09:00:00.000Z',
-              created_at: '2026-07-01T10:00:00.000Z',
               updated_at: '2026-07-02T11:00:00.000Z',
             },
           ],
         });
+        expect(result.products[0]).not.toHaveProperty('standard_cost');
+        expect(result.products[0]).not.toHaveProperty('standard_price');
+        expect(result.products[0]).not.toHaveProperty('markup_percentage');
+        expect(result.products[0]).not.toHaveProperty('notes');
+        expect(result.products[0]).not.toHaveProperty('primary_supplier');
         expect(test.log).not.toHaveBeenCalled();
       });
     },
@@ -281,7 +268,7 @@ describe('MCP product CRUD handlers', () => {
 
         expect(result.isError).toBe(true);
         expect(JSON.stringify(result.content)).toContain(
-          'Insufficient permissions',
+          'This action is not available',
         );
         expect(findOne).not.toHaveBeenCalled();
         expect(test.log).not.toHaveBeenCalled();

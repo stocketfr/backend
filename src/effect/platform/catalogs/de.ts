@@ -101,6 +101,14 @@ export const deCatalog: Record<MessageKey, string> = {
   'locations.repositoryFailed': 'Der Standortvorgang ist fehlgeschlagen.',
   'mcp.changedSinceConfirmation':
     'Dieses Element wurde waehrend der Bestaetigung geaendert. Pruefen Sie die neuesten Angaben und versuchen Sie es erneut.',
+  'mcp.actionUnavailable': 'Diese Aktion ist nicht verfuegbar.',
+  'mcp.invalidInput':
+    'Die Eingabe fuer diese Aktion ist ungueltig. Pruefen Sie die angegebenen Kennungen und Werte und versuchen Sie es erneut.',
+  'mcp.invalidResult':
+    'Stocket konnte das Endergebnis nicht pruefen. Aktualisieren Sie die betroffenen Daten, bevor Sie es erneut versuchen; die Aktion wurde moeglicherweise bereits angewendet.',
+  'mcp.requestFailed': 'Stocket konnte diese Anfrage nicht abschliessen.',
+  'mcp.toolTimedOut':
+    'Die Aktion dauerte zu lange und wurde beendet. Versuchen Sie es erneut.',
   'notifications.preferencesUpdated':
     'Benachrichtigungseinstellungen aktualisiert.',
   'notifications.repositoryFailed':
@@ -164,6 +172,8 @@ export const deCatalog: Record<MessageKey, string> = {
   'products.importProgressStarting': 'Der Produktimport wird gestartet.',
   'products.importUnsupportedFormat':
     'Nicht unterstuetzte CSV-Kopfzeilen fuer den Produktimport.',
+  'products.changedSinceArchivePreview':
+    'Dieses Produkt wurde vor der Archivierung geaendert. Pruefen Sie die neuesten Angaben und versuchen Sie es erneut.',
   'products.infrastructureFailed': 'Der Produktvorgang ist fehlgeschlagen.',
   'products.notDeleted': 'Das Produkt ist nicht geloescht.',
   'products.notFound': 'Produkt nicht gefunden.',

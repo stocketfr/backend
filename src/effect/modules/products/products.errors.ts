@@ -1,6 +1,7 @@
 import { ErrorCode } from '@stocket/types/common';
 import {
   BadRequestError,
+  ConflictError,
   InternalError,
   NotFoundError,
 } from '../../platform/effect/domain-errors';
@@ -29,6 +30,12 @@ export class PriceBelowCost extends BadRequestError('PriceBelowCost')<{
 }> {}
 
 export class ProductNotDeleted extends BadRequestError('ProductNotDeleted')<{
+  readonly productId: string;
+}> {}
+
+export class ProductArchiveConflict extends ConflictError(
+  'ProductArchiveConflict',
+)<{
   readonly productId: string;
 }> {}
 

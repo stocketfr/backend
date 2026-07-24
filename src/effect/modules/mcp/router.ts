@@ -1,27 +1,24 @@
 import { HttpApp, HttpRouter } from '@effect/platform';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { Effect, Runtime, Schema } from 'effect';
-import type { AuditLogWriter } from '../../platform/audit';
-import type { BetterAuthService } from '../../platform/auth/better-auth';
-import type { PermissionProvider } from '../../platform/auth/permission-provider';
 import {
   CapturedRequestScopeSchema,
   captureRequestScope,
   requestScopeLayer,
+  type RequestActor,
 } from '../../platform/auth/request-actor';
-import type { ProductsService } from '../products/service';
-import { mcpRegistry } from './registry';
+import type { RequestContext } from '../../platform/http/request-context';
+import { mcpRegistry, type McpRegistryServices } from './registry';
 import { makeMcpHttpBridge } from './server';
 import {
   McpInvocation,
   type McpInvocation as McpInvocationService,
 } from './types';
 
-export type McpApplicationServices =
-  | ProductsService
-  | PermissionProvider
-  | AuditLogWriter
-  | BetterAuthService;
+export type McpApplicationServices = Exclude<
+  McpRegistryServices,
+  RequestActor | RequestContext | McpInvocationService
+>;
 
 const missingRequestScope: CallToolResult = {
   isError: true,
@@ -36,8 +33,20 @@ const missingRequestScope: CallToolResult = {
 export const makeMcpRouter = (
   runtime: Runtime.Runtime<McpApplicationServices>,
 ) => {
-  const bridge = makeMcpHttpBridge(mcpRegistry.descriptors, {
-    execute: (scope, invocation, name, input) =>
+  const bridge = makeMcpHttpBridge({
+    list: (scope, signal) =>
+      Runtime.runPromise(runtime)(
+        Schema.decodeUnknown(CapturedRequestScopeSchema)(scope).pipe(
+          Effect.flatMap((requestScope) =>
+            mcpRegistry.listAvailable.pipe(
+              Effect.provide(requestScopeLayer(requestScope)),
+            ),
+          ),
+          Effect.catchAll(() => Effect.succeed([])),
+        ),
+        { signal },
+      ),
+    execute: (scope, invocation, name, input, signal) =>
       Runtime.runPromise(runtime)(
         Schema.decodeUnknown(CapturedRequestScopeSchema)(scope).pipe(
           Effect.flatMap((requestScope) =>
@@ -53,6 +62,7 @@ export const makeMcpRouter = (
           ),
           Effect.catchAll(() => Effect.succeed(missingRequestScope)),
         ),
+        { signal },
       ),
   });
 

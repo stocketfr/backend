@@ -3,7 +3,11 @@ import type {
   ProductResponseDto,
 } from '@stocket/types/products';
 import type { ProductQueryDto, UpdateProductDto } from '../../products/types';
-import type { ListProductsInput, McpProduct } from './schemas';
+import type {
+  ListProductsInput,
+  McpProduct,
+  McpProductSummary,
+} from './schemas';
 
 const toIsoString = (value: string | Date): string =>
   typeof value === 'string' ? value : value.toISOString();
@@ -39,6 +43,18 @@ export const toMcpProduct = (product: ProductResponseDto): McpProduct => ({
   updated_at: toIsoString(product.updated_at),
 });
 
+export const toMcpProductSummary = (
+  product: ProductResponseDto,
+): McpProductSummary => ({
+  id: product.id,
+  sku: product.sku,
+  name: product.name,
+  category: product.category ?? null,
+  is_active: product.is_active,
+  archived_at: toOptionalIsoString(product.deleted_at),
+  updated_at: toIsoString(product.updated_at),
+});
+
 export const toProductQuery = (input: ListProductsInput): ProductQueryDto => ({
   page: input.page,
   limit: input.limit,
@@ -55,7 +71,7 @@ export const toProductQuery = (input: ListProductsInput): ProductQueryDto => ({
 });
 
 export const toMcpProductsPage = (response: PaginatedProductsResponseDto) => ({
-  products: response.data.map(toMcpProduct),
+  products: response.data.map(toMcpProductSummary),
   pagination: response.meta,
 });
 

@@ -26,10 +26,22 @@ import {
   McpInvocation,
   type McpConfirmationDecision,
   type McpConfirmationRequest,
-  type McpToolSafety,
-  type McpToolSafetyWithRequiredConfirmation,
-  type McpToolSafetyWithoutConfirmation,
+  type McpCommandPolicyWithRequiredConfirmation,
+  type McpCommandPolicyWithoutConfirmation,
+  type McpQueryPolicy,
+  type McpToolPolicy,
 } from './types';
+import {
+  type McpAccessRequirements,
+  type McpToolAccess,
+  isMcpToolAllowed,
+  loadMcpAccessSnapshot,
+  requireMcpToolAccess,
+} from './access';
+import { McpToolTimeout } from './mcp.errors';
+
+const DEFAULT_TOOL_TIMEOUT_MILLISECONDS = 30_000;
+const TOOL_NAME_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/;
 
 const StructuredContentSchema = Schema.Record({
   key: Schema.String,
@@ -58,7 +70,7 @@ const toToolDescriptor = <
   Requirements,
 >(
   tool: AiTool.Tool<Name, Config, Requirements>,
-  safety: McpToolSafety,
+  policy: McpToolPolicy,
 ): McpToolDescriptor => {
   const title = Option.getOrUndefined(
     Context.getOption(tool.annotations, AiTool.Title),
@@ -83,7 +95,7 @@ const toToolDescriptor = <
       openWorldHint: Context.get(tool.annotations, AiTool.OpenWorld),
     },
     _meta: {
-      'fr.stocket/safety': safety,
+      'fr.stocket/safety': policy,
     },
   };
 };
@@ -96,15 +108,45 @@ const firstCauseValue = <E>(cause: Cause.Cause<E>): unknown => {
   return Option.isSome(defect) ? defect.value : cause;
 };
 
-const invalidInputResult: CallToolResult = {
+const makeToolErrorResult = (
+  text: string,
+  code: string,
+  retryable: boolean,
+  details?: string,
+): CallToolResult => ({
   isError: true,
-  content: [
-    {
-      type: 'text',
-      text: 'The action input is invalid. Check the product IDs and field values, then try again.',
+  content: [{ type: 'text', text: details ? `${text}\n${details}` : text }],
+  _meta: {
+    'fr.stocket/error': {
+      code,
+      retryable,
     },
-  ],
-};
+  },
+});
+
+const presentUnavailableTool: Effect.Effect<
+  CallToolResult,
+  never,
+  RequestContext
+> = Effect.map(CurrentRequestContext, ({ locale }) =>
+  makeToolErrorResult(
+    translateMessage(locale, 'mcp.actionUnavailable'),
+    'action_unavailable',
+    false,
+  ),
+);
+
+const presentInvalidInput = (
+  error: ParseResult.ParseError,
+): Effect.Effect<CallToolResult, never, RequestContext> =>
+  Effect.map(CurrentRequestContext, ({ locale }) =>
+    makeToolErrorResult(
+      translateMessage(locale, 'mcp.invalidInput'),
+      'invalid_input',
+      false,
+      ParseResult.TreeFormatter.formatErrorSync(error).slice(0, 1_000),
+    ),
+  );
 
 const presentToolFailure = <E>(
   cause: Cause.Cause<E>,
@@ -112,6 +154,14 @@ const presentToolFailure = <E>(
   Effect.gen(function* () {
     const error = firstCauseValue(cause);
     const { locale, path } = yield* CurrentRequestContext;
+
+    if (error instanceof McpToolTimeout) {
+      return makeToolErrorResult(
+        translateMessage(locale, 'mcp.toolTimedOut'),
+        'tool_timeout',
+        true,
+      );
+    }
 
     if (isAppError(error)) {
       const message = translateMessage(
@@ -123,26 +173,20 @@ const presentToolFailure = <E>(
       );
 
       return {
-        isError: true,
-        content: [
-          {
-            type: 'text',
-            text: `Stocket could not finish this request: ${message}. Check the product's current state before retrying.`,
-          },
-        ],
+        ...makeToolErrorResult(
+          `${translateMessage(locale, 'mcp.requestFailed')} ${message}`,
+          error._tag,
+          error.statusCode === 429 || error.statusCode >= 500,
+        ),
       };
     }
 
     if (ParseResult.isParseError(error)) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: 'text',
-            text: "Stocket could not verify the action's final result. Refresh the product before trying again; the action may already have been applied.",
-          },
-        ],
-      };
+      return makeToolErrorResult(
+        translateMessage(locale, 'mcp.invalidResult'),
+        'invalid_result',
+        false,
+      );
     }
 
     yield* Effect.logError({
@@ -152,33 +196,33 @@ const presentToolFailure = <E>(
       error,
     } satisfies LogPayload);
 
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text',
-          text: "Stocket could not finish this request. Check the product's current state before trying again; the action may already have been applied.",
-        },
-      ],
-    };
+    return makeToolErrorResult(
+      translateMessage(locale, 'mcp.requestFailed'),
+      'internal_error',
+      true,
+    );
   });
 
 export interface McpToolRegistration<R> {
   readonly descriptor: McpToolDescriptor;
+  readonly access: McpToolAccess;
+  readonly policy: McpToolPolicy;
   readonly execute: (input: unknown) => Effect.Effect<CallToolResult, never, R>;
 }
 
-export interface McpOutputCodec<A, R> {
-  readonly encode: (
-    output: A,
-  ) => Effect.Effect<unknown, ParseResult.ParseError, R>;
-}
-
-export const makeMcpOutputCodec = <A, I, R>(
-  schema: Schema.Schema<A, I, R>,
-): McpOutputCodec<A, R> => ({
-  encode: Schema.encodeUnknown(schema),
-});
+const withToolTimeout = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  timeoutMilliseconds: number,
+) =>
+  effect.pipe(
+    Effect.timeoutFail({
+      duration: timeoutMilliseconds,
+      onTimeout: () =>
+        new McpToolTimeout({
+          messageKey: 'mcp.toolTimedOut',
+        }),
+    }),
+  );
 
 const implementMcpToolCore = <
   const Name extends string,
@@ -189,7 +233,6 @@ const implementMcpToolCore = <
   ToolRequirements,
   E,
   R,
-  CodecR,
 >(
   tool: AiTool.Tool<
     Name,
@@ -201,19 +244,20 @@ const implementMcpToolCore = <
     },
     ToolRequirements
   >,
-  safety: McpToolSafety,
-  outputCodec: McpOutputCodec<Schema.Schema.Type<Success>, CodecR>,
+  access: McpToolAccess,
+  policy: McpToolPolicy,
   handler: (
     input: Schema.Schema.Type<Schema.Struct<Parameters>>,
   ) => Effect.Effect<NoInfer<Schema.Schema.Type<Success>>, E, R>,
 ): McpToolRegistration<
   | R
-  | ToolRequirements
   | Schema.Schema.Context<Schema.Struct<Parameters>>
-  | CodecR
+  | Schema.Schema.Context<Success>
   | RequestContext
 > => ({
-  descriptor: toToolDescriptor(tool, safety),
+  descriptor: toToolDescriptor(tool, policy),
+  access,
+  policy,
   execute: (input) => {
     const decoded: Effect.Effect<
       Schema.Schema.Type<Schema.Struct<Parameters>>,
@@ -222,9 +266,10 @@ const implementMcpToolCore = <
     > = Schema.decodeUnknown(tool.parametersSchema)(input);
 
     return decoded.pipe(
-      Effect.matchCauseEffect({
-        onFailure: () => Effect.succeed(invalidInputResult),
+      Effect.matchEffect({
+        onFailure: presentInvalidInput,
         onSuccess: (decodedInput) => {
+          const successSchema = Schema.asSchema(tool.successSchema);
           const handled: Effect.Effect<
             Schema.Schema.Type<Success>,
             E,
@@ -233,12 +278,12 @@ const implementMcpToolCore = <
           const encoded: Effect.Effect<
             unknown,
             ParseResult.ParseError | E,
-            R | CodecR
-          > = Effect.flatMap(handled, outputCodec.encode);
+            R | Schema.Schema.Context<Success>
+          > = Effect.flatMap(handled, Schema.encode(successSchema));
           const structured: Effect.Effect<
             Schema.Schema.Type<typeof StructuredContentSchema>,
             ParseResult.ParseError | E,
-            R | CodecR
+            R | Schema.Schema.Context<Success>
           > = Effect.flatMap(
             encoded,
             Schema.decodeUnknown(StructuredContentSchema),
@@ -256,44 +301,17 @@ const implementMcpToolCore = <
                 ],
               }),
             ),
-            Effect.matchCauseEffect({
-              onFailure: presentToolFailure,
-              onSuccess: Effect.succeed,
-            }),
+            Effect.catchAllCause((cause) =>
+              Cause.isInterrupted(cause)
+                ? Effect.failCause(Cause.stripFailures(cause))
+                : presentToolFailure(cause),
+            ),
           );
         },
       }),
     );
   },
 });
-
-export const implementMcpTool = <
-  const Name extends string,
-  Parameters extends Schema.Struct.Fields,
-  Success extends Schema.Schema.Any,
-  Failure extends Schema.Schema.All,
-  Mode extends AiTool.FailureMode,
-  ToolRequirements,
-  E,
-  R,
-  CodecR,
->(
-  tool: AiTool.Tool<
-    Name,
-    {
-      readonly parameters: Schema.Struct<Parameters>;
-      readonly success: Success;
-      readonly failure: Failure;
-      readonly failureMode: Mode;
-    },
-    ToolRequirements
-  >,
-  safety: McpToolSafetyWithoutConfirmation,
-  outputCodec: McpOutputCodec<Schema.Schema.Type<Success>, CodecR>,
-  handler: (
-    input: Schema.Schema.Type<Schema.Struct<Parameters>>,
-  ) => Effect.Effect<NoInfer<Schema.Schema.Type<Success>>, E, R>,
-) => implementMcpToolCore(tool, safety, outputCodec, handler);
 
 export interface McpConfirmationPlan<State> {
   readonly request: McpConfirmationRequest;
@@ -305,7 +323,83 @@ type RejectedConfirmationDecision = Exclude<
   'accepted'
 >;
 
-export const implementConfirmedMcpTool = <
+export const defineMcpQuery = <
+  const Name extends string,
+  Parameters extends Schema.Struct.Fields,
+  Success extends Schema.Schema.Any,
+  Failure extends Schema.Schema.All,
+  Mode extends AiTool.FailureMode,
+  ToolRequirements,
+  E,
+  R,
+>(definition: {
+  readonly tool: AiTool.Tool<
+    Name,
+    {
+      readonly parameters: Schema.Struct<Parameters>;
+      readonly success: Success;
+      readonly failure: Failure;
+      readonly failureMode: Mode;
+    },
+    ToolRequirements
+  >;
+  readonly access: McpToolAccess;
+  readonly policy: McpQueryPolicy;
+  readonly timeoutMilliseconds?: number;
+  readonly run: (
+    input: Schema.Schema.Type<Schema.Struct<Parameters>>,
+  ) => Effect.Effect<NoInfer<Schema.Schema.Type<Success>>, E, R>;
+}) =>
+  implementMcpToolCore(
+    definition.tool,
+    definition.access,
+    definition.policy,
+    (input) =>
+      withToolTimeout(
+        definition.run(input),
+        definition.timeoutMilliseconds ?? DEFAULT_TOOL_TIMEOUT_MILLISECONDS,
+      ),
+  );
+
+export const defineMcpCommand = <
+  const Name extends string,
+  Parameters extends Schema.Struct.Fields,
+  Success extends Schema.Schema.Any,
+  Failure extends Schema.Schema.All,
+  Mode extends AiTool.FailureMode,
+  ToolRequirements,
+  E,
+  R,
+>(definition: {
+  readonly tool: AiTool.Tool<
+    Name,
+    {
+      readonly parameters: Schema.Struct<Parameters>;
+      readonly success: Success;
+      readonly failure: Failure;
+      readonly failureMode: Mode;
+    },
+    ToolRequirements
+  >;
+  readonly access: McpToolAccess;
+  readonly policy: McpCommandPolicyWithoutConfirmation;
+  readonly timeoutMilliseconds?: number;
+  readonly run: (
+    input: Schema.Schema.Type<Schema.Struct<Parameters>>,
+  ) => Effect.Effect<NoInfer<Schema.Schema.Type<Success>>, E, R>;
+}) =>
+  implementMcpToolCore(
+    definition.tool,
+    definition.access,
+    definition.policy,
+    (input) =>
+      withToolTimeout(
+        definition.run(input),
+        definition.timeoutMilliseconds ?? DEFAULT_TOOL_TIMEOUT_MILLISECONDS,
+      ),
+  );
+
+export const defineConfirmedMcpCommand = <
   const Name extends string,
   Parameters extends Schema.Struct.Fields,
   Success extends Schema.Schema.Any,
@@ -317,9 +411,8 @@ export const implementConfirmedMcpTool = <
   PrepareR,
   ExecuteE,
   ExecuteR,
-  CodecR,
->(
-  tool: AiTool.Tool<
+>(definition: {
+  readonly tool: AiTool.Tool<
     Name,
     {
       readonly parameters: Schema.Struct<Parameters>;
@@ -328,70 +421,224 @@ export const implementConfirmedMcpTool = <
       readonly failureMode: Mode;
     },
     ToolRequirements
-  >,
-  safety: McpToolSafetyWithRequiredConfirmation,
-  outputCodec: McpOutputCodec<Schema.Schema.Type<Success>, CodecR>,
-  prepare: (
+  >;
+  readonly access: McpToolAccess;
+  readonly policy: McpCommandPolicyWithRequiredConfirmation;
+  readonly timeoutMilliseconds?: number;
+  readonly prepare: (
     input: Schema.Schema.Type<Schema.Struct<Parameters>>,
-  ) => Effect.Effect<McpConfirmationPlan<State>, PrepareE, PrepareR>,
-  onRejected: (
+  ) => Effect.Effect<McpConfirmationPlan<State>, PrepareE, PrepareR>;
+  readonly onRejected: (
     input: Schema.Schema.Type<Schema.Struct<Parameters>>,
     state: State,
     decision: RejectedConfirmationDecision,
-  ) => NoInfer<Schema.Schema.Type<Success>>,
-  handler: (
+  ) => NoInfer<Schema.Schema.Type<Success>>;
+  readonly run: (
     input: Schema.Schema.Type<Schema.Struct<Parameters>>,
     state: State,
-  ) => Effect.Effect<NoInfer<Schema.Schema.Type<Success>>, ExecuteE, ExecuteR>,
-) =>
-  implementMcpToolCore(tool, safety, outputCodec, (input) =>
-    Effect.gen(function* () {
-      const plan = yield* prepare(input);
-      const invocation = yield* McpInvocation;
-      const decision = yield* invocation.requestConfirmation(plan.request);
+  ) => Effect.Effect<NoInfer<Schema.Schema.Type<Success>>, ExecuteE, ExecuteR>;
+}) =>
+  implementMcpToolCore(
+    definition.tool,
+    definition.access,
+    definition.policy,
+    (input) =>
+      Effect.gen(function* () {
+        const timeoutMilliseconds =
+          definition.timeoutMilliseconds ?? DEFAULT_TOOL_TIMEOUT_MILLISECONDS;
+        const plan = yield* withToolTimeout(
+          definition.prepare(input),
+          timeoutMilliseconds,
+        );
+        const invocation = yield* McpInvocation;
+        const decision = yield* invocation.requestConfirmation(plan.request);
 
-      if (decision !== 'accepted') {
-        return onRejected(input, plan.state, decision);
-      }
+        if (decision !== 'accepted') {
+          return definition.onRejected(input, plan.state, decision);
+        }
 
-      return yield* handler(input, plan.state);
-    }),
+        yield* requireMcpToolAccess(definition.access);
+        return yield* withToolTimeout(
+          definition.run(input, plan.state),
+          timeoutMilliseconds,
+        );
+      }),
   );
 
 export interface McpToolRegistry<R> {
   readonly descriptors: readonly McpToolDescriptor[];
+  readonly manifest: McpContractManifest;
+  readonly listAvailable: Effect.Effect<
+    readonly McpToolDescriptor[],
+    never,
+    McpAccessRequirements
+  >;
   readonly execute: (
     name: string,
     input: unknown,
   ) => Effect.Effect<CallToolResult, never, R>;
 }
 
-export const makeMcpToolRegistry = <R>(
-  registrations: readonly McpToolRegistration<R>[],
-): McpToolRegistry<R> => {
-  const names = new Set<string>();
-  for (const registration of registrations) {
-    if (names.has(registration.descriptor.name)) {
-      throw new Error(`Duplicate MCP tool: ${registration.descriptor.name}`);
-    }
-    names.add(registration.descriptor.name);
+export type McpToolRegistryRequirements<Registry> =
+  Registry extends McpToolRegistry<infer R> ? R : never;
+
+export interface McpFeature<R> {
+  readonly domain: string;
+  readonly contractVersion: number;
+  readonly registrations: readonly McpToolRegistration<R>[];
+}
+
+export type McpFeatureRequirements<Feature> =
+  Feature extends McpFeature<infer R> ? R : never;
+
+export interface McpContractManifest {
+  readonly schemaVersion: 1;
+  readonly tools: readonly McpToolDescriptor[];
+}
+
+export const defineMcpFeature = <R>(config: {
+  readonly domain: string;
+  readonly contractVersion: number;
+  readonly registrations: readonly McpToolRegistration<R>[];
+}): McpFeature<R> => {
+  if (!/^[a-z][a-z0-9]*$/.test(config.domain)) {
+    throw new Error(`Invalid MCP feature domain: ${config.domain}`);
+  }
+  if (
+    !Number.isSafeInteger(config.contractVersion) ||
+    config.contractVersion < 1
+  ) {
+    throw new Error(
+      `Invalid MCP contract version for ${config.domain}: ${config.contractVersion}`,
+    );
   }
 
+  const prefix = `${config.domain}_`;
   return {
-    descriptors: registrations.map(({ descriptor }) => descriptor),
-    execute: (name, input) => {
-      const registration = registrations.find(
-        ({ descriptor }) => descriptor.name === name,
-      );
+    domain: config.domain,
+    contractVersion: config.contractVersion,
+    registrations: config.registrations.map((registration) => {
+      const { name } = registration.descriptor;
+      if (!name.startsWith(prefix)) {
+        throw new Error(
+          `MCP tool ${name} must start with its feature domain ${prefix}`,
+        );
+      }
 
-      return registration
-        ? registration.execute(input)
-        : Effect.succeed({
-            isError: true,
-            content: [
-              { type: 'text', text: `Unknown Stocket action: ${name}` },
-            ],
-          });
+      return {
+        ...registration,
+        descriptor: {
+          ...registration.descriptor,
+          _meta: {
+            ...registration.descriptor._meta,
+            'fr.stocket/tool': {
+              domain: config.domain,
+              intent: name.slice(prefix.length),
+              contractVersion: config.contractVersion,
+            },
+          },
+        },
+      };
+    }),
+  };
+};
+
+const validateRegistration = (registration: McpToolRegistration<unknown>) => {
+  const { descriptor, policy } = registration;
+  if (registration.access.permissions.length === 0) {
+    throw new Error(
+      `MCP tool ${descriptor.name} must declare at least one permission`,
+    );
+  }
+
+  if (descriptor.name.length > 64 || !TOOL_NAME_PATTERN.test(descriptor.name)) {
+    throw new Error(`Invalid MCP tool name: ${descriptor.name}`);
+  }
+
+  if (policy.kind === 'query') {
+    if (
+      descriptor.annotations?.readOnlyHint !== true ||
+      descriptor.annotations.destructiveHint !== false
+    ) {
+      throw new Error(
+        `MCP query ${descriptor.name} must be read-only and non-destructive`,
+      );
+    }
+    return;
+  }
+
+  if (descriptor.annotations?.readOnlyHint !== false) {
+    throw new Error(`MCP command ${descriptor.name} must not be read-only`);
+  }
+
+  if (policy.reversible === 'no' && policy.undoTool !== undefined) {
+    throw new Error(
+      `Irreversible MCP command ${descriptor.name} cannot declare an undo tool`,
+    );
+  }
+
+  if (policy.reversible !== 'no' && policy.undoTool === undefined) {
+    throw new Error(
+      `Reversible MCP command ${descriptor.name} must declare an undo tool`,
+    );
+  }
+};
+
+export const makeMcpToolRegistry = <R>(
+  registrations: readonly McpToolRegistration<R>[],
+): McpToolRegistry<R | McpAccessRequirements | RequestContext> => {
+  const sorted = [...registrations].sort((left, right) =>
+    left.descriptor.name.localeCompare(right.descriptor.name),
+  );
+  const byName = new Map<string, McpToolRegistration<R>>();
+  for (const registration of sorted) {
+    validateRegistration(registration);
+    if (byName.has(registration.descriptor.name)) {
+      throw new Error(`Duplicate MCP tool: ${registration.descriptor.name}`);
+    }
+    byName.set(registration.descriptor.name, registration);
+  }
+
+  for (const registration of sorted) {
+    if (
+      registration.policy.kind === 'command' &&
+      registration.policy.undoTool !== undefined &&
+      !byName.has(registration.policy.undoTool)
+    ) {
+      throw new Error(
+        `MCP tool ${registration.descriptor.name} references missing undo tool ${registration.policy.undoTool}`,
+      );
+    }
+  }
+
+  const descriptors = sorted.map(({ descriptor }) => descriptor);
+  return {
+    descriptors,
+    manifest: {
+      schemaVersion: 1,
+      tools: descriptors,
+    },
+    listAvailable: loadMcpAccessSnapshot.pipe(
+      Effect.map((snapshot) =>
+        sorted
+          .filter(({ access }) => isMcpToolAllowed(access, snapshot))
+          .map(({ descriptor }) => descriptor),
+      ),
+      Effect.catchAll(() => Effect.succeed([])),
+    ),
+    execute: (name, input) => {
+      const registration = byName.get(name);
+      if (!registration) return presentUnavailableTool;
+
+      return requireMcpToolAccess(registration.access).pipe(
+        Effect.matchEffect({
+          onFailure: () => presentUnavailableTool,
+          onSuccess: () => registration.execute(input),
+        }),
+      );
     },
   };
 };
+
+export const composeMcpRegistry = <R>(...features: readonly McpFeature<R>[]) =>
+  makeMcpToolRegistry(features.flatMap(({ registrations }) => registrations));

@@ -96,6 +96,14 @@ export const frCatalog: Record<MessageKey, string> = {
   'locations.repositoryFailed': "L'operation sur lemplacement a echoue.",
   'mcp.changedSinceConfirmation':
     'Cet element a ete modifie pendant la confirmation. Verifiez ses dernieres informations et reessayez.',
+  'mcp.actionUnavailable': "Cette action n'est pas disponible.",
+  'mcp.invalidInput':
+    'Les donnees de cette action sont invalides. Verifiez les identifiants et les valeurs fournis, puis reessayez.',
+  'mcp.invalidResult':
+    'Stocket na pas pu verifier le resultat final. Actualisez les donnees concernees avant de reessayer ; laction a peut-etre deja ete appliquee.',
+  'mcp.requestFailed': 'Stocket na pas pu terminer cette demande.',
+  'mcp.toolTimedOut':
+    'Laction a pris trop de temps et a ete arretee. Reessayez.',
   'notifications.preferencesUpdated':
     'Preferences de notification mises a jour.',
   'notifications.repositoryFailed': "L'operation de notification a echoue.",
@@ -155,6 +163,8 @@ export const frCatalog: Record<MessageKey, string> = {
   'products.importProgressStarting': "L'import de produits demarre.",
   'products.importUnsupportedFormat':
     'En-tetes CSV dimport produits non pris en charge.',
+  'products.changedSinceArchivePreview':
+    'Ce produit a ete modifie avant son archivage. Verifiez ses dernieres informations et reessayez.',
   'products.infrastructureFailed': "L'operation sur le produit a echoue.",
   'products.notDeleted': 'Le produit nest pas supprime.',
   'products.notFound': 'Produit introuvable.',
