@@ -9,6 +9,7 @@ import {
   decimal,
   timestamp,
   jsonb,
+  unique,
   uniqueIndex,
   index,
   primaryKey,
@@ -805,6 +806,14 @@ export const inventory = pgTable(
       table.location_id,
       table.area_id,
     ),
+    unique('inventory_tenant_product_location_area_unique')
+      .on(
+        table.tenant_id,
+        table.product_id,
+        table.location_id,
+        table.area_id,
+      )
+      .nullsNotDistinct(),
   ],
 );
 

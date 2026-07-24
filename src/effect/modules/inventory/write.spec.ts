@@ -3,6 +3,7 @@ import { Effect } from 'effect';
 import type { AreaResponseDto } from '@stocket/types/areas';
 import type { InventoryWithRelations } from './repository';
 import {
+  mapInventoryIdentityUniqueViolation,
   makeInventoryWriteWorkflows,
   type InventoryWriteRepository,
 } from './write';
@@ -107,6 +108,44 @@ const makeWorkflows = ({
   });
 
 describe('makeInventoryWriteWorkflows', () => {
+  describe('inventory identity unique violations', () => {
+    it('maps the named constraint to InventoryAlreadyExists', () => {
+      const error = mapInventoryIdentityUniqueViolation(
+        PRODUCT_ID,
+        LOCATION_ID,
+        null,
+      )({
+        cause: {
+          cause: {
+            code: '23505',
+            constraint: 'inventory_tenant_product_location_area_unique',
+          },
+        },
+      });
+
+      expect(error).toMatchObject({
+        _tag: 'InventoryAlreadyExists',
+        productId: PRODUCT_ID,
+        locationId: LOCATION_ID,
+        areaId: null,
+      });
+    });
+
+    it('preserves unrelated repository errors', () => {
+      const original = {
+        cause: { code: '23505', constraint: 'other_unique' },
+      };
+
+      expect(
+        mapInventoryIdentityUniqueViolation(
+          PRODUCT_ID,
+          LOCATION_ID,
+          AREA_ID,
+        )(original),
+      ).toBe(original);
+    });
+  });
+
   it.effect(
     'creates inventory after validating product, location, and area',
     () =>

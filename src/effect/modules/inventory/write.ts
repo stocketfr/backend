@@ -3,6 +3,7 @@ import {
   hasDefinedPatchValues,
   pickDefined,
 } from '../../platform/effect/pick-defined';
+import { pgUniqueViolationConstraintName } from '../../platform/db/pg-errors';
 import {
   InventoryAlreadyExists,
   InventoryQuantityAdjustmentFailed,
@@ -19,6 +20,38 @@ import type {
   Inventory,
   UpdateInventoryDto,
 } from './types';
+
+export const INVENTORY_IDENTITY_UNIQUE_CONSTRAINT =
+  'inventory_tenant_product_location_area_unique';
+
+const inventoryAlreadyExists = (
+  productId: string,
+  locationId: string,
+  areaId?: string | null,
+) =>
+  new InventoryAlreadyExists({
+    productId,
+    locationId,
+    areaId,
+    messageKey: 'inventory.alreadyExists',
+  });
+
+const inventoryIdentityConstraintName = (error: unknown) => {
+  const directConstraint = pgUniqueViolationConstraintName(error);
+  if (directConstraint !== null) return directConstraint;
+
+  return error !== null && typeof error === 'object' && 'cause' in error
+    ? pgUniqueViolationConstraintName(error.cause)
+    : null;
+};
+
+export const mapInventoryIdentityUniqueViolation =
+  (productId: string, locationId: string, areaId?: string | null) =>
+  <E>(error: E): E | InventoryAlreadyExists =>
+    inventoryIdentityConstraintName(error) ===
+    INVENTORY_IDENTITY_UNIQUE_CONSTRAINT
+      ? inventoryAlreadyExists(productId, locationId, areaId)
+      : error;
 
 export type InventoryWriteRepository = Pick<
   InventoryRepository,
@@ -101,25 +134,34 @@ export const makeInventoryWriteWorkflows = <
       );
       if (existing) {
         return yield* Effect.fail(
-          new InventoryAlreadyExists({
-            productId: dto.product_id,
-            locationId: dto.location_id,
-            areaId: dto.area_id,
-            messageKey: 'inventory.alreadyExists',
-          }),
+          inventoryAlreadyExists(
+            dto.product_id,
+            dto.location_id,
+            dto.area_id,
+          ),
         );
       }
 
-      const inventory = yield* repository.create({
-        product_id: dto.product_id,
-        location_id: dto.location_id,
-        area_id: dto.area_id ?? null,
-        quantity: dto.quantity,
-        batch_number: dto.batchNumber ?? '',
-        expiry_date: dto.expiry_date ?? null,
-        cost_per_unit: dto.cost_per_unit ?? null,
-        received_date: dto.received_date ?? null,
-      });
+      const inventory = yield* repository
+        .create({
+          product_id: dto.product_id,
+          location_id: dto.location_id,
+          area_id: dto.area_id ?? null,
+          quantity: dto.quantity,
+          batch_number: dto.batchNumber ?? '',
+          expiry_date: dto.expiry_date ?? null,
+          cost_per_unit: dto.cost_per_unit ?? null,
+          received_date: dto.received_date ?? null,
+        })
+        .pipe(
+          Effect.mapError(
+            mapInventoryIdentityUniqueViolation(
+              dto.product_id,
+              dto.location_id,
+              dto.area_id,
+            ),
+          ),
+        );
 
       const inventoryWithRelations = yield* getInventoryOrFail(inventory.id);
       return toInventoryResponseDto(inventoryWithRelations);
@@ -174,17 +216,24 @@ export const makeInventoryWriteWorkflows = <
 
         if (existing && existing.id !== id) {
           return yield* Effect.fail(
-            new InventoryAlreadyExists({
-              productId: inventory.product_id,
-              locationId: newLocationId,
-              areaId: newAreaId,
-              messageKey: 'inventory.alreadyExists',
-            }),
+            inventoryAlreadyExists(
+              inventory.product_id,
+              newLocationId,
+              newAreaId,
+            ),
           );
         }
       }
 
-      yield* repository.update(id, updateData);
+      yield* repository.update(id, updateData).pipe(
+        Effect.mapError(
+          mapInventoryIdentityUniqueViolation(
+            inventory.product_id,
+            newLocationId,
+            newAreaId,
+          ),
+        ),
+      );
 
       const updatedInventory = yield* getInventoryOrFail(id);
       return toInventoryResponseDto(updatedInventory);

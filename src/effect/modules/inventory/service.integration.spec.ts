@@ -1,5 +1,8 @@
 import { Effect, Layer } from 'effect';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import {
   getTestDb,
   closeTestDb,
@@ -14,6 +17,7 @@ import {
   seedInventory,
 } from '../../testing/seed';
 import type { DrizzleDb } from '../../platform/db/drizzle';
+import { inventory } from '../../platform/db/schema';
 import { InventoryService } from './service';
 
 let db: DrizzleDb;
@@ -124,6 +128,55 @@ describe('InventoryService Integration', () => {
       expect(error._tag).toBe('InventoryAlreadyExists');
     });
 
+    it('allows only one concurrent create for a null-area identity', async () => {
+      const { product, location } = await seedInventoryPrereqs();
+
+      const results = await run(
+        Effect.flatMap(InventoryService, (svc) =>
+          Effect.all(
+            [
+              Effect.either(
+                svc.create({
+                  product_id: product.id,
+                  location_id: location.id,
+                  quantity: 10,
+                }),
+              ),
+              Effect.either(
+                svc.create({
+                  product_id: product.id,
+                  location_id: location.id,
+                  quantity: 20,
+                }),
+              ),
+            ],
+            { concurrency: 2 },
+          ),
+        ),
+      );
+
+      expect(results.filter((result) => result._tag === 'Right')).toHaveLength(
+        1,
+      );
+      expect(
+        results.flatMap((result) =>
+          result._tag === 'Left' ? [result.left._tag] : [],
+        ),
+      ).toEqual(['InventoryAlreadyExists']);
+
+      const rows = await db
+        .select({ id: inventory.id })
+        .from(inventory)
+        .where(
+          and(
+            eq(inventory.product_id, product.id),
+            eq(inventory.location_id, location.id),
+            isNull(inventory.area_id),
+          ),
+        );
+      expect(rows).toHaveLength(1);
+    });
+
     it('rejects nonexistent product', async () => {
       const location = await seedLocation(db);
 
@@ -138,6 +191,154 @@ describe('InventoryService Integration', () => {
       );
 
       expect(error._tag).toBe('InvalidInventoryProduct');
+    });
+  });
+
+  describe('update identity', () => {
+    it('allows only one concurrent move into a null-area identity', async () => {
+      const { product } = await seedInventoryPrereqs();
+      const sourceA = await seedLocation(db);
+      const sourceB = await seedLocation(db);
+      const target = await seedLocation(db);
+      const inventoryA = await seedInventory(db, {
+        product_id: product.id,
+        location_id: sourceA.id,
+        quantity: 10,
+      });
+      const inventoryB = await seedInventory(db, {
+        product_id: product.id,
+        location_id: sourceB.id,
+        quantity: 20,
+      });
+
+      const results = await run(
+        Effect.flatMap(InventoryService, (svc) =>
+          Effect.all(
+            [
+              Effect.either(
+                svc.update(inventoryA.id, {
+                  location_id: target.id,
+                  area_id: null,
+                }),
+              ),
+              Effect.either(
+                svc.update(inventoryB.id, {
+                  location_id: target.id,
+                  area_id: null,
+                }),
+              ),
+            ],
+            { concurrency: 2 },
+          ),
+        ),
+      );
+
+      expect(results.filter((result) => result._tag === 'Right')).toHaveLength(
+        1,
+      );
+      expect(
+        results.flatMap((result) =>
+          result._tag === 'Left' ? [result.left._tag] : [],
+        ),
+      ).toEqual(['InventoryAlreadyExists']);
+
+      const rows = await db
+        .select({ id: inventory.id })
+        .from(inventory)
+        .where(
+          and(
+            eq(inventory.product_id, product.id),
+            eq(inventory.location_id, target.id),
+            isNull(inventory.area_id),
+          ),
+        );
+      expect(rows).toHaveLength(1);
+    });
+  });
+
+  describe('identity migration', () => {
+    it('reconciles null and non-null area duplicates before constraining them', async () => {
+      const { product, location } = await seedInventoryPrereqs();
+      const area = await seedArea(db, { location_id: location.id });
+
+      await db.execute(sql`
+        ALTER TABLE inventory
+        DROP CONSTRAINT inventory_tenant_product_location_area_unique
+      `);
+
+      await db.insert(inventory).values([
+        {
+          product_id: product.id,
+          location_id: location.id,
+          area_id: null,
+          quantity: 3,
+          batch_number: 'NULL-OLD',
+          updated_at: new Date('2026-01-01T00:00:00.000Z'),
+        },
+        {
+          product_id: product.id,
+          location_id: location.id,
+          area_id: null,
+          quantity: 4,
+          batch_number: 'NULL-NEW',
+          updated_at: new Date('2026-01-02T00:00:00.000Z'),
+        },
+        {
+          product_id: product.id,
+          location_id: location.id,
+          area_id: area.id,
+          quantity: 5,
+          batch_number: 'AREA-OLD',
+          updated_at: new Date('2026-01-01T00:00:00.000Z'),
+        },
+        {
+          product_id: product.id,
+          location_id: location.id,
+          area_id: area.id,
+          quantity: 6,
+          batch_number: 'AREA-NEW',
+          updated_at: new Date('2026-01-02T00:00:00.000Z'),
+        },
+      ]);
+
+      const migrationSql = readFileSync(
+        path.resolve(
+          process.cwd(),
+          'drizzle/0008_inventory_identity_unique.sql',
+        ),
+        'utf8',
+      );
+      await db.execute(sql.raw(migrationSql));
+
+      const rows = await db
+        .select({
+          areaId: inventory.area_id,
+          quantity: inventory.quantity,
+          batchNumber: inventory.batch_number,
+        })
+        .from(inventory)
+        .where(eq(inventory.product_id, product.id));
+
+      expect(rows).toHaveLength(2);
+      expect(rows).toEqual(
+        expect.arrayContaining([
+          { areaId: null, quantity: 7, batchNumber: 'NULL-NEW' },
+          { areaId: area.id, quantity: 11, batchNumber: 'AREA-NEW' },
+        ]),
+      );
+
+      await expect(
+        seedInventory(db, {
+          product_id: product.id,
+          location_id: location.id,
+          area_id: null,
+        }),
+      ).rejects.toMatchObject({
+        cause: {
+          code: '23505',
+          constraint: 'inventory_tenant_product_location_area_unique',
+        },
+      });
     });
   });
 
