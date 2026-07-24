@@ -46,8 +46,16 @@ export const frCatalog: Record<MessageKey, string> = {
   'db.query': 'Requete base de donnees executee.',
   'drizzle.initializationFailed':
     "Echec de l'initialisation de la connexion a la base de donnees.",
+  'drizzle.migrationLockFailed':
+    "Echec du verrouillage de la migration de la base de donnees.",
   'drizzle.migrationsFailed':
-    "Echec de l'execution des migrations Better Auth.",
+    'La migration de base de donnees pre-deploiement a echoue.',
+  'drizzle.schemaCheckFailed':
+    "Echec de la verification de compatibilite du schema de la base de donnees.",
+  'drizzle.schemaIncompatible':
+    "Le schema de base de donnees {actualSchemaVersion} est incompatible avec le schema applicatif {expectedSchemaVersion}. Executez la migration pre-deploiement avant de demarrer ce processus.",
+  'drizzle.startupMaintenanceFailed':
+    'La maintenance de la base de donnees au demarrage a echoue.',
   'errors.internalServerError': 'Erreur interne du serveur.',
   'features.notEnabled':
     "Cette fonctionnalite n'est pas activee pour le tenant actif.",

@@ -236,9 +236,6 @@ export async function seedSuperAdmin(
     );
 
     await client.query('COMMIT');
-    console.log(
-      `Seeded platform superadmin ${email} (${existingUser ? 'existing user' : 'new user'}).`,
-    );
   } catch (error) {
     if (client) {
       await client.query('ROLLBACK').catch(() => undefined);
@@ -262,6 +259,7 @@ async function main(): Promise<void> {
   }
 
   await seedSuperAdmin();
+  console.log('Platform superadmin seed completed.');
 }
 
 function isMainModule(): boolean {

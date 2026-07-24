@@ -1,3 +1,4 @@
+-- stocket:previous-app-compatible=true
 -- Note: the user.locale column is NOT added here. It is a
 -- better-auth `additionalFields` value (see backend/src/auth.ts) created by
 -- better-auth's own migrations, which own the "user" table. Committed SQL must

@@ -1,3 +1,4 @@
+-- stocket:previous-app-compatible=false
 CREATE SEQUENCE IF NOT EXISTS order_number_seq START 1;
 
 CREATE TYPE "public"."audit_logs_action" AS ENUM('CREATE', 'UPDATE', 'DELETE', 'RESTORE', 'ADJUST_QUANTITY', 'ADD_PHOTO', 'STATUS_CHANGE');

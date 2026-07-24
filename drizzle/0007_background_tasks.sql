@@ -1,3 +1,4 @@
+-- stocket:previous-app-compatible=true
 CREATE TABLE IF NOT EXISTS "background_tasks" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "tenant_id" uuid DEFAULT '00000000-0000-4000-8000-000000000001' NOT NULL,

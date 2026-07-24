@@ -41,7 +41,15 @@ export const enCatalog = {
   'db.query': 'Database query executed.',
   'drizzle.initializationFailed':
     'Failed to initialize the database connection.',
-  'drizzle.migrationsFailed': 'Failed to run Better Auth migrations.',
+  'drizzle.migrationLockFailed':
+    'Failed to acquire or retain the database migration lock.',
+  'drizzle.migrationsFailed': 'The pre-deploy database migration failed.',
+  'drizzle.schemaCheckFailed':
+    'Failed to check database schema compatibility.',
+  'drizzle.schemaIncompatible':
+    'Database schema {actualSchemaVersion} is incompatible with application schema {expectedSchemaVersion}. Run the pre-deploy migration command before starting this process.',
+  'drizzle.startupMaintenanceFailed':
+    'Database startup maintenance failed.',
   'errors.internalServerError': 'Internal Server Error.',
   'features.notEnabled': 'This feature is not enabled for the active tenant.',
   'features.repositoryFailed': 'Feature entitlement operation failed.',

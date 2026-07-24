@@ -108,6 +108,8 @@ const pool = new Pool({
   idleTimeoutMillis: IDLE_TIMEOUT_MS,
 });
 
+export const closeAuthDatabase = (): Promise<void> => pool.end();
+
 const configuredFrontendOrigins = frontendOrigins();
 const configuredTrustedOrigins = [
   ...configuredFrontendOrigins,

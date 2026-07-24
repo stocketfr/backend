@@ -1,3 +1,4 @@
+-- stocket:previous-app-compatible=true
 CREATE TABLE IF NOT EXISTS "tenant_feature_overrides" (
   "tenant_id" uuid NOT NULL,
   "feature_key" varchar(100) NOT NULL,

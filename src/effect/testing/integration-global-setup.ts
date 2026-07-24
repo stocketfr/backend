@@ -5,6 +5,7 @@ import { applyCommittedSqlMigrations } from '../platform/db/committed-sql-migrat
 import type { DrizzleDb } from '../platform/db/drizzle';
 import * as relations from '../platform/db/relations';
 import * as schema from '../platform/db/schema';
+import { recordCurrentSchemaVersion } from '../platform/db/schema-version';
 
 const TEST_DB_NAME = 'stocket_inventory_test';
 
@@ -54,6 +55,8 @@ export async function setup(): Promise<void> {
       schema: { ...schema, ...relations },
     }) as unknown as DrizzleDb;
     await applyCommittedSqlMigrations(testDb, MIGRATIONS_DIR);
+    // The integration harness supplies auth and data fixtures independently.
+    await recordCurrentSchemaVersion(testDb);
   } finally {
     await testPool.end();
   }

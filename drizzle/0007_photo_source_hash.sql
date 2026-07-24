@@ -1,3 +1,4 @@
+-- stocket:previous-app-compatible=true
 ALTER TABLE "photos"
   ADD COLUMN IF NOT EXISTS "source_hash" varchar(64);
 

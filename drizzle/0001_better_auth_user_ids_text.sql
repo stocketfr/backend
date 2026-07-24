@@ -1,3 +1,4 @@
+-- stocket:previous-app-compatible=false
 DO $$
 BEGIN
   IF to_regclass('public."user"') IS NULL THEN

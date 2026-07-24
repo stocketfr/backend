@@ -1,3 +1,4 @@
+-- stocket:previous-app-compatible=false
 -- 0005: Re-run the Better Auth user id text repair.
 --
 -- 0004 documented this repair but was recorded as applied while its conversion

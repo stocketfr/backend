@@ -38,7 +38,7 @@ layer API is the better fit.
 1. `vitest.integration.config.ts` runs `src/effect/testing/integration-global-setup.ts`
    **once per run**. That script:
    - creates `stocket_inventory_test` if absent,
-   - applies the committed SQL migrations used by application startup.
+   - applies the committed SQL set and records the test-harness schema marker.
 2. The harness opens **one shared `pg.Pool`** on first `getTestDb()` call.
 3. Before every test, `truncateAll()` wipes every domain table with
    `TRUNCATE ... CASCADE` and resets `order_number_seq`.

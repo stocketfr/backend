@@ -1,3 +1,4 @@
+-- stocket:previous-app-compatible=true
 CREATE TYPE "public"."tenant_plan_key" AS ENUM('free', 'base', 'growth', 'enterprise');
 CREATE TYPE "public"."tenant_entitlement_source" AS ENUM('system', 'manual', 'billing');
 CREATE TYPE "public"."tenant_feature_key" AS ENUM('smartImport', 'orders');

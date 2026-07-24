@@ -49,8 +49,16 @@ export const deCatalog: Record<MessageKey, string> = {
   'db.query': 'Datenbankabfrage ausgefuehrt.',
   'drizzle.initializationFailed':
     'Die Initialisierung der Datenbankverbindung ist fehlgeschlagen.',
+  'drizzle.migrationLockFailed':
+    'Die Datenbank-Migrationssperre konnte nicht gehalten werden.',
   'drizzle.migrationsFailed':
-    'Die Better-Auth-Migrationen konnten nicht ausgefuehrt werden.',
+    'Die Pre-Deploy-Datenbankmigration ist fehlgeschlagen.',
+  'drizzle.schemaCheckFailed':
+    'Die Datenbank-Schemakompatibilitaet konnte nicht geprueft werden.',
+  'drizzle.schemaIncompatible':
+    'Datenbankschema {actualSchemaVersion} ist nicht mit Anwendungsschema {expectedSchemaVersion} kompatibel. Fuehren Sie vor dem Start die Pre-Deploy-Migration aus.',
+  'drizzle.startupMaintenanceFailed':
+    'Die Datenbankwartung beim Start ist fehlgeschlagen.',
   'errors.internalServerError': 'Interner Serverfehler.',
   'features.notEnabled':
     'Diese Funktion ist fuer den aktiven Tenant nicht aktiviert.',

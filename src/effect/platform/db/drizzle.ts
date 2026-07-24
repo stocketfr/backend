@@ -27,7 +27,7 @@ export const DrizzleDatabase = Context.GenericTag<DrizzleDb>(
   '@stocket/effect/platform/DrizzleDatabase',
 );
 
-function buildPoolConfig(): pg.PoolConfig {
+export function getDatabasePoolConfig(): pg.PoolConfig {
   const connectionString = getDatabaseUrl();
   const ssl = getSSLConfig();
   const max = getPoolMax();
@@ -40,38 +40,42 @@ function buildPoolConfig(): pg.PoolConfig {
   };
 }
 
-export const drizzleLayer = Layer.scoped(
-  DrizzleDatabase,
-  Effect.acquireRelease(
-    Effect.tryPromise({
-      try: async () => {
-        const pool = new pg.Pool(buildPoolConfig());
-        // Verify connection
-        const client = await pool.connect();
-        client.release();
+const makeDrizzleLayer = (logQueries: boolean) =>
+  Layer.scoped(
+    DrizzleDatabase,
+    Effect.acquireRelease(
+      Effect.tryPromise({
+        try: async () => {
+          const pool = new pg.Pool(getDatabasePoolConfig());
+          // Verify connection
+          const client = await pool.connect();
+          client.release();
 
-        const db = drizzle(pool, {
-          schema: { ...schema, ...relations },
-          logger: makeDrizzleLogger(),
-        });
+          const db = drizzle(pool, {
+            schema: { ...schema, ...relations },
+            logger: logQueries ? makeDrizzleLogger() : undefined,
+          });
 
-        // Attach pool for cleanup
-        (db as DrizzleDbWithPool)[__pool] = pool;
+          // Attach pool for cleanup
+          (db as DrizzleDbWithPool)[__pool] = pool;
 
-        return db as DrizzleDb;
-      },
-      catch: (cause) =>
-        new DrizzleInitializationError({
-          cause,
-          messageKey: 'drizzle.initializationFailed',
-        }),
-    }),
-    (db) =>
-      Effect.promise(async () => {
-        const pool = (db as DrizzleDbWithPool)[__pool];
-        if (pool) {
-          await pool.end();
-        }
+          return db as DrizzleDb;
+        },
+        catch: (cause) =>
+          new DrizzleInitializationError({
+            cause,
+            messageKey: 'drizzle.initializationFailed',
+          }),
       }),
-  ),
-);
+      (db) =>
+        Effect.promise(async () => {
+          const pool = (db as DrizzleDbWithPool)[__pool];
+          if (pool) {
+            await pool.end();
+          }
+        }),
+    ),
+  );
+
+export const drizzleLayer = makeDrizzleLayer(true);
+export const migrationDrizzleLayer = makeDrizzleLayer(false);

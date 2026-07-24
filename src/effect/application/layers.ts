@@ -46,6 +46,10 @@ import {
   drizzleLayer,
 } from '../platform/db/drizzle';
 import {
+  schemaCompatibilityLayer,
+  type SchemaVersionIncompatibleError,
+} from '../platform/db/schema-version';
+import {
   makeTracingLayer,
   TracingLive,
 } from '../platform/observability/tracing';
@@ -71,17 +75,21 @@ export {
 export type ApplicationLayerError =
   | RolesInfrastructureError
   | DrizzleInitializationError
+  | SchemaVersionIncompatibleError
   | StorageConfigurationError;
 export type ApplicationRuntimeError = ApplicationLayerError | ServeError;
 
 export interface ApplicationLayerOptions {
   readonly nodeEnv: ApplicationNodeEnv;
-  readonly runBetterAuthMigrations: boolean;
 }
+
+const compatibleDrizzleLayer = schemaCompatibilityLayer.pipe(
+  Layer.provideMerge(drizzleLayer),
+);
 
 export const databasePlatformLayer = Layer.mergeAll(
   AppConfig.Default,
-  drizzleLayer,
+  compatibleDrizzleLayer,
 );
 
 export const platformLayer = Layer.mergeAll(
@@ -245,7 +253,6 @@ export const makeApplicationLayer = (options: ApplicationLayerOptions) => {
     Layer.provide(
       Layer.mergeAll(
         platformLayer,
-        rolesApplicationLayer,
         notificationsApplicationLayer,
       ),
     ),

@@ -1,3 +1,4 @@
+-- stocket:previous-app-compatible=false
 -- 0004: Repair better-auth id columns that 0001 left as uuid.
 --
 -- 0001 converts "user".id (and the session/account/invitation columns that

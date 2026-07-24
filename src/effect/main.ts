@@ -23,7 +23,6 @@ const port = parseApplicationPort(readRequiredEnv('PORT'));
 
 const applicationLayer = makeApplicationLayer({
   nodeEnv,
-  runBetterAuthMigrations: process.env.RUN_BETTER_AUTH_MIGRATIONS === 'true',
 });
 
 const main: Effect.Effect<never, ApplicationRuntimeError, never> = Layer.launch(

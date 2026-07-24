@@ -1,11 +1,19 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { sql, type SQL } from 'drizzle-orm';
+import { Schema } from 'effect';
 import type { DrizzleDb } from './drizzle';
+import { executeRows } from './execute-rows';
 
 export interface CommittedSqlMigration {
   readonly name: string;
   readonly sql: string;
+  readonly supportsPreviousApplicationVersion: boolean;
+}
+
+export interface AppliedCommittedSqlMigration {
+  readonly name: string;
+  readonly supports_previous_application_version: boolean;
 }
 
 export interface ApplyCommittedSqlMigrationsResult {
@@ -21,6 +29,8 @@ type SqlResult = {
 };
 
 const MIGRATIONS_TABLE_NAME = 'stocket_committed_migrations';
+const COMPATIBILITY_DIRECTIVE =
+  /^-- stocket:previous-app-compatible=(true|false)$/;
 const BASELINE_SCHEMA_MIGRATION = '0000_initial_schema.sql';
 const EXISTING_SCHEMA_BASELINE_MIGRATIONS = new Set([
   BASELINE_SCHEMA_MIGRATION,
@@ -33,6 +43,26 @@ const MIGRATIONS_INCLUDED_IN_FRESH_BASELINE = new Set([
   '0005_better_auth_user_ids_text_repair_rerun.sql',
 ]);
 
+const AppliedCommittedSqlMigrationRow = Schema.Struct({
+  name: Schema.String,
+  supports_previous_application_version: Schema.Boolean,
+});
+
+const readCompatibilityDirective = (
+  migrationName: string,
+  migrationSql: string,
+): boolean => {
+  const firstLine = migrationSql.split(/\r?\n/, 1)[0] ?? '';
+  const match = COMPATIBILITY_DIRECTIVE.exec(firstLine);
+  if (!match) {
+    throw new Error(
+      `${migrationName} must start with -- stocket:previous-app-compatible=true or false`,
+    );
+  }
+
+  return match[1] === 'true';
+};
+
 export const getCommittedSqlMigrations = (
   migrationsDir = path.resolve(process.cwd(), 'drizzle'),
 ): ReadonlyArray<CommittedSqlMigration> => {
@@ -43,10 +73,20 @@ export const getCommittedSqlMigrations = (
   return readdirSync(migrationsDir)
     .filter((fileName) => fileName.endsWith('.sql'))
     .sort((a, b) => a.localeCompare(b))
-    .map((fileName) => ({
-      name: fileName,
-      sql: readFileSync(path.join(migrationsDir, fileName), 'utf8'),
-    }));
+    .map((fileName) => {
+      const migrationSql = readFileSync(
+        path.join(migrationsDir, fileName),
+        'utf8',
+      );
+      return {
+        name: fileName,
+        sql: migrationSql,
+        supportsPreviousApplicationVersion: readCompatibilityDirective(
+          fileName,
+          migrationSql,
+        ),
+      };
+    });
 };
 
 async function executeSql(
@@ -79,32 +119,48 @@ async function ensureMigrationsTable(executor: SqlExecutor): Promise<void> {
     executor,
     `CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE_NAME} (
       name text PRIMARY KEY,
-      applied_at timestamptz NOT NULL DEFAULT now()
+      applied_at timestamptz NOT NULL DEFAULT now(),
+      supports_previous_application_version boolean NOT NULL DEFAULT false
     )`,
+  );
+  await executeSql(
+    executor,
+    `ALTER TABLE ${MIGRATIONS_TABLE_NAME}
+      ADD COLUMN IF NOT EXISTS supports_previous_application_version boolean NOT NULL DEFAULT false`,
   );
 }
 
-async function getAppliedMigrationNames(
+export async function getAppliedCommittedSqlMigrations(
   executor: SqlExecutor,
-): Promise<ReadonlySet<string>> {
-  const rows = await executeSql(
+): Promise<ReadonlyArray<AppliedCommittedSqlMigration>> {
+  return executeRows(
     executor,
-    `SELECT name FROM ${MIGRATIONS_TABLE_NAME} ORDER BY name`,
+    sql.raw(
+      `SELECT name, supports_previous_application_version
+       FROM ${MIGRATIONS_TABLE_NAME}
+       ORDER BY name`,
+    ),
+    AppliedCommittedSqlMigrationRow,
   );
-
-  return new Set(rows.map((row) => String(row.name)));
 }
 
 async function markMigrationApplied(
   executor: SqlExecutor,
-  migrationName: string,
+  migration: CommittedSqlMigration,
 ): Promise<void> {
   await executeSql(
     executor,
     sql`
-      INSERT INTO stocket_committed_migrations (name)
-      VALUES (${migrationName})
-      ON CONFLICT (name) DO NOTHING
+      INSERT INTO stocket_committed_migrations (
+        name,
+        supports_previous_application_version
+      )
+      VALUES (
+        ${migration.name},
+        ${migration.supportsPreviousApplicationVersion}
+      )
+      ON CONFLICT (name) DO UPDATE SET
+        supports_previous_application_version = EXCLUDED.supports_previous_application_version
     `,
   );
 }
@@ -117,18 +173,29 @@ export async function applyCommittedSqlMigrations(
 
   await ensureMigrationsTable(db);
 
+  const initiallyAppliedMigrationNames = new Set(
+    (await getAppliedCommittedSqlMigrations(db)).map(({ name }) => name),
+  );
+  for (const migration of migrations) {
+    if (initiallyAppliedMigrationNames.has(migration.name)) {
+      await markMigrationApplied(db, migration);
+    }
+  }
+
   // Existing deployments had schema created before migration bookkeeping existed.
   // Treat the generated baseline as already applied, then run later idempotent SQL.
   const schemaAlreadyExists = await tableExists(db, 'roles');
   if (schemaAlreadyExists) {
     for (const migration of migrations) {
       if (EXISTING_SCHEMA_BASELINE_MIGRATIONS.has(migration.name)) {
-        await markMigrationApplied(db, migration.name);
+        await markMigrationApplied(db, migration);
       }
     }
   }
 
-  const appliedMigrationNames = new Set(await getAppliedMigrationNames(db));
+  const appliedMigrationNames = new Set(
+    (await getAppliedCommittedSqlMigrations(db)).map(({ name }) => name),
+  );
   let freshBaselineApplied = false;
 
   for (const migration of migrations) {
@@ -138,7 +205,7 @@ export async function applyCommittedSqlMigrations(
 
     await db.transaction(async (tx) => {
       await executeSql(tx, migration.sql);
-      await markMigrationApplied(tx, migration.name);
+      await markMigrationApplied(tx, migration);
 
       if (
         !schemaAlreadyExists &&
@@ -149,7 +216,7 @@ export async function applyCommittedSqlMigrations(
           if (
             MIGRATIONS_INCLUDED_IN_FRESH_BASELINE.has(includedMigration.name)
           ) {
-            await markMigrationApplied(tx, includedMigration.name);
+            await markMigrationApplied(tx, includedMigration);
             appliedMigrationNames.add(includedMigration.name);
           }
         }

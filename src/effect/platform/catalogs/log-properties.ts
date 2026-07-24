@@ -1,5 +1,6 @@
 export interface LogProperties {
   readonly action: string;
+  readonly actualSchemaVersion: string;
   readonly allowedTypes: string;
   readonly cause: unknown;
   readonly details: string;
@@ -7,6 +8,7 @@ export interface LogProperties {
   readonly entityId: string;
   readonly entityType: string;
   readonly error: unknown;
+  readonly expectedSchemaVersion: string;
   readonly from: string;
   readonly maxSize: number;
   readonly method: string;
