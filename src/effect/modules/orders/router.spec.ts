@@ -24,6 +24,7 @@ import {
   ClientNotFound,
   InvalidOrderStatusTransition,
   OrderNotFound,
+  OrderStatusTransitionConflict,
   OrdersInfrastructureError,
 } from './orders.errors';
 import { makeOrdersRouterHarness } from './__fixtures__/router-harness';
@@ -521,6 +522,41 @@ describe('ordersRouter', () => {
       expect(response.status).toBe(400);
       await expect(response.json()).resolves.toMatchObject({
         code: ErrorCode.ORDER_INVALID_TRANSITION,
+      });
+      expect(auditLog).not.toHaveBeenCalled();
+    });
+
+    it('maps a lost status compare-and-set to 409 and skips audit', async () => {
+      const auditLog = vi.fn(() => Effect.void);
+      const { handler } = makeOrdersRouterHarness({
+        service: {
+          updateStatus: () =>
+            Effect.fail(
+              new OrderStatusTransitionConflict({
+                orderId: ORDER_ID,
+                from: OrderStatus.DRAFT,
+                to: OrderStatus.CONFIRMED,
+                messageKey: 'orders.statusTransitionConflict',
+              }),
+            ),
+        },
+        permissions: writeAll,
+        auditLog,
+      });
+
+      const response = await handler(
+        new Request(`http://localhost/orders/${ORDER_ID}/status`, {
+          method: 'PATCH',
+          headers: jsonHeaders,
+          body: JSON.stringify(statusBody),
+        }),
+      );
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toMatchObject({
+        code: ErrorCode.CONFLICT,
+        message:
+          'The order status changed. Reload the order before retrying the transition.',
       });
       expect(auditLog).not.toHaveBeenCalled();
     });

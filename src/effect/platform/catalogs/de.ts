@@ -114,6 +114,8 @@ export const deCatalog: Record<MessageKey, string> = {
     'Uebergang von {from} nach {to} ist nicht erlaubt.',
   'orders.notFound': 'Bestellung nicht gefunden.',
   'orders.productNotFound': 'Produkt nicht gefunden.',
+  'orders.statusTransitionConflict':
+    'Der Bestellstatus hat sich geaendert. Laden Sie die Bestellung vor einem erneuten Versuch neu.',
   'photos.deleted': 'Foto erfolgreich geloescht.',
   'photos.deleteFailed': 'Das Fotoobjekt konnte nicht geloescht werden.',
   'photos.existenceCheckFailed':

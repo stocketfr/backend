@@ -17,7 +17,10 @@ import {
   toRepositoryPaginatedResult,
 } from '@stocket/types/common';
 import { TenantQuery } from '../../platform/tenancy/tenant-query';
-import { makeTenantCrud } from '../../platform/db/tenant-crud';
+import {
+  makeTenantCrud,
+  type TenantCrudUpdatePatch,
+} from '../../platform/db/tenant-crud';
 import { executeRows } from '../../platform/db/execute-rows';
 import {
   orders,
@@ -284,6 +287,28 @@ export class OrdersRepository extends Effect.Service<OrdersRepository>()(
             );
           });
 
+        const transitionStatus = (
+          id: string,
+          expectedStatus: OrderStatus,
+          data: TenantCrudUpdatePatch<typeof orders> & {
+            readonly status: OrderStatus;
+          },
+        ) =>
+          Effect.gen(function* () {
+            const where = yield* scopedWhereId(
+              id,
+              eq(orders.status, expectedStatus),
+            );
+            return yield* tryAsync('transition order status', async () => {
+              const updated = await db
+                .update(orders)
+                .set({ ...data, updated_at: new Date() })
+                .where(where)
+                .returning({ id: orders.id });
+              return updated.length > 0;
+            });
+          });
+
         const getNextOrderNumberSequence = () =>
           tryAsync('get next order number', async () => {
             const rows = await executeRows(
@@ -299,6 +324,7 @@ export class OrdersRepository extends Effect.Service<OrdersRepository>()(
           findByIdWithRelations,
           createWithItems,
           deleteDraftWithItems,
+          transitionStatus,
           getNextOrderNumberSequence,
         };
       },

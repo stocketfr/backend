@@ -6,6 +6,7 @@ import {
   NotFoundError,
   NotImplementedError,
 } from '../../platform/effect/domain-errors';
+import type { OrderStatusTransitionConflict } from '../orders/orders.errors';
 
 export class FulfillmentOrderNotFound extends NotFoundError(
   'FulfillmentOrderNotFound',
@@ -43,6 +44,7 @@ export class FulfillmentInfrastructureError extends InternalError(
 export type FulfillmentError =
   | FulfillmentOrderNotFound
   | FulfillmentInvalidTransition
+  | OrderStatusTransitionConflict
   | FulfillmentPickFailed
   | FulfillmentNotImplemented
   | FulfillmentInfrastructureError;

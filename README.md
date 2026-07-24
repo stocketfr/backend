@@ -107,3 +107,12 @@ All `/api/v1/*` endpoints require Better Auth authentication except the health c
 ```bash
 curl -H "Authorization: Bearer <token>" http://localhost:8080/api/v1/products
 ```
+
+### Retrying order status transitions
+
+Order status changes are compare-and-set operations. A `409 CONFLICT` response
+means another request changed the order after the client read it. Clients must
+reload the order, decide whether the intended transition is still valid, and
+only then retry. Do not blindly retry the same request, because the winning
+transition and its timestamps or fulfillment side effects have already been
+committed.

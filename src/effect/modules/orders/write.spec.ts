@@ -14,6 +14,9 @@ const NOW = new Date('2026-03-10T10:00:00.000Z');
 type CreateOrderData = Parameters<OrderWriteRepository['createWithItems']>[0];
 type CreateOrderItems = Parameters<OrderWriteRepository['createWithItems']>[1];
 type UpdateOrderData = Parameters<OrderWriteRepository['update']>[1];
+type TransitionOrderData = Parameters<
+  OrderWriteRepository['transitionStatus']
+>[2];
 type OrderEntity = NonNullable<
   Effect.Effect.Success<ReturnType<OrdersRepository['findByIdWithRelations']>>
 >;
@@ -54,6 +57,7 @@ const makeRepository = (
   createWithItems: () => Effect.succeed(makeOrder()),
   deleteDraftWithItems: () => Effect.succeed('deleted'),
   getNextOrderNumberSequence: () => Effect.succeed(1),
+  transitionStatus: () => Effect.succeed(true),
   update: () => Effect.succeed(makeOrder()),
   ...overrides,
 });
@@ -172,13 +176,18 @@ describe('makeOrderWriteWorkflows', () => {
     Effect.gen(function* () {
       vi.useFakeTimers().setSystemTime(NOW);
       let current = makeOrder({ status: OrderStatus.DRAFT });
-      let capturedUpdate: UpdateOrderData | undefined;
+      let capturedTransition:
+        | {
+            readonly expectedStatus: OrderStatus;
+            readonly data: TransitionOrderData;
+          }
+        | undefined;
       const repository = makeRepository({
-        update: (_id, data) =>
+        transitionStatus: (_id, expectedStatus, data) =>
           Effect.sync(() => {
-            capturedUpdate = data;
+            capturedTransition = { expectedStatus, data };
             current = makeOrder({ ...current, ...data });
-            return current;
+            return true;
           }),
       });
       const workflows = makeWorkflows({
@@ -190,12 +199,41 @@ describe('makeOrderWriteWorkflows', () => {
         status: OrderStatus.CONFIRMED,
       });
 
-      expect(capturedUpdate).toMatchObject({
-        status: OrderStatus.CONFIRMED,
-        confirmed_at: NOW,
+      expect(capturedTransition).toMatchObject({
+        expectedStatus: OrderStatus.DRAFT,
+        data: {
+          status: OrderStatus.CONFIRMED,
+          confirmed_at: NOW,
+        },
       });
       expect(result.status).toBe(OrderStatus.CONFIRMED);
       vi.useRealTimers();
+    }),
+  );
+
+  it.effect('returns a domain conflict when the status compare-and-set loses', () =>
+    Effect.gen(function* () {
+      const workflows = makeWorkflows({
+        repository: makeRepository({
+          transitionStatus: () => Effect.succeed(false),
+        }),
+        getOrderOrFail: () =>
+          Effect.succeed(makeOrder({ status: OrderStatus.DRAFT })),
+      });
+
+      const error = yield* Effect.flip(
+        workflows.updateStatus(ORDER_ID, {
+          status: OrderStatus.CONFIRMED,
+        }),
+      );
+
+      expect(error).toMatchObject({
+        _tag: 'OrderStatusTransitionConflict',
+        statusCode: 409,
+        orderId: ORDER_ID,
+        from: OrderStatus.DRAFT,
+        to: OrderStatus.CONFIRMED,
+      });
     }),
   );
 

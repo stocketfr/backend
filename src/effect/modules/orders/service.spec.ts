@@ -92,6 +92,7 @@ const makeMockOrdersRepository = (
   delete: vi.fn().mockReturnValue(Effect.void),
   deleteDraftWithItems: vi.fn().mockReturnValue(Effect.succeed('deleted')),
   getNextOrderNumberSequence: vi.fn().mockReturnValue(Effect.succeed(1)),
+  transitionStatus: vi.fn().mockReturnValue(Effect.succeed(true)),
   existsById: vi.fn().mockReturnValue(Effect.succeed(true)),
   findByIds: vi.fn().mockReturnValue(Effect.succeed([{ id: 'order-1' }])),
   ...overrides,
@@ -304,8 +305,9 @@ describe('Effect OrdersService', () => {
       const result = await run(
         service.updateStatus('order-1', { status: OrderStatus.CONFIRMED }),
       );
-      expect(ordersRepository.update).toHaveBeenCalledWith(
+      expect(ordersRepository.transitionStatus).toHaveBeenCalledWith(
         'order-1',
+        OrderStatus.DRAFT,
         expect.objectContaining({
           status: OrderStatus.CONFIRMED,
           confirmed_at: expect.any(Date),

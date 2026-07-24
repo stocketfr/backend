@@ -107,6 +107,8 @@ export const frCatalog: Record<MessageKey, string> = {
     'Transition impossible de {from} vers {to}.',
   'orders.notFound': 'Commande introuvable.',
   'orders.productNotFound': 'Produit introuvable.',
+  'orders.statusTransitionConflict':
+    'Le statut de la commande a change. Rechargez la commande avant de reessayer la transition.',
   'photos.deleted': 'Photo supprimee avec succes.',
   'photos.deleteFailed': "La suppression de l'objet photo a echoue.",
   'photos.existenceCheckFailed':

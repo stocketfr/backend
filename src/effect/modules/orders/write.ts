@@ -11,6 +11,7 @@ import {
   CannotDeleteNonDraftOrder,
   ClientNotFound,
   OrderNotFound,
+  OrderStatusTransitionConflict,
 } from './orders.errors';
 import { generateOrderPrefix } from './orders.utils';
 import { toOrderResponseDto } from './mappers';
@@ -30,6 +31,7 @@ export type OrderWriteRepository = Pick<
   | 'createWithItems'
   | 'deleteDraftWithItems'
   | 'getNextOrderNumberSequence'
+  | 'transitionStatus'
   | 'update'
 >;
 
@@ -170,10 +172,22 @@ export const makeOrderWriteWorkflows = <
 
       yield* validateOrderStatusTransition(order, dto.status);
 
-      yield* repository.update(
-        id,
-        buildOrderStatusUpdate(dto.status, new Date()),
-      );
+      yield* repository
+        .transitionStatus(
+          id,
+          order.status,
+          buildOrderStatusUpdate(dto.status, new Date()),
+        )
+        .pipe(
+          Effect.filterOrFail(Boolean, () =>
+            new OrderStatusTransitionConflict({
+              orderId: id,
+              from: order.status,
+              to: dto.status,
+              messageKey: 'orders.statusTransitionConflict',
+            }),
+          ),
+        );
 
       const updated = yield* getOrderOrFail(id);
       return toOrderResponseDto(updated);

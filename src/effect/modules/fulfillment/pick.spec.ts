@@ -90,11 +90,11 @@ const makeRepositories = (
   const repositories = {
     ordersRepository: {
       findByIdWithRelations: () => Effect.succeed(order),
-      update: (_orderId, data) =>
+      transitionStatus: (_orderId, _expectedStatus, data) =>
         Effect.sync(() => {
           updates.push(data);
           order = { ...order, ...data };
-          return 1;
+          return true;
         }),
     },
     orderItemsRepository: {

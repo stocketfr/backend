@@ -2,6 +2,7 @@ import type { OrderStatus } from '@stocket/types/orders';
 import { ErrorCode } from '@stocket/types/common';
 import {
   BadRequestError,
+  ConflictError,
   InternalError,
   NotFoundError,
 } from '../../platform/effect/domain-errors';
@@ -18,6 +19,14 @@ export class InvalidOrderStatusTransition extends BadRequestError(
   'InvalidOrderStatusTransition',
   ErrorCode.ORDER_INVALID_TRANSITION,
 )<{
+  readonly from: OrderStatus;
+  readonly to: OrderStatus;
+}> {}
+
+export class OrderStatusTransitionConflict extends ConflictError(
+  'OrderStatusTransitionConflict',
+)<{
+  readonly orderId: string;
   readonly from: OrderStatus;
   readonly to: OrderStatus;
 }> {}

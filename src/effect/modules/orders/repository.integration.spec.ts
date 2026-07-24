@@ -48,6 +48,9 @@ async function seedOrderPrereqs() {
 const findOrderItems = (orderId: string) =>
   db.select().from(orderItems).where(eq(orderItems.order_id, orderId));
 
+const findOrder = async (orderId: string) =>
+  (await db.select().from(orders).where(eq(orders.id, orderId)))[0];
+
 describe('OrdersRepository transactions', () => {
   it('rolls back the order row when item creation fails', async () => {
     const { client } = await seedOrderPrereqs();
@@ -143,5 +146,75 @@ describe('OrdersRepository transactions', () => {
       await db.select().from(orders).where(eq(orders.id, order.id)),
     ).toHaveLength(1);
     expect(await findOrderItems(order.id)).toHaveLength(1);
+  });
+
+  it('allows exactly one simultaneous transition from the same status', async () => {
+    const { client } = await seedOrderPrereqs();
+    const order = await seedOrder(db, {
+      client_id: client.id,
+      created_by: TEST_USER_ID,
+      status: OrderStatus.DRAFT,
+    });
+    const firstConfirmedAt = new Date('2026-07-24T10:00:00.000Z');
+    const secondConfirmedAt = new Date('2026-07-24T10:00:01.000Z');
+
+    const results = await run(
+      Effect.flatMap(OrdersRepository, (repository) =>
+        Effect.all(
+          [
+            repository.transitionStatus(order.id, OrderStatus.DRAFT, {
+              status: OrderStatus.CONFIRMED,
+              confirmed_at: firstConfirmedAt,
+            }),
+            repository.transitionStatus(order.id, OrderStatus.DRAFT, {
+              status: OrderStatus.CONFIRMED,
+              confirmed_at: secondConfirmedAt,
+            }),
+          ],
+          { concurrency: 'unbounded' },
+        ),
+      ),
+    );
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+    const persisted = await findOrder(order.id);
+    expect(persisted?.status).toBe(OrderStatus.CONFIRMED);
+    expect([firstConfirmedAt.getTime(), secondConfirmedAt.getTime()]).toContain(
+      persisted?.confirmed_at?.getTime(),
+    );
+  });
+
+  it('persists only the winner of simultaneous competing transitions', async () => {
+    const { client } = await seedOrderPrereqs();
+    const order = await seedOrder(db, {
+      client_id: client.id,
+      created_by: TEST_USER_ID,
+      status: OrderStatus.DRAFT,
+    });
+    const confirmedAt = new Date('2026-07-24T11:00:00.000Z');
+
+    const [confirmed, cancelled] = await run(
+      Effect.flatMap(OrdersRepository, (repository) =>
+        Effect.all(
+          [
+            repository.transitionStatus(order.id, OrderStatus.DRAFT, {
+              status: OrderStatus.CONFIRMED,
+              confirmed_at: confirmedAt,
+            }),
+            repository.transitionStatus(order.id, OrderStatus.DRAFT, {
+              status: OrderStatus.CANCELLED,
+            }),
+          ],
+          { concurrency: 'unbounded' },
+        ),
+      ),
+    );
+
+    expect(Number(confirmed) + Number(cancelled)).toBe(1);
+    const persisted = await findOrder(order.id);
+    expect(persisted?.status).toBe(
+      confirmed ? OrderStatus.CONFIRMED : OrderStatus.CANCELLED,
+    );
+    expect(persisted?.confirmed_at).toEqual(confirmed ? confirmedAt : null);
   });
 });

@@ -57,7 +57,7 @@ const makeRepository = (
 
   return {
     findByIdWithRelations: () => Effect.succeed(order),
-    update: (_orderId, data) =>
+    transitionStatus: (_orderId, _expectedStatus, data) =>
       Effect.sync(() => {
         order = {
           ...order,
@@ -65,6 +65,7 @@ const makeRepository = (
           confirmed_at: data.confirmed_at,
           assigned_to: data.assigned_to,
         };
+        return true;
       }),
     ...overrides,
   };
@@ -84,14 +85,16 @@ describe('confirmOrder', () => {
             }
           | undefined;
         const repository = makeRepository({
-          update: (orderId, data) =>
+          transitionStatus: (orderId, expectedStatus, data) =>
             Effect.sync(() => {
+              expect(expectedStatus).toBe(OrderStatus.DRAFT);
               update = {
                 orderId,
                 status: data.status,
                 confirmedAt: data.confirmed_at,
                 assignedTo: data.assigned_to,
               };
+              return true;
             }),
           findByIdWithRelations: () =>
             Effect.succeed(
@@ -140,9 +143,10 @@ describe('confirmOrder', () => {
       const repository = makeRepository({
         findByIdWithRelations: () =>
           Effect.succeed(makeOrder({ status: OrderStatus.CONFIRMED })),
-        update: () =>
+        transitionStatus: () =>
           Effect.sync(() => {
             updateCalled = true;
+            return true;
           }),
       });
 
@@ -185,6 +189,29 @@ describe('confirmOrder', () => {
     }),
   );
 
+  it.effect('returns a domain conflict when confirmation loses the status race', () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        confirmOrder({
+          repository: makeRepository({
+            transitionStatus: () => Effect.succeed(false),
+          }),
+          orderId: 'order-1',
+          actorId: 'user-2',
+          now: () => confirmedAt,
+        }),
+      );
+
+      expect(error).toMatchObject({
+        _tag: 'OrderStatusTransitionConflict',
+        statusCode: 409,
+        orderId: 'order-1',
+        from: OrderStatus.DRAFT,
+        to: OrderStatus.CONFIRMED,
+      });
+    }),
+  );
+
   it.effect('wraps repository update failures as infrastructure errors', () =>
     Effect.gen(function* () {
       const cause = new Error('write failed');
@@ -192,7 +219,7 @@ describe('confirmOrder', () => {
       const error = yield* Effect.flip(
         confirmOrder({
           repository: makeRepository({
-            update: () => Effect.fail(cause),
+            transitionStatus: () => Effect.fail(cause),
           }),
           orderId: 'order-1',
           actorId: 'user-2',

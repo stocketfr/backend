@@ -81,6 +81,7 @@ const makeMockOrdersRepository = (overrides: Record<string, Mock> = {}) => {
     findByIdWithRelations,
     create: vi.fn(),
     update: vi.fn().mockReturnValue(Effect.succeed(1)),
+    transitionStatus: vi.fn().mockReturnValue(Effect.succeed(true)),
     delete: vi.fn(),
     getNextOrderNumberSequence: vi.fn(),
     existsById: vi.fn(),
@@ -133,11 +134,15 @@ describe('Effect FulfillmentService', () => {
 
       const result = await run(service.confirm('order-1', 'user-2'));
 
-      expect(ordersRepository.update).toHaveBeenCalledWith('order-1', {
-        status: OrderStatus.CONFIRMED,
-        confirmed_at: new Date('2026-03-10T10:00:00.000Z'),
-        assigned_to: 'user-2',
-      });
+      expect(ordersRepository.transitionStatus).toHaveBeenCalledWith(
+        'order-1',
+        OrderStatus.DRAFT,
+        {
+          status: OrderStatus.CONFIRMED,
+          confirmed_at: new Date('2026-03-10T10:00:00.000Z'),
+          assigned_to: 'user-2',
+        },
+      );
       expect(result).toMatchObject({
         orderId: 'order-1',
         status: OrderStatus.CONFIRMED,
@@ -168,7 +173,7 @@ describe('Effect FulfillmentService', () => {
             }),
           ),
         ),
-        update: vi.fn().mockReturnValue(Effect.succeed(1)),
+        transitionStatus: vi.fn().mockReturnValue(Effect.succeed(true)),
       });
       const service = await buildService(ordersRepository);
 
@@ -196,7 +201,7 @@ describe('Effect FulfillmentService', () => {
     it('wraps repository failures as infrastructure errors', async () => {
       const cause = new Error('write failed');
       const ordersRepository = makeMockOrdersRepository({
-        update: vi.fn().mockReturnValue(Effect.fail(cause)),
+        transitionStatus: vi.fn().mockReturnValue(Effect.fail(cause)),
       });
       const service = await buildService(ordersRepository);
 

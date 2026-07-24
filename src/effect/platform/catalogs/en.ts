@@ -94,6 +94,8 @@ export const enCatalog = {
   'orders.invalidStatusTransition': 'Cannot transition from {from} to {to}.',
   'orders.notFound': 'Order not found.',
   'orders.productNotFound': 'Product not found.',
+  'orders.statusTransitionConflict':
+    'The order status changed. Reload the order before retrying the transition.',
   'photos.deleted': 'Photo deleted successfully.',
   'photos.deleteFailed': 'Failed to delete the photo object.',
   'photos.existenceCheckFailed': 'Failed to check whether the photo exists.',

@@ -6,6 +6,7 @@ import type {
 import { OrderStatus } from '@stocket/types/orders';
 import { StockMovementReason } from '@stocket/types/stock-movements';
 import { fromNullOr } from '../../platform/effect/from-null-or';
+import { OrderStatusTransitionConflict } from '../orders/orders.errors';
 import type { Order } from '../orders/types';
 import { toFulfillmentView } from './mappers';
 import {
@@ -45,10 +46,11 @@ export interface FulfillmentPickRepositories {
     readonly findByIdWithRelations: (
       orderId: string,
     ) => Effect.Effect<Order | null, unknown>;
-    readonly update: (
+    readonly transitionStatus: (
       orderId: string,
+      expectedStatus: OrderStatus,
       data: { readonly status: OrderStatus },
-    ) => Effect.Effect<unknown, unknown>;
+    ) => Effect.Effect<boolean, unknown>;
   };
   readonly orderItemsRepository: {
     readonly findByIds: (
@@ -140,10 +142,20 @@ export const pickOrder = ({
 
     if (order.status === OrderStatus.CONFIRMED) {
       yield* repositories.ordersRepository
-        .update(input.orderId, { status: OrderStatus.PICKING })
+        .transitionStatus(input.orderId, OrderStatus.CONFIRMED, {
+          status: OrderStatus.PICKING,
+        })
         .pipe(
           Effect.mapError(
             wrapFulfillmentInfrastructureError('transition to picking'),
+          ),
+          Effect.filterOrFail(Boolean, () =>
+            new OrderStatusTransitionConflict({
+              orderId: input.orderId,
+              from: OrderStatus.CONFIRMED,
+              to: OrderStatus.PICKING,
+              messageKey: 'orders.statusTransitionConflict',
+            }),
           ),
         );
     }
