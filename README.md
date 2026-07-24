@@ -35,6 +35,13 @@ The API will be at `http://localhost:8080`.
 Environment values are managed in Infisical and injected at runtime by the npm
 scripts. The checked-in `env.template` file documents the expected keys.
 
+Development commands select Infisical's `dev` environment. Production
+deployments must inject their environment before launch and use
+`pnpm start:production`; that command never selects an Infisical environment.
+Startup rejects local or insecure origins/endpoints, the checked-in PostgreSQL
+and MinIO development credentials, E2E controls, and Vitest mode when
+`NODE_ENV=production`.
+
 ## Project Structure
 
 ```text
@@ -66,8 +73,9 @@ pnpm install             # Install the workspace
 pnpm start               # Run the API
 pnpm start:worker        # Run the background task worker
 pnpm build               # Production build
-pnpm start:prod          # Run production build
-pnpm start:prod:worker   # Run the production background worker
+pnpm start:production    # Production API; environment is injected externally
+pnpm start:production:worker # Production worker; environment is injected externally
+pnpm start:local:production-build # Compiled API locally with Infisical dev secrets
 pnpm test                # Unit tests (Vitest)
 pnpm test:integration    # Integration tests
 pnpm lint                # Oxlint
@@ -81,6 +89,10 @@ at least one worker process anywhere task-producing features are enabled. The
 worker uses PostgreSQL leases, so multiple worker replicas can safely claim
 work concurrently; tuning variables and defaults are documented in
 `env.template`.
+
+`start:local:production-build` is only a local smoke test of the compiled
+artifact. It deliberately uses Infisical's `dev` secrets and sets
+`NODE_ENV=development`, so it does not simulate production configuration.
 
 `POST /api/v1/products/import` stores the uploaded CSV under the
 `background-tasks/product-import/` object prefix and responds with `202` plus a

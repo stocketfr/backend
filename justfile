@@ -10,9 +10,13 @@ dev:
 build:
   pnpm build
 
-# Run production server with Infisical-injected environment variables
+# Run the production server with environment variables injected by the operator
 start:
-  pnpm start:prod:infisical
+  pnpm start:production
+
+# Run the compiled production artifact locally with development secrets
+start-local-production-build:
+  pnpm start:local:production-build
 
 # Lint and fix code
 lint:

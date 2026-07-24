@@ -3,6 +3,7 @@ import { NodeRuntime } from '@effect/platform-node';
 import { Effect } from 'effect';
 import {
   APPLICATION_NODE_ENVS,
+  assertSafeApplicationEnvironment,
   isApplicationNodeEnv,
   makeProductImportTaskWorkerApplicationLayer,
 } from './application/layers';
@@ -16,6 +17,7 @@ if (!isApplicationNodeEnv(nodeEnv)) {
   );
 }
 process.env.NODE_ENV = nodeEnv;
+assertSafeApplicationEnvironment(nodeEnv, process.env);
 
 const main = Effect.flatMap(TaskWorkerService, (worker) => worker.runLoop).pipe(
   Effect.provide(makeProductImportTaskWorkerApplicationLayer()),

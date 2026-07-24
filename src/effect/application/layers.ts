@@ -55,6 +55,7 @@ import {
 } from '../platform/storage';
 import {
   APPLICATION_NODE_ENVS,
+  assertSafeApplicationEnvironment,
   isApplicationNodeEnv,
   parseApplicationPort,
   type ApplicationNodeEnv,
@@ -63,6 +64,7 @@ import { makeStartupLayer } from './startup';
 
 export {
   APPLICATION_NODE_ENVS,
+  assertSafeApplicationEnvironment,
   isApplicationNodeEnv,
   parseApplicationPort,
   type ApplicationNodeEnv,

@@ -3,6 +3,7 @@ import { Effect, Layer } from 'effect';
 import { readRequiredEnv } from '@stocket/types/common';
 import {
   APPLICATION_NODE_ENVS,
+  assertSafeApplicationEnvironment,
   isApplicationNodeEnv,
   makeApplicationLayer,
   makeHttpServerLayer,
@@ -18,6 +19,7 @@ if (!isApplicationNodeEnv(nodeEnv)) {
   );
 }
 process.env.NODE_ENV = nodeEnv;
+assertSafeApplicationEnvironment(nodeEnv, process.env);
 
 const port = parseApplicationPort(readRequiredEnv('PORT'));
 
