@@ -1,5 +1,9 @@
 # Stocket API
 
+> **Legacy component — do not develop or deploy from this repository.** Canonical API source moved to [`stocketfr/stocket/apps/api`](https://github.com/stocketfr/stocket/tree/main/apps/api) from baseline `c57ab663f588b278d347a6e2b00c702de40f3cfa`. Open work is owned by the canonical monorepo and [Wayfinder](https://github.com/stocketfr/meta/issues/20). This repository is retained only as immutable migration provenance and is scheduled for archive under [`meta#43`](https://github.com/stocketfr/meta/issues/43).
+
+The content below documents the historical polyrepo revision and must not be treated as current development or production guidance.
+
 REST API for Stocket inventory management, built with Effect, Drizzle, Better Auth, and Node.js.
 
 ## Prerequisites
